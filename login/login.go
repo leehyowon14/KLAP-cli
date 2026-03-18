@@ -91,9 +91,13 @@ func makeLoginToken(id string, password string, rsaPublicKey string) (loginToken
 	if err != nil {
 		return "", fmt.Errorf("RSA 암호화 키 디코딩을 실패하였습니다: %w", err)
 	}
-	pubKey, err := x509.ParsePKCS1PublicKey(decoded)
+	pubAny, err := x509.ParsePKIXPublicKey(decoded)
 	if err != nil {
 		return "", fmt.Errorf("RSA 암호화 키 파싱을 실패하였습니다: %w", err)
+	}
+	pubKey, ok := pubAny.(*rsa.PublicKey)
+	if !ok {
+		return "", fmt.Errorf("RSA 공개키 형식이 올바르지 않습니다")
 	}
 
 	payload := map[string]string{
