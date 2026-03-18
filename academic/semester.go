@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-type AllSemester struct {
-	Semesters map[string]semester
+type SemesterSet struct {
+	Items map[string]semester
 }
 
 type semesterListResponse struct {
@@ -24,7 +24,7 @@ type semester struct {
 	Courses []course `json:"subjList"`
 }
 
-func Load(cookies []*http.Cookie) (*AllSemester, error) {
+func Load(cookies []*http.Cookie) (*SemesterSet, error) {
 	req, _ := http.NewRequest(
 		"POST",
 		"https://klas.kw.ac.kr/std/cmn/frame/YearhakgiAtnlcSbjectList.do",
@@ -44,11 +44,11 @@ func Load(cookies []*http.Cookie) (*AllSemester, error) {
 		return nil, fmt.Errorf("과목 정보를 해석하는데 실패했습니다: %w", err)
 	}
 
-	data := &AllSemester{
-		Semesters: make(map[string]semester),
+	data := &SemesterSet{
+		Items: make(map[string]semester),
 	}
 	for _, semester := range rawData.Semesters {
-		data.Semesters[strings.Join(
+		data.Items[strings.Join(
 			strings.Split(semester.Value, ","),
 			"-")] = semester
 	}
