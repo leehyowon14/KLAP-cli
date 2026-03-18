@@ -2,6 +2,10 @@ package klaslogin
 
 import (
 	httpclient "KLAP/http"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -44,4 +48,29 @@ func getRSAKey() (publicKey string, cookies []*http.Cookie, err error) {
 	}
 
 	return publicKey, cookies, nil
+}
+
+func makeLoginToken(id string, password string, rsaPublicKey string) (loginToken string, err error) {
+	decoded, err := base64.StdEncoding.DecodeString(rsaPublicKey)
+	if err != nil {
+		return "", fmt.Errorf("RSA 암호화 키 디코딩을 실패하였습니다: %w", err)
+	}
+	pubKey, err := x509.ParsePKCS1PublicKey(decoded)
+	if err != nil {
+		return "", fmt.Errorf("RSA 암호화 키 파싱을 실패하였습니다: %w", err)
+	}
+
+	payload := map[string]string{
+		"loginId":   id,
+		"loginPwd":  password,
+		"storeIdYn": "N",
+	}
+
+	body, _ := json.Marshal(payload)
+	encrypted, err := rsa.EncryptPKCS1v15(rand.Reader, pubKey, body)
+	if err != nil {
+		return "", fmt.Errorf("RSA 암호화 실패: %w", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(encrypted), nil
 }
