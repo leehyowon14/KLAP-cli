@@ -2,6 +2,8 @@ package klaslogin
 
 import (
 	httpclient "KLAP/http"
+	utils "KLAP/util"
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -10,6 +12,40 @@ import (
 	"fmt"
 	"net/http"
 )
+
+// Login 은 주어진 학번과 비밀번호로 로그인을 수행합니다.
+// Returns: KLAS Auth Cookies, error
+func Login(id string, password string) (cookies []*http.Cookie, err error) {
+	publicKey, cookies, err := getRSAKey()
+	if err != nil {
+		return nil, err
+	}
+	loginToken, err := makeLoginToken(id, password, publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("로그인 정보 암호화에 실패하였습니다: %w", err)
+	}
+
+	payload := map[string]string{
+		"loginToken":     loginToken,
+		"redirectUrl":    "",
+		"redirectTabUrl": "",
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("로그인 요청 본문 구축에 실패하였습니다: %w", err)
+	}
+
+	req, _ := http.NewRequest("POST", "https://klas.kw.ac.kr/usr/cmn/login/LoginConfirm.do", bytes.NewBuffer(body))
+	utils.SetJsonRequestHeaders(req, cookies)
+
+	res, err := httpclient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("로그인 요청이 실패하였습니다: %w", err)
+	}
+	defer res.Body.Close()
+
+	return cookies, nil
+}
 
 type rsaPublicKey struct {
 	PublicKey string `json:"publicKey"`
