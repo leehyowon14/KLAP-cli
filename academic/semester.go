@@ -70,3 +70,20 @@ func (sem SemesterSet) GetSemesterList() []string {
 	sort.Strings(data)
 	return data
 }
+
+func (sem SemesterSet) GetCourseList(semester string) (map[string]string, error) {
+	value, ok := sem.Items[semester]
+	if !ok {
+		return nil, fmt.Errorf("해당하는 학기에 수강한 수업이 없습니다.")
+	}
+
+	data := make(map[string]string)
+
+	for _, course := range value.Courses {
+		data[course.Label] = course.Value
+	}
+
+	return data, nil
+}
+
+// NOTE: User.Attend(User.GetCourse("2025-1", value))
