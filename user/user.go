@@ -1,6 +1,7 @@
 package klasuser
 
 import (
+	klaslogin "KLAP/login"
 	"fmt"
 	"net/http"
 )
@@ -58,3 +59,21 @@ func (u User) GetCookies() []*http.Cookie {
 }
 
 // ===Method===
+
+func (u *User) Login() error {
+	defer func(u *User) {
+		if len(u.cookies) == 0 {
+			u.isIDValid = false
+			u.isPasswordValid = false
+		}
+	}(u)
+	u.isIDValid = true
+	u.isPasswordValid = true
+	cookies, err := klaslogin.Login(u.id, u.password)
+	if err != nil {
+		return fmt.Errorf("로그인에 실패하였습니다. %w", err)
+	}
+	u.cookies = cookies
+
+	return nil
+}
