@@ -15,9 +15,7 @@ type SemesterSet struct {
 	Items map[string]semester
 }
 
-type semesterListResponse struct {
-	Semesters []semester `json:"semester"`
-}
+type semesterListResponse []semester
 
 type semester struct {
 	Value   string   `json:"value"`
@@ -48,7 +46,7 @@ func Load(cookies []*http.Cookie) (*SemesterSet, error) {
 	data := &SemesterSet{
 		Items: make(map[string]semester),
 	}
-	for _, semester := range rawData.Semesters {
+	for _, semester := range rawData {
 		data.Items[strings.Join(
 			strings.Split(semester.Value, ","),
 			"-")] = semester
