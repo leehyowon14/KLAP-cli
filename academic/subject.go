@@ -1,4 +1,4 @@
-package subject
+package academic
 
 import (
 	httpclient "KLAP/http"
