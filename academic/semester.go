@@ -19,9 +19,9 @@ type semesterListResponse struct {
 }
 
 type semester struct {
-	Value    string    `json:"value"`
-	Label    string    `json:"label"`
-	Subjects []subject `json:"subjList"`
+	Value   string   `json:"value"`
+	Label   string   `json:"label"`
+	Courses []course `json:"subjList"`
 }
 
 func Load(cookies []*http.Cookie) (*AllSemester, error) {
