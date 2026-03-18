@@ -1,6 +1,7 @@
 package klasuser
 
 import (
+	"KLAP/academic"
 	klaslogin "KLAP/login"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ type User struct {
 	password   string
 	cookies    []*http.Cookie
 	isLoggedIn bool
+	semesters  academic.SemesterSet
 }
 
 // ===Constructor===
@@ -71,6 +73,19 @@ func (u *User) Login() error {
 		return fmt.Errorf("로그인에 실패하였습니다. %w", err)
 	}
 	u.cookies = cookies
+
+	return nil
+}
+
+func (u *User) LoadSemesters() error {
+	if len(u.cookies) == 0 {
+		return fmt.Errorf("과목 및 학기 정보를 불러오는 데 필요한 인증 정보가 없습니다. 로그인을 먼저 수행해주세요.")
+	}
+	semesters, err := academic.Load(u.cookies)
+	if err != nil {
+		return err
+	}
+	u.semesters = *semesters
 
 	return nil
 }
