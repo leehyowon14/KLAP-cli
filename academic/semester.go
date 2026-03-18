@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -54,4 +55,18 @@ func Load(cookies []*http.Cookie) (*SemesterSet, error) {
 	}
 
 	return data, nil
+}
+
+func (sem SemesterSet) GetSemesterList() []string {
+	var data []string
+	for _, semester := range sem.Items {
+		data = append(
+			data,
+			strings.Join(
+				strings.Split(semester.Value, ","),
+				"-"),
+		)
+	}
+	sort.Strings(data)
+	return data
 }
