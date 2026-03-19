@@ -44,6 +44,24 @@ func Login(id string, password string) (cookies []*http.Cookie, err error) {
 	}
 	defer res.Body.Close()
 
+	//TODO: 로그인 검증 로직
+	/*
+			{
+		    "redirectUrl": "",
+		    "fieldErrors": [
+		        {
+		            "field": "",
+		            "message": "LOGIN ERROR: 개인번호 또는 비밀번호가 일치하지 않습니다.\n로그인 실패 건수 1"
+		        }
+		    ],
+		    "responseText": "",
+		    "response": {},
+		    "errorCount": 1,
+		    "redirect": false,
+		    "loginRequired": false
+			}
+	*/
+
 	return cookies, nil
 }
 

@@ -5,3 +5,5 @@ type course struct {
 	Value string `json:"value"`
 	Label string `json:"subj"`
 }
+
+func (c course) GetLessons()

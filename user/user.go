@@ -59,6 +59,10 @@ func (u User) GetCookies() []*http.Cookie {
 	return u.cookies
 }
 
+func (u User) GetSemesters() []string { //TODO: 이거 아마 SemesterSet 넘겨주도록 바꿔야할듯
+	return u.semesters.GetSemesterList()
+}
+
 // ===Method===
 
 func (u *User) Login() error {
