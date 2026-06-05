@@ -546,19 +546,52 @@ func parseKoreanDateTime(value string) *time.Time {
 	return nil
 }
 
-var htmlTagPattern = regexp.MustCompile(`<[^>]+>`)
+var (
+	htmlBreakPattern      = regexp.MustCompile(`(?i)<br\s*/?>`)
+	htmlBlockClosePattern = regexp.MustCompile(`(?i)</(p|div|section|article|header|footer|h[1-6]|li|ul|ol|table|thead|tbody|tr)>`)
+	htmlBlockOpenPattern  = regexp.MustCompile(`(?i)<(p|div|section|article|header|footer|h[1-6]|ul|ol|table|thead|tbody|tr)(\s+[^>]*)?>`)
+	htmlListItemPattern   = regexp.MustCompile(`(?i)<li(\s+[^>]*)?>`)
+	htmlCellPattern       = regexp.MustCompile(`(?i)</t[dh]>\s*<t[dh](\s+[^>]*)?>`)
+	htmlTagPattern        = regexp.MustCompile(`<[^>]+>`)
+	htmlBlankLinePattern  = regexp.MustCompile(`\n{3,}`)
+	htmlListGapPattern    = regexp.MustCompile(`(?m)(- [^\n]+)\n\n- `)
+	htmlNumberGapPattern  = regexp.MustCompile(`(?m)([0-9]+\. [^\n]+)\n\n([0-9]+\. )`)
+	htmlLineSpacePattern  = regexp.MustCompile(`[ \t]+\n`)
+)
 
 func htmlToText(value string) string {
-	value = strings.ReplaceAll(value, "<br>", "\n")
-	value = strings.ReplaceAll(value, "<br/>", "\n")
-	value = strings.ReplaceAll(value, "<br />", "\n")
+	value = htmlBreakPattern.ReplaceAllString(value, "\n")
+	value = htmlCellPattern.ReplaceAllString(value, " ")
+	value = htmlListItemPattern.ReplaceAllString(value, "\n- ")
+	value = htmlBlockOpenPattern.ReplaceAllString(value, "\n")
+	value = htmlBlockClosePattern.ReplaceAllString(value, "\n")
 	value = htmlTagPattern.ReplaceAllString(value, "")
-	value = strings.ReplaceAll(value, "&nbsp;", " ")
-	value = strings.ReplaceAll(value, "&amp;", "&")
-	value = strings.ReplaceAll(value, "&lt;", "<")
-	value = strings.ReplaceAll(value, "&gt;", ">")
-	value = strings.ReplaceAll(value, "&quot;", `"`)
+	value = decodeHTMLEntities(value)
+	value = htmlLineSpacePattern.ReplaceAllString(value, "\n")
+	value = htmlBlankLinePattern.ReplaceAllString(value, "\n\n")
+	for htmlListGapPattern.MatchString(value) {
+		value = htmlListGapPattern.ReplaceAllString(value, "$1\n- ")
+	}
+	for htmlNumberGapPattern.MatchString(value) {
+		value = htmlNumberGapPattern.ReplaceAllString(value, "$1\n$2")
+	}
 	return strings.TrimSpace(value)
+}
+
+func decodeHTMLEntities(value string) string {
+	replacements := map[string]string{
+		"&nbsp;": " ",
+		"&amp;":  "&",
+		"&lt;":   "<",
+		"&gt;":   ">",
+		"&quot;": `"`,
+		"&#39;":  "'",
+		"&apos;": "'",
+	}
+	for entity, replacement := range replacements {
+		value = strings.ReplaceAll(value, entity, replacement)
+	}
+	return value
 }
 
 func reportTypeLabel(value string) string {
