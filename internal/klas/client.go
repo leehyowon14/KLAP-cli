@@ -21,6 +21,8 @@ import (
 
 const baseURL = "https://klas.kw.ac.kr"
 
+var ErrSessionExpired = errors.New("KLAS 세션이 만료되었습니다")
+
 type Client struct {
 	httpClient *http.Client
 	jar        http.CookieJar
@@ -33,9 +35,29 @@ type Session struct {
 	CreatedAt time.Time         `json:"createdAt"`
 }
 
+type Term struct {
+	Label   string   `json:"label"`
+	Value   string   `json:"value"`
+	Courses []Course `json:"subjList"`
+}
+
+type Course struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 type fieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
+}
+
+type commonErrorResponse struct {
+	Redirect      bool         `json:"redirect"`
+	RedirectURL   string       `json:"redirectUrl"`
+	FieldErrors   []fieldError `json:"fieldErrors"`
+	ResponseText  string       `json:"responseText"`
+	LoginRequired bool         `json:"loginRequired"`
+	ErrorCount    int          `json:"errorCount"`
 }
 
 type loginSecurityResponse struct {
@@ -104,6 +126,42 @@ func (c *Client) Login(ctx context.Context, studentID string, password string) (
 		Cookies:   cookies,
 		CreatedAt: time.Now(),
 	}, nil
+}
+
+func (c *Client) SetSession(session Session) {
+	var cookies []*http.Cookie
+	for name, value := range session.Cookies {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		cookies = append(cookies, &http.Cookie{Name: name, Value: value, Path: "/"})
+	}
+	c.jar.SetCookies(c.baseURL, cookies)
+}
+
+func (c *Client) Courses(ctx context.Context) ([]Term, error) {
+	body, err := c.do(ctx, http.MethodPost, "/std/cmn/frame/YearhakgiAtnlcSbjectList.do", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+
+	var terms []Term
+	if err := json.Unmarshal(body, &terms); err != nil {
+		return nil, fmt.Errorf("수업 목록 응답 파싱 실패: %w", err)
+	}
+
+	for termIndex := range terms {
+		filtered := terms[termIndex].Courses[:0]
+		for _, course := range terms[termIndex].Courses {
+			if strings.TrimSpace(course.Name) == "" || strings.TrimSpace(course.Value) == "" {
+				continue
+			}
+			filtered = append(filtered, course)
+		}
+		terms[termIndex].Courses = filtered
+	}
+
+	return terms, nil
 }
 
 func (c *Client) loginSecurity(ctx context.Context) (string, error) {
@@ -187,10 +245,28 @@ func (c *Client) do(ctx context.Context, method string, path string, payload any
 		return nil, fmt.Errorf("KLAS HTTP 오류: %s", response.Status)
 	}
 	if looksLikeLoginHTML(body) {
-		return nil, errors.New("세션 만료 또는 로그인 HTML 응답을 받았습니다")
+		return nil, ErrSessionExpired
+	}
+	if err := checkCommonAPIError(body); err != nil {
+		return nil, err
 	}
 
 	return body, nil
+}
+
+func checkCommonAPIError(body []byte) error {
+	var response commonErrorResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil
+	}
+
+	if response.LoginRequired {
+		return ErrSessionExpired
+	}
+	if response.ErrorCount > 0 {
+		return errors.New(firstFieldError(response.FieldErrors, "KLAS API 오류가 발생했습니다"))
+	}
+	return nil
 }
 
 func buildLoginToken(publicKeyBody string, studentID string, password string) (string, error) {

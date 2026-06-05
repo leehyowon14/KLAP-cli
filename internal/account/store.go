@@ -31,7 +31,8 @@ type User struct {
 }
 
 type registryFile struct {
-	Users []User `json:"users"`
+	CurrentStudentID string `json:"currentStudentId,omitempty"`
+	Users            []User `json:"users"`
 }
 
 func NewStore() (*Store, error) {
@@ -94,6 +95,9 @@ func (s *Store) Save(ctx context.Context, studentID string, password string, ses
 			UserID:    session.UserID,
 		})
 	}
+	if registry.CurrentStudentID == "" {
+		registry.CurrentStudentID = studentID
+	}
 
 	sort.Slice(registry.Users, func(i, j int) bool {
 		return registry.Users[i].StudentID < registry.Users[j].StudentID
@@ -110,6 +114,71 @@ func (s *Store) List(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return registry.Users, nil
+}
+
+func (s *Store) Current(ctx context.Context) (string, error) {
+	_ = ctx
+
+	registry, err := s.loadRegistry()
+	if err != nil {
+		return "", err
+	}
+	return registry.CurrentStudentID, nil
+}
+
+func (s *Store) Select(ctx context.Context, studentID string) error {
+	_ = ctx
+
+	registry, err := s.loadRegistry()
+	if err != nil {
+		return err
+	}
+
+	for _, user := range registry.Users {
+		if user.StudentID == studentID {
+			registry.CurrentStudentID = studentID
+			return s.saveRegistry(registry)
+		}
+	}
+	return fmt.Errorf("저장된 유저가 없습니다: %s", studentID)
+}
+
+func (s *Store) LoadPassword(ctx context.Context, studentID string) (string, error) {
+	_ = ctx
+
+	password, err := keyring.Get(keyringService, keyName(passwordKind, studentID))
+	if err != nil {
+		return "", fmt.Errorf("저장된 비밀번호를 읽지 못했습니다: %w", err)
+	}
+	return password, nil
+}
+
+func (s *Store) LoadSession(ctx context.Context, studentID string) (klas.Session, error) {
+	_ = ctx
+
+	sessionText, err := keyring.Get(keyringService, keyName(sessionKind, studentID))
+	if err != nil {
+		return klas.Session{}, fmt.Errorf("저장된 세션을 읽지 못했습니다: %w", err)
+	}
+
+	var session klas.Session
+	if err := json.Unmarshal([]byte(sessionText), &session); err != nil {
+		return klas.Session{}, fmt.Errorf("저장된 세션 파싱 실패: %w", err)
+	}
+	return session, nil
+}
+
+func (s *Store) SaveSession(ctx context.Context, studentID string, session klas.Session) error {
+	_ = ctx
+
+	sessionBytes, err := json.Marshal(session)
+	if err != nil {
+		return fmt.Errorf("세션 직렬화 실패: %w", err)
+	}
+	if err := keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
+		return fmt.Errorf("세션 보안 저장 실패: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) Remove(ctx context.Context, studentID string) error {
@@ -131,6 +200,12 @@ func (s *Store) Remove(ctx context.Context, studentID string) error {
 	}
 	if !found {
 		return fmt.Errorf("저장된 유저가 없습니다: %s", studentID)
+	}
+	if registry.CurrentStudentID == studentID {
+		registry.CurrentStudentID = ""
+		if len(filtered) == 1 {
+			registry.CurrentStudentID = filtered[0].StudentID
+		}
 	}
 
 	_ = keyring.Delete(keyringService, keyName(passwordKind, studentID))
