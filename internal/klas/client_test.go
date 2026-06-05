@@ -1,6 +1,9 @@
 package klas
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
@@ -32,5 +35,23 @@ func TestFirstFieldError(t *testing.T) {
 	got = firstFieldError(nil, "fallback")
 	if got != "fallback" {
 		t.Fatalf("firstFieldError() fallback = %q", got)
+	}
+}
+
+func TestAssignmentListItemAcceptsNumericIDs(t *testing.T) {
+	var item assignmentListItem
+	err := json.Unmarshal([]byte(`{
+		"ordseq": 7,
+		"weeklyseq": 15,
+		"weeklysubseq": 1,
+		"title": "과제명",
+		"expiredate": "2026-06-17 23:59:59",
+		"submityn": "N"
+	}`), &item)
+	if err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if item.OrdSeq.String() != "7" || item.WeeklySeq.String() != "15" || item.WeeklySubSeq.String() != "1" {
+		t.Fatalf("numeric ids were not preserved: %+v", item)
 	}
 }

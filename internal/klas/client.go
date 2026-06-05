@@ -105,13 +105,13 @@ type loginUser struct {
 }
 
 type assignmentListItem struct {
-	OrdSeq       string `json:"ordseq"`
-	WeeklySeq    string `json:"weeklyseq"`
-	WeeklySubSeq string `json:"weeklysubseq"`
-	Title        string `json:"title"`
-	StartDate    string `json:"startdate"`
-	ExpireDate   string `json:"expiredate"`
-	SubmitYN     string `json:"submityn"`
+	OrdSeq       flexibleString `json:"ordseq"`
+	WeeklySeq    flexibleString `json:"weeklyseq"`
+	WeeklySubSeq flexibleString `json:"weeklysubseq"`
+	Title        string         `json:"title"`
+	StartDate    string         `json:"startdate"`
+	ExpireDate   string         `json:"expiredate"`
+	SubmitYN     string         `json:"submityn"`
 }
 
 type assignmentDetailResponse struct {
@@ -120,15 +120,15 @@ type assignmentDetailResponse struct {
 }
 
 type assignmentReport struct {
-	OrdSeq         string `json:"ordseq"`
-	Title          string `json:"title"`
-	Contents       string `json:"contents"`
-	StartDate      string `json:"startdate"`
-	ExpireDate     string `json:"expiredate"`
-	ReportType     string `json:"reptype"`
-	SubmitYN       string `json:"submityn"`
-	SubmitFileType string `json:"submitfiletype"`
-	FileLimit      string `json:"filelimit"`
+	OrdSeq         flexibleString `json:"ordseq"`
+	Title          string         `json:"title"`
+	Contents       string         `json:"contents"`
+	StartDate      string         `json:"startdate"`
+	ExpireDate     string         `json:"expiredate"`
+	ReportType     string         `json:"reptype"`
+	SubmitYN       string         `json:"submityn"`
+	SubmitFileType string         `json:"submitfiletype"`
+	FileLimit      flexibleString `json:"filelimit"`
 }
 
 type assignmentSubmission struct {
@@ -136,6 +136,36 @@ type assignmentSubmission struct {
 	Contents      string      `json:"contents"`
 	FinalScore    interface{} `json:"finalscore"`
 	TutorContents string      `json:"tutorcontents"`
+}
+
+type flexibleString string
+
+func (s *flexibleString) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*s = ""
+		return nil
+	}
+
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*s = flexibleString(text)
+		return nil
+	}
+
+	var number json.Number
+	decoder := json.NewDecoder(strings.NewReader(trimmed))
+	decoder.UseNumber()
+	if err := decoder.Decode(&number); err == nil {
+		*s = flexibleString(number.String())
+		return nil
+	}
+
+	return fmt.Errorf("문자열 변환 실패: %s", trimmed)
+}
+
+func (s flexibleString) String() string {
+	return string(s)
 }
 
 func NewClient() (*Client, error) {
@@ -228,6 +258,10 @@ func (c *Client) Courses(ctx context.Context) ([]Term, error) {
 }
 
 func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Course) ([]Assignment, error) {
+	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
+		return nil, err
+	}
+
 	body, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/TaskStdList.do", map[string]any{
 		"selectYearhakgi": yearHakgi,
 		"selectSubj":      course.Value,
@@ -244,7 +278,8 @@ func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Cours
 
 	assignments := make([]Assignment, 0, len(response))
 	for _, item := range response {
-		if strings.TrimSpace(item.OrdSeq) == "" {
+		ordSeq := item.OrdSeq.String()
+		if strings.TrimSpace(ordSeq) == "" {
 			continue
 		}
 		title := strings.TrimSpace(item.Title)
@@ -252,9 +287,9 @@ func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Cours
 			title = "제목 없음"
 		}
 		assignments = append(assignments, Assignment{
-			OrdSeq:       item.OrdSeq,
-			WeeklySeq:    item.WeeklySeq,
-			WeeklySubSeq: item.WeeklySubSeq,
+			OrdSeq:       ordSeq,
+			WeeklySeq:    item.WeeklySeq.String(),
+			WeeklySubSeq: item.WeeklySubSeq.String(),
 			Title:        title,
 			StartAt:      parseKoreanDateTime(item.StartDate),
 			DueAt:        parseKoreanDateTime(item.ExpireDate),
@@ -266,6 +301,10 @@ func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Cours
 }
 
 func (c *Client) AssignmentDetail(ctx context.Context, yearHakgi string, course Course, ordSeq string) (AssignmentDetail, error) {
+	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
+		return AssignmentDetail{}, err
+	}
+
 	body, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/TaskStdView.do", map[string]any{
 		"selectYearhakgi": yearHakgi,
 		"selectSubj":      course.Value,
@@ -284,7 +323,7 @@ func (c *Client) AssignmentDetail(ctx context.Context, yearHakgi string, course 
 	}
 
 	return AssignmentDetail{
-		OrdSeq:         firstNonEmpty(response.Report.OrdSeq, ordSeq),
+		OrdSeq:         firstNonEmpty(response.Report.OrdSeq.String(), ordSeq),
 		Title:          firstNonEmpty(strings.TrimSpace(response.Report.Title), "제목 없음"),
 		ContentText:    htmlToText(response.Report.Contents),
 		StartAt:        parseKoreanDateTime(response.Report.StartDate),
@@ -292,13 +331,25 @@ func (c *Client) AssignmentDetail(ctx context.Context, yearHakgi string, course 
 		Submitted:      strings.EqualFold(response.Report.SubmitYN, "Y"),
 		ReportType:     reportTypeLabel(response.Report.ReportType),
 		SubmitFileType: response.Report.SubmitFileType,
-		FileLimitMB:    response.Report.FileLimit,
+		FileLimitMB:    response.Report.FileLimit.String(),
 		SubmittedTitle: response.Submission.Title,
 		SubmittedText:  htmlToText(response.Submission.Contents),
 		FinalScore:     fmt.Sprint(response.Submission.FinalScore),
 		TutorText:      htmlToText(response.Submission.TutorContents),
 		Raw:            response,
 	}, nil
+}
+
+func (c *Client) SetCourseContext(ctx context.Context, yearHakgi string, course Course) error {
+	_, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/LctrumHomeStdInfo.do", map[string]any{
+		"selectYearhakgi": yearHakgi,
+		"selectSubj":      course.Value,
+		"selectChangeYn":  "Y",
+	})
+	if err != nil {
+		return fmt.Errorf("과목 컨텍스트 변경 실패: %w", err)
+	}
+	return nil
 }
 
 func (c *Client) loginSecurity(ctx context.Context) (string, error) {

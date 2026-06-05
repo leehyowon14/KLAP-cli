@@ -231,6 +231,23 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
+	if detail.DueAt == nil || detail.StartAt == nil {
+		assignments, listErr := client.Assignments(ctx, term.Value, course)
+		if listErr == nil {
+			for _, assignment := range assignments {
+				if strings.TrimSpace(assignment.OrdSeq) != ordSeq {
+					continue
+				}
+				if detail.DueAt == nil {
+					detail.DueAt = assignment.DueAt
+				}
+				if detail.StartAt == nil {
+					detail.StartAt = assignment.StartAt
+				}
+				break
+			}
+		}
+	}
 
 	return AssignmentDetailResult{
 		ID:         id,
