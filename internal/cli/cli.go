@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/kw-klap/klap-cli/internal/reminder"
 	"github.com/kw-klap/klap-cli/internal/ui"
 )
 
@@ -56,29 +60,38 @@ func runAssignment(ctx context.Context, store *account.Store, args []string) err
 		}
 		return runAssignmentDetail(ctx, store, args[1])
 	case "remind":
-		return errors.New("assignment remind는 다음 원자 작업에서 구현합니다")
+		return runAssignmentRemind(ctx, store, args[1:])
 	default:
 		return fmt.Errorf("unknown assignment command: %s", args[0])
 	}
 }
 
 func runAssignmentList(ctx context.Context, store *account.Store, args []string) error {
-	studentID, err := selectedStudentID(ctx, store, args)
+	rows, err := collectAssignmentRows(ctx, store, args)
 	if err != nil {
 		return err
 	}
+	printAssignmentRows(rows)
+	return nil
+}
+
+func collectAssignmentRows(ctx context.Context, store *account.Store, args []string) ([]assignmentRow, error) {
+	studentID, err := selectedStudentID(ctx, store, args)
+	if err != nil {
+		return nil, err
+	}
 	client, term, err := latestTerm(ctx, store, studentID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	filter, err := courseFilter(args)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	courses, err := selectedCourses(term, filter)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	rows := make([]assignmentRow, 0)
@@ -87,7 +100,7 @@ func runAssignmentList(ctx context.Context, store *account.Store, args []string)
 		if err != nil {
 			refreshedClient, refreshed, refreshErr := refreshedClientAfterSessionError(ctx, store, studentID, err)
 			if refreshErr != nil {
-				return refreshErr
+				return nil, refreshErr
 			}
 			if refreshed {
 				client = refreshedClient
@@ -95,7 +108,7 @@ func runAssignmentList(ctx context.Context, store *account.Store, args []string)
 			}
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, assignment := range assignments {
 			rows = append(rows, assignmentRow{
@@ -121,8 +134,7 @@ func runAssignmentList(ctx context.Context, store *account.Store, args []string)
 		return left.Before(*right)
 	})
 
-	printAssignmentRows(rows)
-	return nil
+	return rows, nil
 }
 
 func runAssignmentDetail(ctx context.Context, store *account.Store, id string) error {
@@ -161,6 +173,90 @@ func runAssignmentDetail(ctx context.Context, store *account.Store, id string) e
 
 	printAssignmentDetail(id, course.Name, detail)
 	return nil
+}
+
+func runAssignmentRemind(ctx context.Context, store *account.Store, args []string) error {
+	auto := hasFlag(args, "--auto")
+	if !auto {
+		return syncAssignmentReminders(ctx, store, args)
+	}
+
+	fmt.Println("과제 reminder 자동 동기화를 시작합니다. 종료하려면 Ctrl+C를 누르세요.")
+	for {
+		if err := syncAssignmentReminders(ctx, store, args); err != nil {
+			fmt.Printf("동기화 실패: %v\n", err)
+		}
+
+		timer := time.NewTimer(30 * time.Minute)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func syncAssignmentReminders(ctx context.Context, store *account.Store, args []string) error {
+	rows, err := collectAssignmentRows(ctx, store, args)
+	if err != nil {
+		return err
+	}
+
+	assignments := make([]reminder.Assignment, 0, len(rows))
+	for _, row := range rows {
+		if row.Assignment.DueAt == nil {
+			continue
+		}
+		assignments = append(assignments, reminder.Assignment{
+			ID:        row.ID,
+			Title:     row.Assignment.Title,
+			Course:    row.CourseName,
+			DueAt:     row.Assignment.DueAt,
+			Submitted: row.Assignment.Submitted,
+		})
+	}
+
+	if len(assignments) == 0 {
+		fmt.Println("등록할 과제 reminder가 없습니다")
+		return nil
+	}
+
+	result, err := reminder.NewMacOSBridge(defaultReminderBridgePath()).Sync(assignments)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Reminder 동기화 완료: 생성 %d, 갱신 %d, 완료 %d, 제외 %d\n",
+		result.Created,
+		result.Updated,
+		result.Completed,
+		result.Skipped,
+	)
+	return nil
+}
+
+func defaultReminderBridgePath() string {
+	if override := os.Getenv("KLAP_REMINDER_BRIDGE"); override != "" {
+		return override
+	}
+
+	candidates := []string{
+		filepath.Join("bridges", "macos", "reminder.swift"),
+	}
+	if _, currentFile, _, ok := runtime.Caller(0); ok {
+		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "reminder.swift"))
+	}
+	if executable, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "reminder.swift"))
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return candidates[0]
 }
 
 func runCourse(ctx context.Context, store *account.Store, args []string) error {
@@ -287,7 +383,8 @@ Usage:
   klap user rm <학번>    저장된 계정 삭제
   klap course list       최신 학기 수업 목록 출력
   klap assignment list   과제 목록 출력
-  klap assignment detail <과제ID> 과제 상세 출력`)
+  klap assignment detail <과제ID> 과제 상세 출력
+  klap assignment remind 과제 마감 reminder 동기화`)
 }
 
 type selectedCourse struct {
@@ -338,6 +435,15 @@ func courseFilter(args []string) (string, error) {
 		return args[i+1], nil
 	}
 	return "", nil
+}
+
+func hasFlag(args []string, name string) bool {
+	for _, arg := range args {
+		if arg == name {
+			return true
+		}
+	}
+	return false
 }
 
 func selectedCourses(term klas.Term, filter string) ([]selectedCourse, error) {
