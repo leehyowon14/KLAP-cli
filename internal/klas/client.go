@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -46,6 +47,34 @@ type Course struct {
 	Value string `json:"value"`
 }
 
+type Assignment struct {
+	OrdSeq       string
+	WeeklySeq    string
+	WeeklySubSeq string
+	Title        string
+	StartAt      *time.Time
+	DueAt        *time.Time
+	Submitted    bool
+	Raw          assignmentListItem
+}
+
+type AssignmentDetail struct {
+	OrdSeq         string
+	Title          string
+	ContentText    string
+	StartAt        *time.Time
+	DueAt          *time.Time
+	Submitted      bool
+	ReportType     string
+	SubmitFileType string
+	FileLimitMB    string
+	SubmittedTitle string
+	SubmittedText  string
+	FinalScore     string
+	TutorText      string
+	Raw            assignmentDetailResponse
+}
+
 type fieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
@@ -73,6 +102,40 @@ type loginConfirmResponse struct {
 
 type loginUser struct {
 	UserID string `json:"userId"`
+}
+
+type assignmentListItem struct {
+	OrdSeq       string `json:"ordseq"`
+	WeeklySeq    string `json:"weeklyseq"`
+	WeeklySubSeq string `json:"weeklysubseq"`
+	Title        string `json:"title"`
+	StartDate    string `json:"startdate"`
+	ExpireDate   string `json:"expiredate"`
+	SubmitYN     string `json:"submityn"`
+}
+
+type assignmentDetailResponse struct {
+	Report     assignmentReport     `json:"rpt"`
+	Submission assignmentSubmission `json:"smt"`
+}
+
+type assignmentReport struct {
+	OrdSeq         string `json:"ordseq"`
+	Title          string `json:"title"`
+	Contents       string `json:"contents"`
+	StartDate      string `json:"startdate"`
+	ExpireDate     string `json:"expiredate"`
+	ReportType     string `json:"reptype"`
+	SubmitYN       string `json:"submityn"`
+	SubmitFileType string `json:"submitfiletype"`
+	FileLimit      string `json:"filelimit"`
+}
+
+type assignmentSubmission struct {
+	Title         string      `json:"title"`
+	Contents      string      `json:"contents"`
+	FinalScore    interface{} `json:"finalscore"`
+	TutorContents string      `json:"tutorcontents"`
 }
 
 func NewClient() (*Client, error) {
@@ -162,6 +225,80 @@ func (c *Client) Courses(ctx context.Context) ([]Term, error) {
 	}
 
 	return terms, nil
+}
+
+func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Course) ([]Assignment, error) {
+	body, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/TaskStdList.do", map[string]any{
+		"selectYearhakgi": yearHakgi,
+		"selectSubj":      course.Value,
+		"currentPage":     0,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var response []assignmentListItem
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("과제 목록 응답 파싱 실패: %w", err)
+	}
+
+	assignments := make([]Assignment, 0, len(response))
+	for _, item := range response {
+		if strings.TrimSpace(item.OrdSeq) == "" {
+			continue
+		}
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			title = "제목 없음"
+		}
+		assignments = append(assignments, Assignment{
+			OrdSeq:       item.OrdSeq,
+			WeeklySeq:    item.WeeklySeq,
+			WeeklySubSeq: item.WeeklySubSeq,
+			Title:        title,
+			StartAt:      parseKoreanDateTime(item.StartDate),
+			DueAt:        parseKoreanDateTime(item.ExpireDate),
+			Submitted:    strings.EqualFold(item.SubmitYN, "Y"),
+			Raw:          item,
+		})
+	}
+	return assignments, nil
+}
+
+func (c *Client) AssignmentDetail(ctx context.Context, yearHakgi string, course Course, ordSeq string) (AssignmentDetail, error) {
+	body, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/TaskStdView.do", map[string]any{
+		"selectYearhakgi": yearHakgi,
+		"selectSubj":      course.Value,
+		"ordseq":          ordSeq,
+	})
+	if err != nil {
+		return AssignmentDetail{}, err
+	}
+
+	var response assignmentDetailResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return AssignmentDetail{}, fmt.Errorf("과제 상세 응답 파싱 실패: %w", err)
+	}
+	if strings.TrimSpace(response.Report.Title) == "" && strings.TrimSpace(response.Report.Contents) == "" {
+		return AssignmentDetail{}, errors.New("과제 상세 응답에 rpt 본문이 없습니다")
+	}
+
+	return AssignmentDetail{
+		OrdSeq:         firstNonEmpty(response.Report.OrdSeq, ordSeq),
+		Title:          firstNonEmpty(strings.TrimSpace(response.Report.Title), "제목 없음"),
+		ContentText:    htmlToText(response.Report.Contents),
+		StartAt:        parseKoreanDateTime(response.Report.StartDate),
+		DueAt:          parseKoreanDateTime(response.Report.ExpireDate),
+		Submitted:      strings.EqualFold(response.Report.SubmitYN, "Y"),
+		ReportType:     reportTypeLabel(response.Report.ReportType),
+		SubmitFileType: response.Report.SubmitFileType,
+		FileLimitMB:    response.Report.FileLimit,
+		SubmittedTitle: response.Submission.Title,
+		SubmittedText:  htmlToText(response.Submission.Contents),
+		FinalScore:     fmt.Sprint(response.Submission.FinalScore),
+		TutorText:      htmlToText(response.Submission.TutorContents),
+		Raw:            response,
+	}, nil
 }
 
 func (c *Client) loginSecurity(ctx context.Context) (string, error) {
@@ -336,6 +473,61 @@ func firstFieldError(errors []fieldError, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+func parseKoreanDateTime(value string) *time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+
+	location, err := time.LoadLocation("Asia/Seoul")
+	if err != nil {
+		location = time.FixedZone("KST", 9*60*60)
+	}
+
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04"} {
+		parsed, err := time.ParseInLocation(layout, value, location)
+		if err == nil {
+			return &parsed
+		}
+	}
+	return nil
+}
+
+var htmlTagPattern = regexp.MustCompile(`<[^>]+>`)
+
+func htmlToText(value string) string {
+	value = strings.ReplaceAll(value, "<br>", "\n")
+	value = strings.ReplaceAll(value, "<br/>", "\n")
+	value = strings.ReplaceAll(value, "<br />", "\n")
+	value = htmlTagPattern.ReplaceAllString(value, "")
+	value = strings.ReplaceAll(value, "&nbsp;", " ")
+	value = strings.ReplaceAll(value, "&amp;", "&")
+	value = strings.ReplaceAll(value, "&lt;", "<")
+	value = strings.ReplaceAll(value, "&gt;", ">")
+	value = strings.ReplaceAll(value, "&quot;", `"`)
+	return strings.TrimSpace(value)
+}
+
+func reportTypeLabel(value string) string {
+	switch value {
+	case "1", "P":
+		return "개인"
+	case "2":
+		return "팀"
+	default:
+		return value
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (c *Client) hasCookie(name string) bool {

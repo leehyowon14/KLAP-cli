@@ -10,6 +10,9 @@ klap user list
 klap user select <학번>
 klap user rm <학번>
 klap course list
+klap assignment list
+klap assignment list --course <과목명|번호>
+klap assignment detail <과목번호:과제번호>
 ```
 
 `klap auth`는 학번과 비밀번호를 입력받은 뒤 KLAS 로그인 API로 즉시 검증한다.
