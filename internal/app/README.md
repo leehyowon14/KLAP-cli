@@ -2,7 +2,7 @@
 
 Headless application core for both CLI and future TUI.
 
-This package should own use-case orchestration:
+This package owns use-case orchestration:
 
 - selected user resolution
 - saved session loading
@@ -10,7 +10,7 @@ This package should own use-case orchestration:
 - course and assignment aggregation
 - reminder sync coordination
 
-It must return structured results. CLI and TUI decide how those results are displayed.
+It returns structured results. CLI and TUI decide how those results are displayed.
 
 Do not import Bubble Tea here.
 Do not print to stdout here.

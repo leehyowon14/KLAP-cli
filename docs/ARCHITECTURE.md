@@ -284,7 +284,7 @@ SyncRemindersCmd   -> ReminderSyncedMsg    | AppErrorMsg
 
 ## Migration Plan
 
-1. Create `internal/app` use cases and move current session retry/course/assignment orchestration there.
+1. Keep `internal/app` as the shared use-case surface for current CLI and future TUI.
 2. Keep `internal/cli` as argv parsing plus output formatting.
 3. Add `klap tui` with a simple Bubble Tea root shell.
 4. Move `auth` input form out of `internal/ui` into either:
