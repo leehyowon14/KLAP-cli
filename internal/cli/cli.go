@@ -36,12 +36,51 @@ func Run(ctx context.Context, args []string) error {
 		return runCourse(ctx, service, args[1:])
 	case "assignment":
 		return runAssignment(ctx, service, args[1:])
+	case "config":
+		return runConfig(ctx, service, args[1:])
 	case "help", "-h", "--help":
 		printHelp()
 		return nil
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func runConfig(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: klap config <reminder>")
+	}
+
+	switch args[0] {
+	case "reminder":
+		return runConfigReminder(ctx, service, args[1:])
+	default:
+		return fmt.Errorf("unknown config command: %s", args[0])
+	}
+}
+
+func runConfigReminder(ctx context.Context, service *app.Service, args []string) error {
+	_ = ctx
+
+	if len(args) == 0 {
+		settings, err := service.ReminderSettings()
+		if err != nil {
+			return err
+		}
+		printReminderSettings(settings)
+		return nil
+	}
+
+	if len(args) == 2 && args[0] == "--name" {
+		settings, err := service.SetReminderListName(args[1])
+		if err != nil {
+			return err
+		}
+		printReminderSettings(settings)
+		return nil
+	}
+
+	return errors.New(`usage: klap config reminder [--name "Kwangwoon Univ."]`)
 }
 
 func runAuth(ctx context.Context, service *app.Service) error {
@@ -258,7 +297,13 @@ Usage:
   klap course list       최신 학기 수업 목록 출력
   klap assignment list   과제 목록 출력
   klap assignment detail <과제ID> 과제 상세 출력
-  klap assignment remind 과제 마감 reminder 동기화`)
+  klap assignment remind 과제 마감 reminder 동기화
+  klap config reminder  reminder 설정 확인/변경`)
+}
+
+func printReminderSettings(settings app.ReminderSettings) {
+	fmt.Printf("Reminder list: %s\n", settings.ListName)
+	fmt.Printf("Alarm before: %d분\n", settings.AlarmBeforeMin)
 }
 
 func printCourseList(terms []klas.Term) {

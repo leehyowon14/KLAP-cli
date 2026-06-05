@@ -7,6 +7,14 @@ struct Assignment: Codable {
     let course: String
     let dueAt: Date?
     let submitted: Bool
+    let detailUrl: String
+    let notes: String
+}
+
+struct SyncRequest: Codable {
+    let listName: String
+    let alarmBeforeMin: Int
+    let assignments: [Assignment]
 }
 
 struct SyncResult: Codable {
@@ -19,7 +27,7 @@ struct SyncResult: Codable {
 let input = FileHandle.standardInput.readDataToEndOfFile()
 let decoder = JSONDecoder()
 decoder.dateDecodingStrategy = .iso8601
-let assignments = try decoder.decode([Assignment].self, from: input)
+let request = try decoder.decode(SyncRequest.self, from: input)
 
 let store = EKEventStore()
 let semaphore = DispatchSemaphore(value: 0)
@@ -50,16 +58,13 @@ if !granted {
     ])
 }
 
-func klapCalendar() throws -> EKCalendar {
-    if let existing = store.calendars(for: .reminder).first(where: { $0.title == "KLAP" }) {
+func klapCalendar(named name: String) throws -> EKCalendar {
+    if let existing = store.calendars(for: .reminder).first(where: { $0.title == name }) {
         return existing
-    }
-    if let defaultCalendar = store.defaultCalendarForNewReminders() {
-        return defaultCalendar
     }
 
     let calendar = EKCalendar(for: .reminder, eventStore: store)
-    calendar.title = "KLAP"
+    calendar.title = name
     calendar.source = store.sources.first(where: { $0.sourceType == .local }) ?? store.sources.first
     try store.saveCalendar(calendar, commit: true)
     return calendar
@@ -78,12 +83,21 @@ func existingReminders() -> [EKReminder] {
     return reminders
 }
 
-func token(for id: String) -> String {
-    return "[KLAP:\(id)]"
+func notes(for assignment: Assignment) -> String {
+    return assignment.notes
 }
 
 func assignmentID(from reminder: EKReminder) -> String? {
     guard let notes = reminder.notes else { return nil }
+
+    if notes.contains("[This reminder is created by KLAP.]") {
+        for line in notes.components(separatedBy: .newlines) {
+            if line.hasPrefix("ID: ") {
+                return String(line.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+    }
+
     guard let rangeStart = notes.range(of: "[KLAP:") else { return nil }
     guard let rangeEnd = notes[rangeStart.upperBound...].range(of: "]") else { return nil }
     return String(notes[rangeStart.upperBound..<rangeEnd.lowerBound])
@@ -94,7 +108,21 @@ func applyDueDate(_ dueAt: Date, to reminder: EKReminder) {
     reminder.dueDateComponents = components
 }
 
-let calendar = try klapCalendar()
+func applyAlarm(_ dueAt: Date, beforeMinutes: Int, to reminder: EKReminder) {
+    let offset = max(beforeMinutes, 1)
+    guard let alarmDate = Calendar.current.date(byAdding: .minute, value: -offset, to: dueAt) else {
+        reminder.alarms = nil
+        return
+    }
+    if alarmDate <= Date() {
+        reminder.alarms = nil
+        return
+    }
+    reminder.alarms = [EKAlarm(absoluteDate: alarmDate)]
+}
+
+let listName = request.listName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Kwangwoon Univ." : request.listName
+let calendar = try klapCalendar(named: listName)
 var known: [String: EKReminder] = [:]
 for reminder in existingReminders() {
     guard let id = assignmentID(from: reminder) else { continue }
@@ -104,17 +132,18 @@ for reminder in existingReminders() {
 }
 
 var result = SyncResult()
-for assignment in assignments {
+for assignment in request.assignments {
     guard let dueAt = assignment.dueAt else {
         result.skipped += 1
         continue
     }
 
-    let marker = token(for: assignment.id)
     if let reminder = known[assignment.id] {
         reminder.title = "\(assignment.course) - \(assignment.title)"
-        reminder.notes = marker
+        reminder.notes = notes(for: assignment)
+        reminder.url = URL(string: assignment.detailUrl)
         applyDueDate(dueAt, to: reminder)
+        applyAlarm(dueAt, beforeMinutes: request.alarmBeforeMin, to: reminder)
         if assignment.submitted && !reminder.isCompleted {
             reminder.isCompleted = true
             result.completed += 1
@@ -133,8 +162,10 @@ for assignment in assignments {
     let reminder = EKReminder(eventStore: store)
     reminder.calendar = calendar
     reminder.title = "\(assignment.course) - \(assignment.title)"
-    reminder.notes = marker
+    reminder.notes = notes(for: assignment)
+    reminder.url = URL(string: assignment.detailUrl)
     applyDueDate(dueAt, to: reminder)
+    applyAlarm(dueAt, beforeMinutes: request.alarmBeforeMin, to: reminder)
     try store.save(reminder, commit: false)
     result.created += 1
 }

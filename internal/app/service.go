@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,10 +15,12 @@ import (
 	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/klas"
 	"github.com/kw-klap/klap-cli/internal/reminder"
+	"github.com/kw-klap/klap-cli/internal/settings"
 )
 
 type Service struct {
 	store              *account.Store
+	settingsStore      *settings.Store
 	reminderBridgePath string
 }
 
@@ -38,6 +41,7 @@ type UserRow struct {
 type AssignmentRow struct {
 	ID         string
 	CourseName string
+	DetailURL  string
 	Assignment klas.Assignment
 }
 
@@ -52,14 +56,21 @@ type ReminderSyncResult struct {
 	EligibleCount int
 }
 
+type ReminderSettings struct {
+	ListName       string
+	AlarmBeforeMin int
+}
+
 type selectedCourse struct {
 	Index  int
 	Course klas.Course
 }
 
 func NewService(store *account.Store) *Service {
+	settingsStore, _ := settings.NewStore()
 	return &Service{
 		store:              store,
+		settingsStore:      settingsStore,
 		reminderBridgePath: defaultReminderBridgePath(),
 	}
 }
@@ -111,6 +122,37 @@ func (s *Service) SelectUser(ctx context.Context, studentID string) error {
 
 func (s *Service) RemoveUser(ctx context.Context, studentID string) error {
 	return s.store.Remove(ctx, studentID)
+}
+
+func (s *Service) ReminderSettings() (ReminderSettings, error) {
+	current, err := s.loadSettings()
+	if err != nil {
+		return ReminderSettings{}, err
+	}
+	return ReminderSettings{
+		ListName:       current.Reminder.ListName,
+		AlarmBeforeMin: current.Reminder.AlarmBeforeMin,
+	}, nil
+}
+
+func (s *Service) SetReminderListName(name string) (ReminderSettings, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ReminderSettings{}, errors.New("리마인더 목록 이름은 비워둘 수 없습니다")
+	}
+
+	current, err := s.loadSettings()
+	if err != nil {
+		return ReminderSettings{}, err
+	}
+	current.Reminder.ListName = name
+	if err := s.saveSettings(current); err != nil {
+		return ReminderSettings{}, err
+	}
+	return ReminderSettings{
+		ListName:       current.Reminder.ListName,
+		AlarmBeforeMin: current.Reminder.AlarmBeforeMin,
+	}, nil
 }
 
 func (s *Service) CourseList(ctx context.Context, user UserOption) ([]klas.Term, error) {
@@ -172,9 +214,11 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 			return nil, err
 		}
 		for _, assignment := range assignments {
+			id := AssignmentID(selectedCourse.Index, assignment.OrdSeq)
 			rows = append(rows, AssignmentRow{
-				ID:         AssignmentID(selectedCourse.Index, assignment.OrdSeq),
+				ID:         id,
 				CourseName: selectedCourse.Course.Name,
+				DetailURL:  assignmentDetailURL(term.Value, selectedCourse.Course, assignment.OrdSeq),
 				Assignment: assignment,
 			})
 		}
@@ -262,17 +306,28 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 		return ReminderSyncResult{}, err
 	}
 
+	currentSettings, err := s.loadSettings()
+	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+
 	assignments := make([]reminder.Assignment, 0, len(rows))
 	for _, row := range rows {
 		if row.Assignment.DueAt == nil {
 			continue
 		}
+		detail, detailErr := s.AssignmentDetail(ctx, row.ID, opts.User)
+		if detailErr != nil {
+			return ReminderSyncResult{}, detailErr
+		}
 		assignments = append(assignments, reminder.Assignment{
 			ID:        row.ID,
-			Title:     row.Assignment.Title,
-			Course:    row.CourseName,
-			DueAt:     row.Assignment.DueAt,
-			Submitted: row.Assignment.Submitted,
+			Title:     detail.Detail.Title,
+			Course:    detail.CourseName,
+			DueAt:     detail.Detail.DueAt,
+			Submitted: detail.Detail.Submitted,
+			DetailURL: row.DetailURL,
+			Notes:     buildReminderNotes(detail),
 		})
 	}
 
@@ -280,7 +335,11 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 		return ReminderSyncResult{}, nil
 	}
 
-	result, err := reminder.NewMacOSBridge(s.reminderBridgePath).Sync(assignments)
+	result, err := reminder.NewMacOSBridge(s.reminderBridgePath).Sync(reminder.SyncRequest{
+		ListName:       currentSettings.Reminder.ListName,
+		AlarmBeforeMin: currentSettings.Reminder.AlarmBeforeMin,
+		Assignments:    assignments,
+	})
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}
@@ -288,6 +347,81 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 		Result:        result,
 		EligibleCount: len(assignments),
 	}, nil
+}
+
+func (s *Service) loadSettings() (settings.Settings, error) {
+	if s.settingsStore == nil {
+		return settings.Default(), nil
+	}
+	return s.settingsStore.Load()
+}
+
+func (s *Service) saveSettings(value settings.Settings) error {
+	if s.settingsStore == nil {
+		return errors.New("settings store가 초기화되지 않았습니다")
+	}
+	return s.settingsStore.Save(value)
+}
+
+func assignmentDetailURL(yearHakgi string, course klas.Course, ordSeq string) string {
+	values := url.Values{}
+	values.Set("selectYearhakgi", yearHakgi)
+	values.Set("selectSubj", course.Value)
+	values.Set("ordseq", strings.TrimSpace(ordSeq))
+	return "https://klas.kw.ac.kr/std/lis/evltn/TaskViewStdPage.do?" + values.Encode()
+}
+
+func buildReminderNotes(result AssignmentDetailResult) string {
+	detail := result.Detail
+	var builder strings.Builder
+
+	if strings.TrimSpace(detail.ContentText) != "" {
+		builder.WriteString(strings.TrimSpace(detail.ContentText))
+		builder.WriteString("\n\n")
+	}
+
+	builder.WriteString("=========================================\n\n")
+	builder.WriteString("ID: ")
+	builder.WriteString(result.ID)
+	builder.WriteString("\n")
+	builder.WriteString("과목: ")
+	builder.WriteString(result.CourseName)
+	builder.WriteString("\n")
+	builder.WriteString("제목: ")
+	builder.WriteString(detail.Title)
+	builder.WriteString("\n")
+	builder.WriteString("마감: ")
+	if detail.DueAt == nil {
+		builder.WriteString("마감 확인 필요")
+	} else {
+		builder.WriteString(detail.DueAt.Format("2006-01-02 15:04"))
+	}
+	builder.WriteString("\n")
+	builder.WriteString("상태: ")
+	if detail.Submitted {
+		builder.WriteString("제출")
+	} else {
+		builder.WriteString("미제출")
+	}
+	builder.WriteString("\n")
+	if detail.ReportType != "" {
+		builder.WriteString("제출 방식: ")
+		builder.WriteString(detail.ReportType)
+		builder.WriteString("\n")
+	}
+	if detail.SubmitFileType != "" {
+		builder.WriteString("파일 형식: ")
+		builder.WriteString(detail.SubmitFileType)
+		builder.WriteString("\n")
+	}
+	if detail.FileLimitMB != "" {
+		builder.WriteString("파일 제한: ")
+		builder.WriteString(detail.FileLimitMB)
+		builder.WriteString("MB\n")
+	}
+	builder.WriteString("[This reminder is created by KLAP.]")
+
+	return builder.String()
 }
 
 func (s *Service) latestTerm(ctx context.Context, studentID string) (*klas.Client, klas.Term, error) {

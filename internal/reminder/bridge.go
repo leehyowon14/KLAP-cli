@@ -16,6 +16,14 @@ type Assignment struct {
 	Course    string     `json:"course"`
 	DueAt     *time.Time `json:"dueAt"`
 	Submitted bool       `json:"submitted"`
+	DetailURL string     `json:"detailUrl"`
+	Notes     string     `json:"notes"`
+}
+
+type SyncRequest struct {
+	ListName       string       `json:"listName"`
+	AlarmBeforeMin int          `json:"alarmBeforeMin"`
+	Assignments    []Assignment `json:"assignments"`
 }
 
 type SyncResult struct {
@@ -33,12 +41,12 @@ func NewMacOSBridge(scriptPath string) MacOSBridge {
 	return MacOSBridge{scriptPath: scriptPath}
 }
 
-func (b MacOSBridge) Sync(assignments []Assignment) (SyncResult, error) {
+func (b MacOSBridge) Sync(request SyncRequest) (SyncResult, error) {
 	if runtime.GOOS != "darwin" {
 		return SyncResult{}, errors.New("assignment remind는 현재 macOS에서만 지원합니다")
 	}
 
-	payload, err := json.Marshal(assignments)
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("reminder payload 직렬화 실패: %w", err)
 	}
