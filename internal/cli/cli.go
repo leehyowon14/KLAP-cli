@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -320,7 +322,7 @@ func printAssignmentDetail(result app.AssignmentDetailResult) {
 		fmt.Printf("파일 제한: %sMB\n", detail.FileLimitMB)
 	}
 	if detail.ContentText != "" {
-		fmt.Printf("\n%s\n", detail.ContentText)
+		fmt.Printf("\n%s\n", linkifyForTerminal(detail.ContentText))
 	}
 	if detail.SubmittedText != "" || detail.SubmittedTitle != "" {
 		fmt.Println("\n내 제출")
@@ -328,14 +330,14 @@ func printAssignmentDetail(result app.AssignmentDetailResult) {
 			fmt.Printf("제목: %s\n", detail.SubmittedTitle)
 		}
 		if detail.SubmittedText != "" {
-			fmt.Println(detail.SubmittedText)
+			fmt.Println(linkifyForTerminal(detail.SubmittedText))
 		}
 	}
 	if detail.FinalScore != "" && detail.FinalScore != "<nil>" {
 		fmt.Printf("\n점수: %s\n", detail.FinalScore)
 	}
 	if detail.TutorText != "" {
-		fmt.Printf("\n피드백:\n%s\n", detail.TutorText)
+		fmt.Printf("\n피드백:\n%s\n", linkifyForTerminal(detail.TutorText))
 	}
 }
 
@@ -344,4 +346,39 @@ func formatTime(value *time.Time) string {
 		return "마감 확인 필요"
 	}
 	return value.Format("2006-01-02 15:04")
+}
+
+var urlPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
+
+func linkifyForTerminal(text string) string {
+	if !terminalHyperlinksEnabled() {
+		return text
+	}
+	return hyperlinkURLs(text)
+}
+
+func terminalHyperlinksEnabled() bool {
+	if os.Getenv("KLAP_NO_HYPERLINKS") != "" || os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	if os.Getenv("KLAP_FORCE_HYPERLINKS") != "" {
+		return true
+	}
+
+	stdout, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return stdout.Mode()&os.ModeCharDevice != 0
+}
+
+func hyperlinkURLs(text string) string {
+	return urlPattern.ReplaceAllStringFunc(text, func(rawURL string) string {
+		visibleURL := strings.TrimRight(rawURL, ".,)]}")
+		trailing := strings.TrimPrefix(rawURL, visibleURL)
+		if visibleURL == "" {
+			return rawURL
+		}
+		return "\x1b]8;;" + visibleURL + "\x1b\\" + visibleURL + "\x1b]8;;\x1b\\" + trailing
+	})
 }
