@@ -1,6 +1,7 @@
 # KLAP CLI
 
 광운대학교 KLAS를 대체하기 위한 크로스 플랫폼 CLI입니다.
+현재는 one-shot CLI 명령으로 시작하며, 추후 Bubble Tea 기반 TUI와 같은 app core를 공유하는 하이브리드 앱으로 확장한다.
 
 ## 초기 명령
 
@@ -25,3 +26,7 @@ klap assignment remind --auto
 ```sh
 go run ./cmd/klap --help
 ```
+
+## 아키텍처
+
+TUI 확장을 고려한 패키지 경계와 마이그레이션 계획은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 기준으로 한다.
