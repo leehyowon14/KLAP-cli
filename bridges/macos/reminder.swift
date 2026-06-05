@@ -65,8 +65,9 @@ func klapCalendar() throws -> EKCalendar {
     return calendar
 }
 
-func existingReminders(calendar: EKCalendar) -> [EKReminder] {
-    let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: [calendar])
+func existingReminders() -> [EKReminder] {
+    let calendars = store.calendars(for: .reminder)
+    let predicate = store.predicateForReminders(in: calendars)
     let semaphore = DispatchSemaphore(value: 0)
     var reminders: [EKReminder] = []
     store.fetchReminders(matching: predicate) { found in
@@ -81,19 +82,26 @@ func token(for id: String) -> String {
     return "[KLAP:\(id)]"
 }
 
+func assignmentID(from reminder: EKReminder) -> String? {
+    guard let notes = reminder.notes else { return nil }
+    guard let rangeStart = notes.range(of: "[KLAP:") else { return nil }
+    guard let rangeEnd = notes[rangeStart.upperBound...].range(of: "]") else { return nil }
+    return String(notes[rangeStart.upperBound..<rangeEnd.lowerBound])
+}
+
 func applyDueDate(_ dueAt: Date, to reminder: EKReminder) {
     let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueAt)
     reminder.dueDateComponents = components
 }
 
 let calendar = try klapCalendar()
-var known = Dictionary(uniqueKeysWithValues: existingReminders(calendar: calendar).compactMap { reminder -> (String, EKReminder)? in
-    guard let notes = reminder.notes else { return nil }
-    guard let rangeStart = notes.range(of: "[KLAP:") else { return nil }
-    guard let rangeEnd = notes[rangeStart.upperBound...].range(of: "]") else { return nil }
-    let id = String(notes[rangeStart.upperBound..<rangeEnd.lowerBound])
-    return (id, reminder)
-})
+var known: [String: EKReminder] = [:]
+for reminder in existingReminders() {
+    guard let id = assignmentID(from: reminder) else { continue }
+    if known[id] == nil {
+        known[id] = reminder
+    }
+}
 
 var result = SyncResult()
 for assignment in assignments {
