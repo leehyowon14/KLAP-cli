@@ -1,0 +1,5 @@
+bin/
+dist/
+/klap
+/klap.exe
+*.test
