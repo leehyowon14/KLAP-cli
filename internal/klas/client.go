@@ -16,6 +16,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -68,6 +69,18 @@ type Notice struct {
 	ReadCount  string
 	FileCount  string
 	Raw        noticeItem
+}
+
+type TimetableEntry struct {
+	SubjectID   string
+	SubjectName string
+	Weekday     int
+	Period      int
+	Span        int
+	Room        string
+	Professor   string
+	Online      bool
+	Raw         map[string]any
 }
 
 type AssignmentDetail struct {
@@ -183,6 +196,8 @@ type noticeItem struct {
 	RegistDt   string         `json:"registDt"`
 	FileCount  flexibleString `json:"fileCnt"`
 }
+
+type timetableRow map[string]any
 
 type flexibleString string
 
@@ -475,6 +490,69 @@ func (c *Client) NoticeDetail(ctx context.Context, yearHakgi string, course Cour
 	}, nil
 }
 
+func (c *Client) Timetable(ctx context.Context, yearHakgi string) ([]TimetableEntry, error) {
+	year, hakgi := splitYearHakgi(yearHakgi)
+	body, err := c.do(ctx, http.MethodPost, "/std/cps/atnlc/TimetableStdList.do", map[string]any{
+		"searchYear":  year,
+		"searchHakgi": hakgi,
+		"searchPgmNo": "",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var response []timetableRow
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("시간표 목록 응답 파싱 실패: %w", err)
+	}
+
+	return parseTimetableEntries(response), nil
+}
+
+func parseTimetableEntries(response []timetableRow) []TimetableEntry {
+	entries := make([]TimetableEntry, 0)
+	for _, row := range response {
+		if !strings.EqualFold(rowString(row, "wtHasSchedule"), "Y") {
+			continue
+		}
+		period, err := strconv.Atoi(rowString(row, "wtTime"))
+		if err != nil {
+			continue
+		}
+
+		for weekday := 1; weekday <= 6; weekday++ {
+			suffix := "_" + strconv.Itoa(weekday)
+			subjectID := rowString(row, "wtSubj"+suffix)
+			subjectName := rowString(row, "wtSubjNm"+suffix)
+			if subjectID == "" && subjectName == "" {
+				continue
+			}
+			if subjectName == "" {
+				subjectName = subjectID
+			}
+
+			span := 1
+			if parsedSpan, err := strconv.Atoi(rowString(row, "wtSpan"+suffix)); err == nil && parsedSpan > 0 {
+				span = parsedSpan
+			}
+
+			room := rowString(row, "wtLocHname"+suffix)
+			entries = append(entries, TimetableEntry{
+				SubjectID:   subjectID,
+				SubjectName: subjectName,
+				Weekday:     weekday,
+				Period:      period,
+				Span:        span,
+				Room:        room,
+				Professor:   rowString(row, "wtProfNm"+suffix),
+				Online:      period > 8 || room == "",
+				Raw:         map[string]any(row),
+			})
+		}
+	}
+	return entries
+}
+
 func (c *Client) SetCourseContext(ctx context.Context, yearHakgi string, course Course) error {
 	_, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/LctrumHomeStdInfo.do", map[string]any{
 		"selectYearhakgi": yearHakgi,
@@ -760,6 +838,44 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func splitYearHakgi(yearHakgi string) (string, string) {
+	parts := strings.FieldsFunc(strings.TrimSpace(yearHakgi), func(r rune) bool {
+		return r == ',' || r == '-'
+	})
+	if len(parts) >= 2 {
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	if len(parts) == 1 && len(parts[0]) >= 5 {
+		return parts[0][:4], parts[0][4:]
+	}
+	return yearHakgi, ""
+}
+
+func rowString(row map[string]any, key string) string {
+	value, ok := row[key]
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case json.Number:
+		return strings.TrimSpace(typed.String())
+	case float64:
+		if typed == float64(int64(typed)) {
+			return strconv.FormatInt(int64(typed), 10)
+		}
+		return strings.TrimSpace(strconv.FormatFloat(typed, 'f', -1, 64))
+	case bool:
+		if typed {
+			return "true"
+		}
+		return "false"
+	default:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	}
 }
 
 func (c *Client) hasCookie(name string) bool {

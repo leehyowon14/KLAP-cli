@@ -38,6 +38,8 @@ func Run(ctx context.Context, args []string) error {
 		return runAssignment(ctx, service, args[1:])
 	case "notice":
 		return runNotice(ctx, service, args[1:])
+	case "timetable":
+		return runTimetable(ctx, service, args[1:])
 	case "config":
 		return runConfig(ctx, service, args[1:])
 	case "help", "-h", "--help":
@@ -253,6 +255,23 @@ func runNotice(ctx context.Context, service *app.Service, args []string) error {
 	}
 }
 
+func runTimetable(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) > 0 && args[0] == "list" {
+		args = args[1:]
+	} else if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
+		return fmt.Errorf("unknown timetable command: %s", args[0])
+	}
+
+	result, err := service.Timetable(ctx, app.TimetableOptions{
+		User: app.UserOption{StudentID: userFlag(args)},
+	})
+	if err != nil {
+		return err
+	}
+	printTimetable(result)
+	return nil
+}
+
 func runAssignmentRemind(ctx context.Context, service *app.Service, args []string) error {
 	auto := hasFlag(args, "--auto")
 	if !auto {
@@ -370,6 +389,7 @@ Usage:
   klap assignment remind 과제 마감 reminder 동기화
   klap notice list       강의 공지 목록 출력
   klap notice detail <공지ID> 강의 공지 상세 출력
+  klap timetable         최신 학기 시간표 출력
   klap config reminder  reminder 설정 확인/변경`)
 }
 
@@ -508,6 +528,80 @@ func printNoticeDetail(result app.NoticeDetailResult) {
 	if detail.ContentText != "" {
 		fmt.Printf("\n%s\n", linkifyForTerminal(detail.ContentText))
 	}
+}
+
+func printTimetable(result app.TimetableResult) {
+	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
+	if len(result.Entries) == 0 {
+		fmt.Println("시간표가 없습니다")
+		return
+	}
+
+	printedOnlineHeader := false
+	currentWeekday := 0
+	for _, entry := range result.Entries {
+		if entry.Online {
+			if !printedOnlineHeader {
+				fmt.Println("\n온라인/미지정")
+				printedOnlineHeader = true
+			}
+			fmt.Printf("  %s | %s | %s | %s\n",
+				formatPeriod(entry.Period, entry.Span),
+				entry.SubjectName,
+				emptyFallback(entry.Room, "강의실 미지정"),
+				emptyFallback(entry.Professor, "교수 미지정"),
+			)
+			continue
+		}
+
+		if entry.Weekday != currentWeekday {
+			if currentWeekday != 0 {
+				fmt.Println()
+			}
+			currentWeekday = entry.Weekday
+			fmt.Println(weekdayLabel(entry.Weekday))
+		}
+		fmt.Printf("  %s | %s | %s | %s\n",
+			formatPeriod(entry.Period, entry.Span),
+			entry.SubjectName,
+			emptyFallback(entry.Room, "강의실 미지정"),
+			emptyFallback(entry.Professor, "교수 미지정"),
+		)
+	}
+}
+
+func weekdayLabel(weekday int) string {
+	switch weekday {
+	case 1:
+		return "월"
+	case 2:
+		return "화"
+	case 3:
+		return "수"
+	case 4:
+		return "목"
+	case 5:
+		return "금"
+	case 6:
+		return "토"
+	default:
+		return fmt.Sprintf("%d요일", weekday)
+	}
+}
+
+func formatPeriod(period int, span int) string {
+	if span <= 1 {
+		return fmt.Sprintf("%d교시", period)
+	}
+	return fmt.Sprintf("%d-%d교시", period, period+span-1)
+}
+
+func emptyFallback(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func formatTime(value *time.Time) string {

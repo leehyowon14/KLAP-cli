@@ -38,6 +38,10 @@ type NoticeListOptions struct {
 	CourseFilter string
 }
 
+type TimetableOptions struct {
+	User UserOption
+}
+
 type UserRow struct {
 	User    account.User
 	Current bool
@@ -72,6 +76,11 @@ type NoticeDetailResult struct {
 	CourseName string
 	DetailURL  string
 	Detail     klas.NoticeDetail
+}
+
+type TimetableResult struct {
+	Term    klas.Term
+	Entries []klas.TimetableEntry
 }
 
 type ReminderSyncResult struct {
@@ -433,6 +442,50 @@ func (s *Service) NoticeDetail(ctx context.Context, id string, user UserOption) 
 		CourseName: course.Name,
 		DetailURL:  noticeDetailURL(term.Value, course, boardNo, masterNo),
 		Detail:     detail,
+	}, nil
+}
+
+func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (TimetableResult, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return TimetableResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return TimetableResult{}, err
+	}
+
+	entries, err := client.Timetable(ctx, term.Value)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return TimetableResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			entries, err = client.Timetable(ctx, term.Value)
+		}
+	}
+	if err != nil {
+		return TimetableResult{}, err
+	}
+
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].Online != entries[j].Online {
+			return !entries[i].Online
+		}
+		if entries[i].Weekday != entries[j].Weekday {
+			return entries[i].Weekday < entries[j].Weekday
+		}
+		if entries[i].Period != entries[j].Period {
+			return entries[i].Period < entries[j].Period
+		}
+		return entries[i].SubjectName < entries[j].SubjectName
+	})
+
+	return TimetableResult{
+		Term:    term,
+		Entries: entries,
 	}, nil
 }
 
