@@ -71,8 +71,12 @@ func runConfigReminder(ctx context.Context, service *app.Service, args []string)
 		return nil
 	}
 
-	if len(args) == 2 && args[0] == "--name" {
-		settings, err := service.SetReminderListName(args[1])
+	name, useExistingList, ok, err := parseReminderConfigArgs(args)
+	if err != nil {
+		return err
+	}
+	if ok {
+		settings, err := service.SetReminderConfig(name, useExistingList)
 		if err != nil {
 			return err
 		}
@@ -80,7 +84,28 @@ func runConfigReminder(ctx context.Context, service *app.Service, args []string)
 		return nil
 	}
 
-	return errors.New(`usage: klap config reminder [--name "Kwangwoon Univ."]`)
+	return errors.New(`usage: klap config reminder [--name "Kwangwoon Univ." [--use-existing-list]]`)
+}
+
+func parseReminderConfigArgs(args []string) (name string, useExistingList bool, ok bool, err error) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--name":
+			if i+1 >= len(args) {
+				return "", false, false, errors.New("--name에는 리마인더 목록 이름이 필요합니다")
+			}
+			name = args[i+1]
+			i++
+		case "--use-existing-list":
+			useExistingList = true
+		default:
+			return "", false, false, fmt.Errorf("unknown reminder config option: %s", args[i])
+		}
+	}
+	if name == "" {
+		return "", false, false, nil
+	}
+	return name, useExistingList, true, nil
 }
 
 func runAuth(ctx context.Context, service *app.Service) error {
@@ -303,6 +328,11 @@ Usage:
 
 func printReminderSettings(settings app.ReminderSettings) {
 	fmt.Printf("Reminder list: %s\n", settings.ListName)
+	if settings.UseExistingList {
+		fmt.Println("List mode: existing only")
+	} else {
+		fmt.Println("List mode: create if missing")
+	}
 	fmt.Printf("Alarm before: %d분\n", settings.AlarmBeforeMin)
 }
 

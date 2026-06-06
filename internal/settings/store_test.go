@@ -7,6 +7,9 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if got.Reminder.ListName != "Kwangwoon Univ." {
 		t.Fatalf("ListName = %q", got.Reminder.ListName)
 	}
+	if got.Reminder.UseExistingList {
+		t.Fatal("UseExistingList should default to false")
+	}
 	if got.Reminder.AlarmBeforeMin != 1440 {
 		t.Fatalf("AlarmBeforeMin = %d", got.Reminder.AlarmBeforeMin)
 	}

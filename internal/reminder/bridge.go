@@ -21,9 +21,10 @@ type Assignment struct {
 }
 
 type SyncRequest struct {
-	ListName       string       `json:"listName"`
-	AlarmBeforeMin int          `json:"alarmBeforeMin"`
-	Assignments    []Assignment `json:"assignments"`
+	ListName        string       `json:"listName"`
+	UseExistingList bool         `json:"useExistingList"`
+	AlarmBeforeMin  int          `json:"alarmBeforeMin"`
+	Assignments     []Assignment `json:"assignments"`
 }
 
 type SyncResult struct {

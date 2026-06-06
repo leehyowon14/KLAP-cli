@@ -15,8 +15,9 @@ type Settings struct {
 }
 
 type Reminder struct {
-	ListName       string `json:"listName"`
-	AlarmBeforeMin int    `json:"alarmBeforeMin"`
+	ListName        string `json:"listName"`
+	UseExistingList bool   `json:"useExistingList"`
+	AlarmBeforeMin  int    `json:"alarmBeforeMin"`
 }
 
 type Store struct {

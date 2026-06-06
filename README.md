@@ -18,12 +18,14 @@ klap assignment remind
 klap assignment remind --auto
 klap config reminder
 klap config reminder --name "광운대학교"
+klap config reminder --name "To-do" --use-existing-list
 ```
 
 `klap auth`는 학번과 비밀번호를 입력받은 뒤 KLAS 로그인 API로 즉시 검증한다.
 검증에 성공한 계정만 저장하며, 비밀번호와 세션 쿠키는 OS 보안 저장소에 저장한다.
 
 Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림을 생성한다.
+`--use-existing-list`를 쓰면 지정한 기존 목록만 사용하며, 없을 때 새로 만들지 않는다.
 
 ## 개발 실행
 

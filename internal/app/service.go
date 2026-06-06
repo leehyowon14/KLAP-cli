@@ -57,8 +57,9 @@ type ReminderSyncResult struct {
 }
 
 type ReminderSettings struct {
-	ListName       string
-	AlarmBeforeMin int
+	ListName        string
+	UseExistingList bool
+	AlarmBeforeMin  int
 }
 
 type selectedCourse struct {
@@ -130,12 +131,13 @@ func (s *Service) ReminderSettings() (ReminderSettings, error) {
 		return ReminderSettings{}, err
 	}
 	return ReminderSettings{
-		ListName:       current.Reminder.ListName,
-		AlarmBeforeMin: current.Reminder.AlarmBeforeMin,
+		ListName:        current.Reminder.ListName,
+		UseExistingList: current.Reminder.UseExistingList,
+		AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 	}, nil
 }
 
-func (s *Service) SetReminderListName(name string) (ReminderSettings, error) {
+func (s *Service) SetReminderConfig(name string, useExistingList bool) (ReminderSettings, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return ReminderSettings{}, errors.New("리마인더 목록 이름은 비워둘 수 없습니다")
@@ -146,12 +148,14 @@ func (s *Service) SetReminderListName(name string) (ReminderSettings, error) {
 		return ReminderSettings{}, err
 	}
 	current.Reminder.ListName = name
+	current.Reminder.UseExistingList = useExistingList
 	if err := s.saveSettings(current); err != nil {
 		return ReminderSettings{}, err
 	}
 	return ReminderSettings{
-		ListName:       current.Reminder.ListName,
-		AlarmBeforeMin: current.Reminder.AlarmBeforeMin,
+		ListName:        current.Reminder.ListName,
+		UseExistingList: current.Reminder.UseExistingList,
+		AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 	}, nil
 }
 
@@ -336,9 +340,10 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 	}
 
 	result, err := reminder.NewMacOSBridge(s.reminderBridgePath).Sync(reminder.SyncRequest{
-		ListName:       currentSettings.Reminder.ListName,
-		AlarmBeforeMin: currentSettings.Reminder.AlarmBeforeMin,
-		Assignments:    assignments,
+		ListName:        currentSettings.Reminder.ListName,
+		UseExistingList: currentSettings.Reminder.UseExistingList,
+		AlarmBeforeMin:  currentSettings.Reminder.AlarmBeforeMin,
+		Assignments:     assignments,
 	})
 	if err != nil {
 		return ReminderSyncResult{}, err

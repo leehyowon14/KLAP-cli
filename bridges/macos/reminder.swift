@@ -13,6 +13,7 @@ struct Assignment: Codable {
 
 struct SyncRequest: Codable {
     let listName: String
+    let useExistingList: Bool
     let alarmBeforeMin: Int
     let assignments: [Assignment]
 }
@@ -58,9 +59,15 @@ if !granted {
     ])
 }
 
-func klapCalendar(named name: String) throws -> EKCalendar {
+func klapCalendar(named name: String, useExistingList: Bool) throws -> EKCalendar {
     if let existing = store.calendars(for: .reminder).first(where: { $0.title == name }) {
         return existing
+    }
+
+    if useExistingList {
+        throw NSError(domain: "KLAPReminderBridge", code: 2, userInfo: [
+            NSLocalizedDescriptionKey: "Reminder list does not exist: \(name)"
+        ])
     }
 
     let calendar = EKCalendar(for: .reminder, eventStore: store)
@@ -122,7 +129,7 @@ func applyAlarm(_ dueAt: Date, beforeMinutes: Int, to reminder: EKReminder) {
 }
 
 let listName = request.listName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Kwangwoon Univ." : request.listName
-let calendar = try klapCalendar(named: listName)
+let calendar = try klapCalendar(named: listName, useExistingList: request.useExistingList)
 var known: [String: EKReminder] = [:]
 for reminder in existingReminders() {
     guard let id = assignmentID(from: reminder) else { continue }
