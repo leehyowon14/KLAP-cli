@@ -48,6 +48,16 @@ func TestParseAssignmentID(t *testing.T) {
 	}
 }
 
+func TestParseNoticeID(t *testing.T) {
+	courseIndex, boardNo, masterNo, err := ParseNoticeID("7:1161280:1000000")
+	if err != nil {
+		t.Fatalf("ParseNoticeID() error = %v", err)
+	}
+	if courseIndex != 7 || boardNo != "1161280" || masterNo != "1000000" {
+		t.Fatalf("ParseNoticeID() = %d, %q, %q", courseIndex, boardNo, masterNo)
+	}
+}
+
 func TestBuildReminderNotesIncludesBodyAndMarker(t *testing.T) {
 	dueAt := time.Date(2026, 5, 5, 23, 59, 0, 0, time.FixedZone("KST", 9*60*60))
 	notes := buildReminderNotes(AssignmentDetailResult{

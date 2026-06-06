@@ -33,6 +33,11 @@ type AssignmentListOptions struct {
 	CourseFilter string
 }
 
+type NoticeListOptions struct {
+	User         UserOption
+	CourseFilter string
+}
+
 type UserRow struct {
 	User    account.User
 	Current bool
@@ -46,11 +51,27 @@ type AssignmentRow struct {
 	Assignment klas.Assignment
 }
 
+type NoticeRow struct {
+	ID         string
+	TermValue  string
+	CourseName string
+	DetailURL  string
+	Notice     klas.Notice
+}
+
 type AssignmentDetailResult struct {
 	ID         string
 	TermValue  string
 	CourseName string
 	Detail     klas.AssignmentDetail
+}
+
+type NoticeDetailResult struct {
+	ID         string
+	TermValue  string
+	CourseName string
+	DetailURL  string
+	Detail     klas.NoticeDetail
 }
 
 type ReminderSyncResult struct {
@@ -308,6 +329,113 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 	}, nil
 }
 
+func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]NoticeRow, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return nil, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return nil, err
+	}
+
+	courses, err := selectedCourses(term, opts.CourseFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]NoticeRow, 0)
+	for _, selectedCourse := range courses {
+		notices, err := client.Notices(ctx, term.Value, selectedCourse.Course)
+		if err != nil {
+			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+			if refreshErr != nil {
+				return nil, refreshErr
+			}
+			if refreshed {
+				client = refreshedClient
+				notices, err = client.Notices(ctx, term.Value, selectedCourse.Course)
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, notice := range notices {
+			id := NoticeID(selectedCourse.Index, notice.BoardNo, notice.MasterNo)
+			rows = append(rows, NoticeRow{
+				ID:         id,
+				TermValue:  term.Value,
+				CourseName: selectedCourse.Course.Name,
+				DetailURL:  noticeDetailURL(term.Value, selectedCourse.Course, notice.BoardNo, notice.MasterNo),
+				Notice:     notice,
+			})
+		}
+	}
+
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Notice.Top != rows[j].Notice.Top {
+			return rows[i].Notice.Top
+		}
+		left := rows[i].Notice.Registered
+		right := rows[j].Notice.Registered
+		if left == nil && right == nil {
+			return rows[i].ID < rows[j].ID
+		}
+		if left == nil {
+			return false
+		}
+		if right == nil {
+			return true
+		}
+		return right.Before(*left)
+	})
+
+	return rows, nil
+}
+
+func (s *Service) NoticeDetail(ctx context.Context, id string, user UserOption) (NoticeDetailResult, error) {
+	studentID, err := s.selectedStudentID(ctx, user)
+	if err != nil {
+		return NoticeDetailResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return NoticeDetailResult{}, err
+	}
+
+	courseIndex, boardNo, masterNo, err := ParseNoticeID(id)
+	if err != nil {
+		return NoticeDetailResult{}, err
+	}
+	if courseIndex < 1 || courseIndex > len(term.Courses) {
+		return NoticeDetailResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
+	}
+
+	course := term.Courses[courseIndex-1]
+	detail, err := client.NoticeDetail(ctx, term.Value, course, boardNo, masterNo)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return NoticeDetailResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			detail, err = client.NoticeDetail(ctx, term.Value, course, boardNo, masterNo)
+		}
+	}
+	if err != nil {
+		return NoticeDetailResult{}, err
+	}
+
+	return NoticeDetailResult{
+		ID:         id,
+		TermValue:  term.Value,
+		CourseName: course.Name,
+		DetailURL:  noticeDetailURL(term.Value, course, boardNo, masterNo),
+		Detail:     detail,
+	}, nil
+}
+
 func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentListOptions) (ReminderSyncResult, error) {
 	rows, err := s.AssignmentList(ctx, opts)
 	if err != nil {
@@ -378,6 +506,15 @@ func assignmentDetailURL(yearHakgi string, course klas.Course, ordSeq string) st
 	values.Set("selectSubj", course.Value)
 	values.Set("ordseq", strings.TrimSpace(ordSeq))
 	return "https://klas.kw.ac.kr/std/lis/evltn/TaskViewStdPage.do?" + values.Encode()
+}
+
+func noticeDetailURL(yearHakgi string, course klas.Course, boardNo string, masterNo string) string {
+	values := url.Values{}
+	values.Set("selectYearhakgi", yearHakgi)
+	values.Set("selectSubj", course.Value)
+	values.Set("boardNo", strings.TrimSpace(boardNo))
+	values.Set("masterNo", strings.TrimSpace(masterNo))
+	return "https://klas.kw.ac.kr/std/lis/sport/d052b8f845784c639f036b102fdc3023/BoardViewStdPage.do?" + values.Encode()
 }
 
 func buildReminderNotes(result AssignmentDetailResult) string {
@@ -621,6 +758,31 @@ func ParseAssignmentID(id string) (int, string, error) {
 		return 0, "", errors.New("과제ID에 ordseq가 없습니다")
 	}
 	return courseIndex, ordSeq, nil
+}
+
+func NoticeID(courseIndex int, boardNo string, masterNo string) string {
+	return fmt.Sprintf("%d:%s:%s", courseIndex, strings.TrimSpace(boardNo), strings.TrimSpace(masterNo))
+}
+
+func ParseNoticeID(id string) (int, string, string, error) {
+	parts := strings.Split(strings.TrimSpace(id), ":")
+	if len(parts) != 3 {
+		return 0, "", "", errors.New("공지ID는 course list 번호, boardNo, masterNo를 조합한 <과목번호>:<boardNo>:<masterNo> 형식이어야 합니다")
+	}
+
+	courseIndex, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, "", "", fmt.Errorf("과목 번호 파싱 실패: %w", err)
+	}
+	boardNo := strings.TrimSpace(parts[1])
+	if boardNo == "" {
+		return 0, "", "", errors.New("공지ID에 boardNo가 없습니다")
+	}
+	masterNo := strings.TrimSpace(parts[2])
+	if masterNo == "" {
+		return 0, "", "", errors.New("공지ID에 masterNo가 없습니다")
+	}
+	return courseIndex, boardNo, masterNo, nil
 }
 
 func defaultReminderBridgePath() string {

@@ -56,6 +56,26 @@ func TestAssignmentListItemAcceptsNumericIDs(t *testing.T) {
 	}
 }
 
+func TestNoticeItemAcceptsNumericIDs(t *testing.T) {
+	var item noticeItem
+	err := json.Unmarshal([]byte(`{
+		"boardNo": 1161280,
+		"masterNo": 1000000,
+		"title": "공지",
+		"readCnt": 12,
+		"fileCnt": 1
+	}`), &item)
+	if err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if item.BoardNo.String() != "1161280" || item.MasterNo.String() != "1000000" {
+		t.Fatalf("numeric notice ids were not preserved: %+v", item)
+	}
+	if item.ReadCount.String() != "12" || item.FileCount.String() != "1" {
+		t.Fatalf("numeric notice counts were not preserved: %+v", item)
+	}
+}
+
 func TestHTMLToTextKeepsBlockBreaks(t *testing.T) {
 	input := `<p>과제 설명</p><p><a href="https://example.com">https://example.com</a></p><p>제출 내용</p><ol><li>GitHub repository 주소</li><li>youtube 링크</li></ol>`
 

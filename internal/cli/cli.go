@@ -36,6 +36,8 @@ func Run(ctx context.Context, args []string) error {
 		return runCourse(ctx, service, args[1:])
 	case "assignment":
 		return runAssignment(ctx, service, args[1:])
+	case "notice":
+		return runNotice(ctx, service, args[1:])
 	case "config":
 		return runConfig(ctx, service, args[1:])
 	case "help", "-h", "--help":
@@ -219,6 +221,38 @@ func runAssignment(ctx context.Context, service *app.Service, args []string) err
 	}
 }
 
+func runNotice(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: klap notice <list|detail>")
+	}
+
+	switch args[0] {
+	case "list":
+		opts, err := noticeListOptions(args[1:])
+		if err != nil {
+			return err
+		}
+		rows, err := service.NoticeList(ctx, opts)
+		if err != nil {
+			return err
+		}
+		printNoticeRows(rows)
+		return nil
+	case "detail":
+		if len(args) != 2 {
+			return errors.New("usage: klap notice detail <공지ID>")
+		}
+		detail, err := service.NoticeDetail(ctx, args[1], app.UserOption{})
+		if err != nil {
+			return err
+		}
+		printNoticeDetail(detail)
+		return nil
+	default:
+		return fmt.Errorf("unknown notice command: %s", args[0])
+	}
+}
+
 func runAssignmentRemind(ctx context.Context, service *app.Service, args []string) error {
 	auto := hasFlag(args, "--auto")
 	if !auto {
@@ -276,6 +310,17 @@ func assignmentListOptions(args []string) (app.AssignmentListOptions, error) {
 	}, nil
 }
 
+func noticeListOptions(args []string) (app.NoticeListOptions, error) {
+	course, err := courseFilter(args)
+	if err != nil {
+		return app.NoticeListOptions{}, err
+	}
+	return app.NoticeListOptions{
+		User:         app.UserOption{StudentID: userFlag(args)},
+		CourseFilter: course,
+	}, nil
+}
+
 func userFlag(args []string) string {
 	for i := 0; i < len(args); i++ {
 		if args[i] != "--user" {
@@ -323,6 +368,8 @@ Usage:
   klap assignment list   과제 목록 출력
   klap assignment detail <과제ID> 과제 상세 출력
   klap assignment remind 과제 마감 reminder 동기화
+  klap notice list       강의 공지 목록 출력
+  klap notice detail <공지ID> 강의 공지 상세 출력
   klap config reminder  reminder 설정 확인/변경`)
 }
 
@@ -416,9 +463,63 @@ func printAssignmentDetail(result app.AssignmentDetailResult) {
 	}
 }
 
+func printNoticeRows(rows []app.NoticeRow) {
+	if len(rows) == 0 {
+		fmt.Println("강의 공지가 없습니다")
+		return
+	}
+
+	for _, row := range rows {
+		prefix := " "
+		if row.Notice.Top {
+			prefix = "!"
+		}
+		fmt.Printf("%s %s | %s | %s | %s | %s\n",
+			prefix,
+			row.ID,
+			formatNoticeTime(row.Notice.Registered),
+			row.CourseName,
+			row.Notice.Author,
+			row.Notice.Title,
+		)
+	}
+}
+
+func printNoticeDetail(result app.NoticeDetailResult) {
+	detail := result.Detail
+
+	fmt.Printf("ID: %s\n", result.ID)
+	fmt.Printf("과목: %s\n", result.CourseName)
+	fmt.Printf("제목: %s\n", detail.Title)
+	if detail.Author != "" {
+		fmt.Printf("작성자: %s\n", detail.Author)
+	}
+	fmt.Printf("작성일: %s\n", formatNoticeTime(detail.Registered))
+	if detail.Top {
+		fmt.Println("중요: 예")
+	}
+	if detail.ReadCount != "" {
+		fmt.Printf("조회수: %s\n", detail.ReadCount)
+	}
+	if detail.Attachment != "" {
+		fmt.Printf("첨부 묶음: %s\n", detail.Attachment)
+	}
+	fmt.Printf("원문: %s\n", linkifyForTerminal(result.DetailURL))
+	if detail.ContentText != "" {
+		fmt.Printf("\n%s\n", linkifyForTerminal(detail.ContentText))
+	}
+}
+
 func formatTime(value *time.Time) string {
 	if value == nil {
 		return "마감 확인 필요"
+	}
+	return value.Format("2006-01-02 15:04")
+}
+
+func formatNoticeTime(value *time.Time) string {
+	if value == nil {
+		return "작성일 확인 필요"
 	}
 	return value.Format("2006-01-02 15:04")
 }
