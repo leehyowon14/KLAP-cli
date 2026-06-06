@@ -52,6 +52,7 @@ func TestBuildReminderNotesIncludesBodyAndMarker(t *testing.T) {
 	dueAt := time.Date(2026, 5, 5, 23, 59, 0, 0, time.FixedZone("KST", 9*60*60))
 	notes := buildReminderNotes(AssignmentDetailResult{
 		ID:         "3:1",
+		TermValue:  "2026,1",
 		CourseName: "컴퓨터그래픽스",
 		Detail: klas.AssignmentDetail{
 			Title:          "과제1",
@@ -71,10 +72,19 @@ func TestBuildReminderNotesIncludesBodyAndMarker(t *testing.T) {
 		"제목: 과제1",
 		"마감: 2026-05-05 23:59",
 		"상태: 제출",
+		"#2026-1 #컴퓨터그래픽스",
 		"[This reminder is created by KLAP.]",
 	} {
 		if !strings.Contains(notes, want) {
 			t.Fatalf("notes does not contain %q:\n%s", want, notes)
 		}
+	}
+}
+
+func TestReminderHashtags(t *testing.T) {
+	got := reminderHashtags("2026,1", "오픈소스 소프트웨어 실습")
+	want := "#2026-1 #오픈소스소프트웨어실습"
+	if got != want {
+		t.Fatalf("reminderHashtags() = %q, want %q", got, want)
 	}
 }

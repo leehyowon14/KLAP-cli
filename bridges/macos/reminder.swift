@@ -146,7 +146,7 @@ for assignment in request.assignments {
     }
 
     if let reminder = known[assignment.id] {
-        reminder.title = "\(assignment.course) - \(assignment.title)"
+        reminder.title = assignment.title
         reminder.notes = notes(for: assignment)
         reminder.url = URL(string: assignment.detailUrl)
         applyDueDate(dueAt, to: reminder)
@@ -168,7 +168,7 @@ for assignment in request.assignments {
 
     let reminder = EKReminder(eventStore: store)
     reminder.calendar = calendar
-    reminder.title = "\(assignment.course) - \(assignment.title)"
+    reminder.title = assignment.title
     reminder.notes = notes(for: assignment)
     reminder.url = URL(string: assignment.detailUrl)
     applyDueDate(dueAt, to: reminder)

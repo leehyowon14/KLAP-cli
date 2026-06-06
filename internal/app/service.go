@@ -40,6 +40,7 @@ type UserRow struct {
 
 type AssignmentRow struct {
 	ID         string
+	TermValue  string
 	CourseName string
 	DetailURL  string
 	Assignment klas.Assignment
@@ -47,6 +48,7 @@ type AssignmentRow struct {
 
 type AssignmentDetailResult struct {
 	ID         string
+	TermValue  string
 	CourseName string
 	Detail     klas.AssignmentDetail
 }
@@ -221,6 +223,7 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 			id := AssignmentID(selectedCourse.Index, assignment.OrdSeq)
 			rows = append(rows, AssignmentRow{
 				ID:         id,
+				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				DetailURL:  assignmentDetailURL(term.Value, selectedCourse.Course, assignment.OrdSeq),
 				Assignment: assignment,
@@ -299,6 +302,7 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 
 	return AssignmentDetailResult{
 		ID:         id,
+		TermValue:  term.Value,
 		CourseName: course.Name,
 		Detail:     detail,
 	}, nil
@@ -424,9 +428,40 @@ func buildReminderNotes(result AssignmentDetailResult) string {
 		builder.WriteString(detail.FileLimitMB)
 		builder.WriteString("MB\n")
 	}
+	if hashtags := reminderHashtags(result.TermValue, result.CourseName); hashtags != "" {
+		builder.WriteString(hashtags)
+		builder.WriteString("\n")
+	}
 	builder.WriteString("[This reminder is created by KLAP.]")
 
 	return builder.String()
+}
+
+func reminderHashtags(termValue string, courseName string) string {
+	tags := make([]string, 0, 2)
+	if tag := termHashtag(termValue); tag != "" {
+		tags = append(tags, tag)
+	}
+	if tag := courseHashtag(courseName); tag != "" {
+		tags = append(tags, tag)
+	}
+	return strings.Join(tags, " ")
+}
+
+func termHashtag(termValue string) string {
+	termValue = strings.TrimSpace(termValue)
+	if termValue == "" {
+		return ""
+	}
+	return "#" + strings.ReplaceAll(termValue, ",", "-")
+}
+
+func courseHashtag(courseName string) string {
+	courseName = strings.TrimSpace(courseName)
+	if courseName == "" {
+		return ""
+	}
+	return "#" + strings.Join(strings.Fields(courseName), "")
 }
 
 func (s *Service) latestTerm(ctx context.Context, studentID string) (*klas.Client, klas.Term, error) {
