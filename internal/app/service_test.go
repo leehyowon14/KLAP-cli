@@ -67,6 +67,7 @@ func TestBuildReminderNotesIncludesBodyAndMarker(t *testing.T) {
 
 	for _, want := range []string{
 		"과제 skeleton code 구성 가이드",
+		"--- KLAP ---",
 		"ID: 3:1",
 		"과목: 컴퓨터그래픽스",
 		"제목: 과제1",

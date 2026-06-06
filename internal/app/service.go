@@ -389,7 +389,7 @@ func buildReminderNotes(result AssignmentDetailResult) string {
 		builder.WriteString("\n\n")
 	}
 
-	builder.WriteString("=========================================\n\n")
+	builder.WriteString("--- KLAP ---\n\n")
 	builder.WriteString("ID: ")
 	builder.WriteString(result.ID)
 	builder.WriteString("\n")
