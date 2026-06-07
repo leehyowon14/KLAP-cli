@@ -12,12 +12,17 @@ const DefaultReminderListName = "Kwangwoon Univ."
 
 type Settings struct {
 	Reminder Reminder `json:"reminder"`
+	Term     Term     `json:"term"`
 }
 
 type Reminder struct {
 	ListName        string `json:"listName"`
 	UseExistingList bool   `json:"useExistingList"`
 	AlarmBeforeMin  int    `json:"alarmBeforeMin"`
+}
+
+type Term struct {
+	Value string `json:"value"`
 }
 
 type Store struct {

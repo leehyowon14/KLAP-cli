@@ -45,6 +45,10 @@ type TimetableOptions struct {
 	User UserOption
 }
 
+type TermListOptions struct {
+	User UserOption
+}
+
 type LectureListOptions struct {
 	User         UserOption
 	CourseFilter string
@@ -116,6 +120,12 @@ type TimetableResult struct {
 	Entries []klas.TimetableEntry
 }
 
+type TermRow struct {
+	Index   int
+	Term    klas.Term
+	Current bool
+}
+
 type LectureRow struct {
 	ID         string
 	TermValue  string
@@ -166,6 +176,11 @@ type ReminderSettings struct {
 	ListName        string
 	UseExistingList bool
 	AlarmBeforeMin  int
+}
+
+type TermSettings struct {
+	Value string
+	Label string
 }
 
 type selectedCourse struct {
@@ -265,6 +280,93 @@ func (s *Service) SetReminderConfig(name string, useExistingList bool) (Reminder
 	}, nil
 }
 
+func (s *Service) TermList(ctx context.Context, opts TermListOptions) ([]TermRow, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.authenticatedClient(ctx, studentID)
+	if err != nil {
+		return nil, err
+	}
+
+	terms, _, err := s.courses(ctx, studentID, client)
+	if err != nil {
+		return nil, err
+	}
+	current, err := s.loadSettings()
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]TermRow, 0, len(terms))
+	for index, term := range terms {
+		rows = append(rows, TermRow{
+			Index:   index + 1,
+			Term:    term,
+			Current: current.Term.Value != "" && term.Value == current.Term.Value,
+		})
+	}
+	if current.Term.Value == "" && len(rows) > 0 {
+		rows[0].Current = true
+	}
+	return rows, nil
+}
+
+func (s *Service) SelectTerm(ctx context.Context, selector string, user UserOption) (TermSettings, error) {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return TermSettings{}, errors.New("학기 번호 또는 값을 입력해야 합니다")
+	}
+
+	rows, err := s.TermList(ctx, TermListOptions{User: user})
+	if err != nil {
+		return TermSettings{}, err
+	}
+	if len(rows) == 0 {
+		return TermSettings{}, errors.New("선택할 학기가 없습니다")
+	}
+
+	matched, err := selectTermRow(rows, selector)
+	if err != nil {
+		return TermSettings{}, err
+	}
+
+	current, err := s.loadSettings()
+	if err != nil {
+		return TermSettings{}, err
+	}
+	current.Term.Value = matched.Term.Value
+	if err := s.saveSettings(current); err != nil {
+		return TermSettings{}, err
+	}
+	return TermSettings{Value: matched.Term.Value, Label: matched.Term.Label}, nil
+}
+
+func selectTermRow(rows []TermRow, selector string) (TermRow, error) {
+	selector = strings.TrimSpace(selector)
+	if number, err := strconv.Atoi(selector); err == nil {
+		if number < 1 || number > len(rows) {
+			return TermRow{}, fmt.Errorf("학기 번호가 범위를 벗어났습니다: %d", number)
+		}
+		return rows[number-1], nil
+	}
+
+	var matched *TermRow
+	for index := range rows {
+		if rows[index].Term.Value == selector || strings.Contains(rows[index].Term.Label, selector) {
+			if matched != nil {
+				return TermRow{}, fmt.Errorf("학기명이 여러 개와 일치합니다. term list 번호를 사용하세요: %s", selector)
+			}
+			matched = &rows[index]
+		}
+	}
+	if matched == nil {
+		return TermRow{}, fmt.Errorf("학기를 찾을 수 없습니다: %s", selector)
+	}
+	return *matched, nil
+}
+
 func (s *Service) CourseList(ctx context.Context, user UserOption) ([]klas.Term, error) {
 	studentID, err := s.selectedStudentID(ctx, user)
 	if err != nil {
@@ -276,20 +378,11 @@ func (s *Service) CourseList(ctx context.Context, user UserOption) ([]klas.Term,
 		return nil, err
 	}
 
-	terms, err := client.Courses(ctx)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return nil, refreshErr
-		}
-		if refreshed {
-			terms, err = refreshedClient.Courses(ctx)
-		}
-	}
+	term, _, err := s.selectedTerm(ctx, studentID, client)
 	if err != nil {
 		return nil, err
 	}
-	return terms, nil
+	return []klas.Term{term}, nil
 }
 
 func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions) ([]AssignmentRow, error) {
@@ -1087,12 +1180,40 @@ func (s *Service) latestTerm(ctx context.Context, studentID string) (*klas.Clien
 	if err != nil {
 		return nil, klas.Term{}, err
 	}
+	term, client, err := s.selectedTerm(ctx, studentID, client)
+	return client, term, err
+}
 
+func (s *Service) selectedTerm(ctx context.Context, studentID string, client *klas.Client) (klas.Term, *klas.Client, error) {
+	terms, client, err := s.courses(ctx, studentID, client)
+	if err != nil {
+		return klas.Term{}, client, err
+	}
+	if len(terms) == 0 {
+		return klas.Term{}, client, errors.New("수강 학기가 없습니다")
+	}
+
+	current, err := s.loadSettings()
+	if err != nil {
+		return klas.Term{}, client, err
+	}
+	if strings.TrimSpace(current.Term.Value) == "" {
+		return terms[0], client, nil
+	}
+	for _, term := range terms {
+		if term.Value == current.Term.Value {
+			return term, client, nil
+		}
+	}
+	return klas.Term{}, client, fmt.Errorf("선택된 학기를 현재 유저에서 찾을 수 없습니다: %s", current.Term.Value)
+}
+
+func (s *Service) courses(ctx context.Context, studentID string, client *klas.Client) ([]klas.Term, *klas.Client, error) {
 	terms, err := client.Courses(ctx)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
 		if refreshErr != nil {
-			return nil, klas.Term{}, refreshErr
+			return nil, client, refreshErr
 		}
 		if refreshed {
 			client = refreshedClient
@@ -1100,12 +1221,9 @@ func (s *Service) latestTerm(ctx context.Context, studentID string) (*klas.Clien
 		}
 	}
 	if err != nil {
-		return nil, klas.Term{}, err
+		return nil, client, err
 	}
-	if len(terms) == 0 {
-		return nil, klas.Term{}, errors.New("수강 학기가 없습니다")
-	}
-	return client, terms[0], nil
+	return terms, client, nil
 }
 
 func (s *Service) selectedStudentID(ctx context.Context, user UserOption) (string, error) {

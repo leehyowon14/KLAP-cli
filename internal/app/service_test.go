@@ -38,6 +38,37 @@ func TestSelectedCoursesByName(t *testing.T) {
 	}
 }
 
+func TestSelectTermRow(t *testing.T) {
+	rows := []TermRow{
+		{Index: 1, Term: klas.Term{Label: "2026년도 1학기", Value: "2026,1"}},
+		{Index: 2, Term: klas.Term{Label: "2025년도 겨울학기", Value: "2025,4"}},
+	}
+
+	selected, err := selectTermRow(rows, "2")
+	if err != nil {
+		t.Fatalf("selectTermRow() by number error = %v", err)
+	}
+	if selected.Term.Value != "2025,4" {
+		t.Fatalf("selectTermRow() by number = %+v", selected)
+	}
+
+	selected, err = selectTermRow(rows, "2026,1")
+	if err != nil {
+		t.Fatalf("selectTermRow() by value error = %v", err)
+	}
+	if selected.Term.Label != "2026년도 1학기" {
+		t.Fatalf("selectTermRow() by value = %+v", selected)
+	}
+
+	selected, err = selectTermRow(rows, "겨울")
+	if err != nil {
+		t.Fatalf("selectTermRow() by label error = %v", err)
+	}
+	if selected.Term.Value != "2025,4" {
+		t.Fatalf("selectTermRow() by label = %+v", selected)
+	}
+}
+
 func TestParseAssignmentID(t *testing.T) {
 	courseIndex, ordSeq, err := ParseAssignmentID("3:7")
 	if err != nil {

@@ -13,6 +13,9 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if got.Reminder.AlarmBeforeMin != 1440 {
 		t.Fatalf("AlarmBeforeMin = %d", got.Reminder.AlarmBeforeMin)
 	}
+	if got.Term.Value != "" {
+		t.Fatalf("Term.Value = %q", got.Term.Value)
+	}
 }
 
 func TestNormalizeReminderSettings(t *testing.T) {

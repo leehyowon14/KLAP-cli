@@ -36,6 +36,8 @@ func Run(ctx context.Context, args []string) error {
 		return runUser(ctx, service, args[1:])
 	case "course":
 		return runCourse(ctx, service, args[1:])
+	case "term":
+		return runTerm(ctx, service, args[1:])
 	case "assignment":
 		return runAssignment(ctx, service, args[1:])
 	case "notice":
@@ -194,6 +196,36 @@ func runCourse(ctx context.Context, service *app.Service, args []string) error {
 		return nil
 	default:
 		return fmt.Errorf("unknown course command: %s", args[0])
+	}
+}
+
+func runTerm(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: klap term <list|select>")
+	}
+
+	switch args[0] {
+	case "list":
+		rows, err := service.TermList(ctx, app.TermListOptions{
+			User: app.UserOption{StudentID: userFlag(args[1:])},
+		})
+		if err != nil {
+			return err
+		}
+		printTermRows(rows)
+		return nil
+	case "select":
+		if len(args) < 2 {
+			return errors.New("usage: klap term select <학기번호|학기값> [--user <학번>]")
+		}
+		settings, err := service.SelectTerm(ctx, args[1], app.UserOption{StudentID: userFlag(args[2:])})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("현재 학기: %s (%s)\n", settings.Label, settings.Value)
+		return nil
+	default:
+		return fmt.Errorf("unknown term command: %s", args[0])
 	}
 }
 
@@ -613,13 +645,15 @@ Usage:
   klap user list         저장된 학번 목록 출력
   klap user select <학번> 현재 유저 선택
   klap user rm <학번>    저장된 계정 삭제
-  klap course list       최신 학기 수업 목록 출력
+  klap term list         수강 학기 목록 출력
+  klap term select <학기번호|학기값> 현재 학기 선택
+  klap course list       현재 학기 수업 목록 출력
   klap assignment list   과제 목록 출력
   klap assignment detail <과제ID> 과제 상세 출력
   klap assignment remind 과제 마감 reminder 동기화
   klap notice list       강의 공지 목록 출력
   klap notice detail <공지ID> 강의 공지 상세 출력
-  klap timetable         최신 학기 시간표 출력
+  klap timetable         현재 학기 시간표 출력
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
   klap lecture status    온라인 강의 수강 상태 출력
@@ -654,6 +688,21 @@ func printCourseList(terms []klas.Term) {
 
 	for index, course := range term.Courses {
 		fmt.Printf("%d. %s\n", index+1, strings.TrimSpace(course.Name))
+	}
+}
+
+func printTermRows(rows []app.TermRow) {
+	if len(rows) == 0 {
+		fmt.Println("수강 학기가 없습니다")
+		return
+	}
+
+	for _, row := range rows {
+		prefix := " "
+		if row.Current {
+			prefix = "*"
+		}
+		fmt.Printf("%s %d. %s (%s)\n", prefix, row.Index, row.Term.Label, row.Term.Value)
 	}
 }
 
