@@ -82,6 +82,32 @@ func TestNormalizeTermValue(t *testing.T) {
 	}
 }
 
+func TestCurrentAcademicTermValue(t *testing.T) {
+	tests := []struct {
+		now  time.Time
+		want string
+	}{
+		{now: time.Date(2026, time.June, 7, 0, 0, 0, 0, time.Local), want: "2026,1"},
+		{now: time.Date(2026, time.July, 1, 0, 0, 0, 0, time.Local), want: "2026,3"},
+		{now: time.Date(2026, time.December, 20, 0, 0, 0, 0, time.Local), want: "2026,4"},
+		{now: time.Date(2027, time.January, 10, 0, 0, 0, 0, time.Local), want: "2026,4"},
+	}
+	for _, tt := range tests {
+		if got := currentAcademicTermValue(tt.now); got != tt.want {
+			t.Fatalf("currentAcademicTermValue(%s) = %q, want %q", tt.now, got, tt.want)
+		}
+	}
+}
+
+func TestTermLabel(t *testing.T) {
+	if got := termLabel("2026,3"); got != "2026년도 여름학기" {
+		t.Fatalf("termLabel() = %q", got)
+	}
+	if got := termLabel("2026,4"); got != "2026년도 겨울학기" {
+		t.Fatalf("termLabel() = %q", got)
+	}
+}
+
 func TestLooksLikeSyllabusCourseCode(t *testing.T) {
 	if !looksLikeSyllabusCourseCode("I040-3-3951-01") {
 		t.Fatal("looksLikeSyllabusCourseCode() expected true")

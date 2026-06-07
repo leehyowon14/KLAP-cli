@@ -80,6 +80,9 @@ func TestSubjectSearchOptions(t *testing.T) {
 	if _, err := subjectSearchOptions([]string{}); err == nil {
 		t.Fatal("subjectSearchOptions() expected error")
 	}
+	if _, err := subjectSearchOptions([]string{"--name", "컴퓨터그래픽스", "--user", "20250000"}); err == nil {
+		t.Fatal("subjectSearchOptions() expected error for --user")
+	}
 }
 
 func TestRenderProgressBar(t *testing.T) {

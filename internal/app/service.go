@@ -52,7 +52,6 @@ type SyllabusOptions struct {
 }
 
 type SubjectSearchOptions struct {
-	User      UserOption
 	Name      string
 	Professor string
 	TermValue string
@@ -766,7 +765,7 @@ func (s *Service) SubjectSearch(ctx context.Context, opts SubjectSearchOptions) 
 		return SubjectSearchResult{}, errors.New("과목명 또는 교수명을 입력해야 합니다")
 	}
 
-	studentID, err := s.selectedStudentID(ctx, opts.User)
+	studentID, err := s.selectedStudentID(ctx, UserOption{})
 	if err != nil {
 		return SubjectSearchResult{}, err
 	}
@@ -774,7 +773,7 @@ func (s *Service) SubjectSearch(ctx context.Context, opts SubjectSearchOptions) 
 	if err != nil {
 		return SubjectSearchResult{}, err
 	}
-	term, client, err := s.termForSyllabus(ctx, studentID, client, opts.TermValue)
+	term, err := s.termForSubjectSearch(opts.TermValue)
 	if err != nil {
 		return SubjectSearchResult{}, err
 	}
@@ -1385,6 +1384,27 @@ func (s *Service) termForSyllabus(ctx context.Context, studentID string, client 
 	return klas.Term{}, client, fmt.Errorf("학기를 찾을 수 없습니다: %s", termValue)
 }
 
+func (s *Service) termForSubjectSearch(termValue string) (klas.Term, error) {
+	termValue, err := normalizeTermValue(termValue)
+	if err != nil {
+		return klas.Term{}, err
+	}
+	if termValue == "" {
+		current, err := s.loadSettings()
+		if err != nil {
+			return klas.Term{}, err
+		}
+		termValue = strings.TrimSpace(current.Term.Value)
+	}
+	if termValue == "" {
+		termValue = currentAcademicTermValue(time.Now())
+	}
+	return klas.Term{
+		Value: termValue,
+		Label: termLabel(termValue),
+	}, nil
+}
+
 func (s *Service) selectedTerm(ctx context.Context, studentID string, client *klas.Client) (klas.Term, *klas.Client, error) {
 	terms, client, err := s.courses(ctx, studentID, client)
 	if err != nil {
@@ -1452,6 +1472,41 @@ func normalizeTermValue(value string) (string, error) {
 		return "", errors.New("학기는 1, 2, 3, 4 중 하나여야 합니다")
 	}
 	return year + "," + semester, nil
+}
+
+func currentAcademicTermValue(now time.Time) string {
+	year := now.Year()
+	switch now.Month() {
+	case time.January, time.February:
+		return fmt.Sprintf("%d,4", year-1)
+	case time.March, time.April, time.May, time.June:
+		return fmt.Sprintf("%d,1", year)
+	case time.July, time.August:
+		return fmt.Sprintf("%d,3", year)
+	case time.December:
+		return fmt.Sprintf("%d,4", year)
+	default:
+		return fmt.Sprintf("%d,2", year)
+	}
+}
+
+func termLabel(termValue string) string {
+	parts := strings.Split(strings.TrimSpace(termValue), ",")
+	if len(parts) != 2 {
+		return strings.TrimSpace(termValue)
+	}
+	switch parts[1] {
+	case "1":
+		return fmt.Sprintf("%s년도 1학기", parts[0])
+	case "2":
+		return fmt.Sprintf("%s년도 2학기", parts[0])
+	case "3":
+		return fmt.Sprintf("%s년도 여름학기", parts[0])
+	case "4":
+		return fmt.Sprintf("%s년도 겨울학기", parts[0])
+	default:
+		return strings.TrimSpace(termValue)
+	}
 }
 
 func looksLikeSyllabusCourseCode(value string) bool {

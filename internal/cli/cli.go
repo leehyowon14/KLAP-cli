@@ -621,7 +621,7 @@ func syllabusOptions(args []string) (app.SyllabusOptions, error) {
 }
 
 func subjectSearchOptions(args []string) (app.SubjectSearchOptions, error) {
-	opts := app.SubjectSearchOptions{User: app.UserOption{StudentID: userFlag(args)}}
+	opts := app.SubjectSearchOptions{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--name":
@@ -641,11 +641,6 @@ func subjectSearchOptions(args []string) (app.SubjectSearchOptions, error) {
 				return app.SubjectSearchOptions{}, errors.New("--term에는 YYYY-S 형식의 학기가 필요합니다")
 			}
 			opts.TermValue = args[i+1]
-			i++
-		case "--user":
-			if i+1 >= len(args) {
-				return app.SubjectSearchOptions{}, errors.New("--user에는 학번이 필요합니다")
-			}
 			i++
 		default:
 			return app.SubjectSearchOptions{}, fmt.Errorf("unknown subject search option: %s", args[i])
