@@ -293,7 +293,7 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		return nil
 	case "download":
 		if len(args) < 2 {
-			return errors.New("usage: klap lecture download <과목번호|강의ID> [--dir <경로>]")
+			return errors.New("usage: klap lecture download <과목명|과목번호|강의ID> [--dir <경로>]")
 		}
 		dir, err := dirFlag(args[2:])
 		if err != nil {
@@ -472,7 +472,7 @@ Usage:
   klap notice detail <공지ID> 강의 공지 상세 출력
   klap timetable         최신 학기 시간표 출력
   klap lecture list      온라인 강의 목록 출력
-  klap lecture download <과목번호|강의ID> 온라인 강의 다운로드
+  klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
   klap config reminder  reminder 설정 확인/변경`)
 }
 

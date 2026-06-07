@@ -22,6 +22,9 @@ func TestLooksLikeLectureID(t *testing.T) {
 	if looksLikeLectureID("7") {
 		t.Fatal("looksLikeLectureID() expected false for course number")
 	}
+	if looksLikeLectureID("오픈소스소프트웨어실습") {
+		t.Fatal("looksLikeLectureID() expected false for course name")
+	}
 }
 
 func TestParseReminderConfigArgs(t *testing.T) {
