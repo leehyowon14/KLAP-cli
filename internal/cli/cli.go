@@ -293,11 +293,23 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		return nil
 	case "download":
 		if len(args) < 2 {
-			return errors.New("usage: klap lecture download <강의ID> [--dir <경로>]")
+			return errors.New("usage: klap lecture download <과목번호|강의ID> [--dir <경로>]")
 		}
 		dir, err := dirFlag(args[2:])
 		if err != nil {
 			return err
+		}
+		if !looksLikeLectureID(args[1]) {
+			result, err := service.DownloadAllLectures(ctx, app.LectureDownloadAllOptions{
+				User:         app.UserOption{StudentID: userFlag(args[2:])},
+				CourseFilter: args[1],
+				Dir:          dir,
+			})
+			if err != nil {
+				return err
+			}
+			printLectureDownloadAllResult(result)
+			return nil
 		}
 		result, err := service.DownloadLecture(ctx, args[1], app.LectureDownloadOptions{
 			User: app.UserOption{StudentID: userFlag(args[2:])},
@@ -440,6 +452,10 @@ func hasFlag(args []string, name string) bool {
 	return false
 }
 
+func looksLikeLectureID(value string) bool {
+	return strings.Contains(strings.TrimSpace(value), ":")
+}
+
 func printHelp() {
 	fmt.Println(`KLAP CLI
 
@@ -456,7 +472,7 @@ Usage:
   klap notice detail <공지ID> 강의 공지 상세 출력
   klap timetable         최신 학기 시간표 출력
   klap lecture list      온라인 강의 목록 출력
-  klap lecture download <강의ID> 온라인 강의 다운로드
+  klap lecture download <과목번호|강의ID> 온라인 강의 다운로드
   klap config reminder  reminder 설정 확인/변경`)
 }
 
@@ -660,6 +676,40 @@ func printLectureRows(rows []app.LectureRow) {
 			row.Lecture.Title,
 		)
 	}
+}
+
+func printLectureDownloadAllResult(result app.LectureDownloadAllResult) {
+	if len(result.Items) == 0 {
+		fmt.Println("다운로드할 온라인 강의가 없습니다")
+		return
+	}
+
+	downloaded := 0
+	skipped := 0
+	failed := 0
+	for _, item := range result.Items {
+		label := item.Lecture.Lecture.Title
+		if item.Lecture.Lecture.ModuleTitle != "" {
+			label = item.Lecture.Lecture.ModuleTitle + " - " + label
+		}
+
+		switch {
+		case item.Err != nil && item.Skipped:
+			skipped++
+			fmt.Printf("건너뜀: %s (%v)\n", label, item.Err)
+		case item.Err != nil:
+			failed++
+			fmt.Printf("실패: %s (%v)\n", label, item.Err)
+		case item.Skipped:
+			skipped++
+			fmt.Printf("건너뜀: %s (이미 있음)\n", item.Path)
+		default:
+			downloaded++
+			fmt.Printf("완료: %s (%s)\n", item.Path, formatBytes(item.Bytes))
+		}
+	}
+
+	fmt.Printf("전체 다운로드 결과: 완료 %d, 건너뜀 %d, 실패 %d\n", downloaded, skipped, failed)
 }
 
 func weekdayLabel(weekday int) string {

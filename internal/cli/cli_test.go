@@ -15,6 +15,15 @@ func TestUserFlag(t *testing.T) {
 	}
 }
 
+func TestLooksLikeLectureID(t *testing.T) {
+	if !looksLikeLectureID("7:content-123") {
+		t.Fatal("looksLikeLectureID() expected true")
+	}
+	if looksLikeLectureID("7") {
+		t.Fatal("looksLikeLectureID() expected false for course number")
+	}
+}
+
 func TestParseReminderConfigArgs(t *testing.T) {
 	name, useExistingList, ok, err := parseReminderConfigArgs([]string{"--name", "To-do", "--use-existing-list"})
 	if err != nil {

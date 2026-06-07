@@ -54,6 +54,12 @@ type LectureDownloadOptions struct {
 	Dir  string
 }
 
+type LectureDownloadAllOptions struct {
+	User         UserOption
+	CourseFilter string
+	Dir          string
+}
+
 type UserRow struct {
 	User    account.User
 	Current bool
@@ -107,6 +113,18 @@ type LectureDownloadResult struct {
 	Bytes    int64
 	Lecture  LectureRow
 	MediaURL string
+}
+
+type LectureDownloadItem struct {
+	Path    string
+	Bytes   int64
+	Lecture LectureRow
+	Skipped bool
+	Err     error
+}
+
+type LectureDownloadAllResult struct {
+	Items []LectureDownloadItem
 }
 
 type ReminderSyncResult struct {
@@ -653,6 +671,95 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		Lecture:  row,
 		MediaURL: mediaURL,
 	}, nil
+}
+
+func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadAllOptions) (LectureDownloadAllResult, error) {
+	if strings.TrimSpace(opts.CourseFilter) == "" {
+		return LectureDownloadAllResult{}, errors.New("전체 다운로드에는 과목명 또는 course list 번호가 필요합니다")
+	}
+
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return LectureDownloadAllResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return LectureDownloadAllResult{}, err
+	}
+
+	courses, err := selectedCourses(term, opts.CourseFilter)
+	if err != nil {
+		return LectureDownloadAllResult{}, err
+	}
+
+	dir := strings.TrimSpace(opts.Dir)
+	if dir == "" {
+		dir = defaultLectureDownloadDir()
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return LectureDownloadAllResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
+	}
+
+	result := LectureDownloadAllResult{}
+	for _, selectedCourse := range courses {
+		lectures, err := client.Lectures(ctx, term.Value, selectedCourse.Course)
+		if err != nil {
+			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+			if refreshErr != nil {
+				return LectureDownloadAllResult{}, refreshErr
+			}
+			if refreshed {
+				client = refreshedClient
+				lectures, err = client.Lectures(ctx, term.Value, selectedCourse.Course)
+			}
+		}
+		if err != nil {
+			return LectureDownloadAllResult{}, err
+		}
+
+		for _, lecture := range lectures {
+			row := LectureRow{
+				ID:         LectureID(selectedCourse.Index, lecture.ContentID),
+				TermValue:  term.Value,
+				CourseName: selectedCourse.Course.Name,
+				Lecture:    lecture,
+			}
+			item := LectureDownloadItem{Lecture: row}
+			if strings.TrimSpace(lecture.ContentID) == "" {
+				item.Skipped = true
+				item.Err = errors.New("KWCommons 콘텐츠 ID가 없습니다")
+				result.Items = append(result.Items, item)
+				continue
+			}
+
+			mediaURL, err := client.ResolveLectureMediaURL(ctx, lecture.ContentID)
+			if err != nil {
+				item.Err = err
+				result.Items = append(result.Items, item)
+				continue
+			}
+
+			item.Path = filepath.Join(dir, lectureFilename(selectedCourse.Course.Name, lecture, mediaURL))
+			if _, err := os.Stat(item.Path); err == nil {
+				item.Skipped = true
+				result.Items = append(result.Items, item)
+				continue
+			} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+				item.Err = err
+				result.Items = append(result.Items, item)
+				continue
+			}
+
+			bytesWritten, err := downloadFile(ctx, mediaURL, item.Path)
+			item.Bytes = bytesWritten
+			if err != nil {
+				item.Err = err
+			}
+			result.Items = append(result.Items, item)
+		}
+	}
+
+	return result, nil
 }
 
 func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentListOptions) (ReminderSyncResult, error) {
