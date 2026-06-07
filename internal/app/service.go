@@ -99,6 +99,7 @@ type AssignmentDetailResult struct {
 	ID         string
 	TermValue  string
 	CourseName string
+	DetailURL  string
 	Detail     klas.AssignmentDetail
 }
 
@@ -407,6 +408,7 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 		ID:         id,
 		TermValue:  term.Value,
 		CourseName: course.Name,
+		DetailURL:  assignmentDetailURL(term.Value, course, ordSeq),
 		Detail:     detail,
 	}, nil
 }

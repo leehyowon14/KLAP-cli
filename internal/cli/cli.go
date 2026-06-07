@@ -634,6 +634,9 @@ func printAssignmentDetail(result app.AssignmentDetailResult) {
 	if detail.TutorText != "" {
 		fmt.Printf("\n피드백:\n%s\n", linkifyForTerminal(detail.TutorText))
 	}
+	if result.DetailURL != "" {
+		fmt.Printf("\n원문: %s\n", linkifyForTerminal(result.DetailURL))
+	}
 }
 
 func printNoticeRows(rows []app.NoticeRow) {
