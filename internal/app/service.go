@@ -1059,6 +1059,18 @@ func termHashtag(termValue string) string {
 	if termValue == "" {
 		return ""
 	}
+	parts := strings.FieldsFunc(termValue, func(r rune) bool {
+		return r == ',' || r == '-'
+	})
+	if len(parts) >= 2 {
+		year := strings.TrimSpace(parts[0])
+		switch strings.TrimSpace(parts[1]) {
+		case "3":
+			return "#" + year + "-여름학기"
+		case "4":
+			return "#" + year + "-겨울학기"
+		}
+	}
 	return "#" + strings.ReplaceAll(termValue, ",", "-")
 }
 

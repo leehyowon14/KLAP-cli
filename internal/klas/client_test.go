@@ -136,6 +136,18 @@ func TestSplitYearHakgi(t *testing.T) {
 	}
 }
 
+func TestNormalizeTermLabelSeasonSemesters(t *testing.T) {
+	if got := normalizeTermLabel("2026년도 3학기", "2026,3"); got != "2026년도 여름학기" {
+		t.Fatalf("normalizeTermLabel() summer = %q", got)
+	}
+	if got := normalizeTermLabel("", "2026,4"); got != "2026년도 겨울학기" {
+		t.Fatalf("normalizeTermLabel() winter = %q", got)
+	}
+	if got := normalizeTermLabel("2026년도 1학기", "2026,1"); got != "2026년도 1학기" {
+		t.Fatalf("normalizeTermLabel() regular = %q", got)
+	}
+}
+
 func TestExtractKWCommonsContentID(t *testing.T) {
 	got := ExtractKWCommonsContentID("https://kwcommons.kw.ac.kr/em/content-123&contents=abc", "")
 	if got != "content-123" {

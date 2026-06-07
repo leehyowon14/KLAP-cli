@@ -142,3 +142,12 @@ func TestReminderHashtags(t *testing.T) {
 		t.Fatalf("reminderHashtags() = %q, want %q", got, want)
 	}
 }
+
+func TestTermHashtagSeasonSemesters(t *testing.T) {
+	if got := termHashtag("2026,3"); got != "#2026-여름학기" {
+		t.Fatalf("termHashtag() summer = %q", got)
+	}
+	if got := termHashtag("2026,4"); got != "#2026-겨울학기" {
+		t.Fatalf("termHashtag() winter = %q", got)
+	}
+}

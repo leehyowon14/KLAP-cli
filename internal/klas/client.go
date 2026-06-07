@@ -371,6 +371,7 @@ func (c *Client) Courses(ctx context.Context) ([]Term, error) {
 	}
 
 	for termIndex := range terms {
+		terms[termIndex].Label = normalizeTermLabel(terms[termIndex].Label, terms[termIndex].Value)
 		filtered := terms[termIndex].Courses[:0]
 		for _, course := range terms[termIndex].Courses {
 			if strings.TrimSpace(course.Name) == "" || strings.TrimSpace(course.Value) == "" {
@@ -1434,6 +1435,34 @@ func splitYearHakgi(yearHakgi string) (string, string) {
 		return parts[0][:4], parts[0][4:]
 	}
 	return yearHakgi, ""
+}
+
+func normalizeTermLabel(label string, value string) string {
+	label = strings.TrimSpace(label)
+	year, hakgi := splitYearHakgi(value)
+	if year == "" || hakgi == "" {
+		return label
+	}
+
+	seasonLabel := semesterLabel(hakgi)
+	if seasonLabel == "" {
+		if label != "" {
+			return label
+		}
+		return fmt.Sprintf("%s년도 %s학기", year, hakgi)
+	}
+	return fmt.Sprintf("%s년도 %s", year, seasonLabel)
+}
+
+func semesterLabel(hakgi string) string {
+	switch strings.TrimSpace(hakgi) {
+	case "3":
+		return "여름학기"
+	case "4":
+		return "겨울학기"
+	default:
+		return ""
+	}
 }
 
 func rowString(row map[string]any, key string) string {
