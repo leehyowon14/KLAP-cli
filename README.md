@@ -11,6 +11,8 @@ klap user list
 klap user select <학번>
 klap user rm <학번>
 klap course list
+klap academic list
+klap academic list --year 2026
 klap assignment list
 klap assignment list --course <과목명|번호>
 klap assignment detail <과목번호:과제번호>

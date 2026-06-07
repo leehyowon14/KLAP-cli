@@ -46,6 +46,8 @@ func Run(ctx context.Context, args []string) error {
 		return runLecture(ctx, service, args[1:])
 	case "attend":
 		return runAttend(ctx, service, args[1:])
+	case "academic":
+		return runAcademic(ctx, service, args[1:])
 	case "config":
 		return runConfig(ctx, service, args[1:])
 	case "help", "-h", "--help":
@@ -276,6 +278,28 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 	}
 	printTimetable(result)
 	return nil
+}
+
+func runAcademic(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: klap academic <list>")
+	}
+
+	switch args[0] {
+	case "list":
+		year, err := academicYearFlag(args[1:])
+		if err != nil {
+			return err
+		}
+		result, err := service.AcademicList(ctx, app.AcademicListOptions{Year: year})
+		if err != nil {
+			return err
+		}
+		printAcademicList(result)
+		return nil
+	default:
+		return fmt.Errorf("unknown academic command: %s", args[0])
+	}
 }
 
 func runLecture(ctx context.Context, service *app.Service, args []string) error {
@@ -546,6 +570,28 @@ func courseFilter(args []string) (string, error) {
 	return "", nil
 }
 
+func academicYearFlag(args []string) (string, error) {
+	for i := 0; i < len(args); i++ {
+		if args[i] != "--year" {
+			continue
+		}
+		if i+1 >= len(args) {
+			return "", errors.New("--year에는 YYYY 형식의 연도가 필요합니다")
+		}
+		year := strings.TrimSpace(args[i+1])
+		if len(year) != 4 {
+			return "", errors.New("--year에는 YYYY 형식의 연도가 필요합니다")
+		}
+		for _, r := range year {
+			if r < '0' || r > '9' {
+				return "", errors.New("--year에는 YYYY 형식의 연도가 필요합니다")
+			}
+		}
+		return year, nil
+	}
+	return "", nil
+}
+
 func hasFlag(args []string, name string) bool {
 	for _, arg := range args {
 		if arg == name {
@@ -574,6 +620,7 @@ Usage:
   klap notice list       강의 공지 목록 출력
   klap notice detail <공지ID> 강의 공지 상세 출력
   klap timetable         최신 학기 시간표 출력
+  klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
   klap lecture status    온라인 강의 수강 상태 출력
   klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
@@ -759,6 +806,33 @@ func printTimetable(result app.TimetableResult) {
 			emptyFallback(entry.Room, "강의실 미지정"),
 			emptyFallback(entry.Professor, "교수 미지정"),
 		)
+	}
+}
+
+func printAcademicList(result app.AcademicListResult) {
+	fmt.Printf("%s 학사일정\n", result.Year)
+	if len(result.Events) == 0 {
+		fmt.Println("학사일정이 없습니다")
+		return
+	}
+
+	currentMonth := ""
+	for _, event := range result.Events {
+		if event.Month != currentMonth {
+			if currentMonth != "" {
+				fmt.Println()
+			}
+			currentMonth = event.Month
+			fmt.Println(currentMonth)
+		}
+		fmt.Printf("  %s | %s", event.Date, event.Title)
+		if event.Note != "" {
+			fmt.Printf(" | %s", event.Note)
+		}
+		fmt.Println()
+	}
+	if result.SourceURL != "" {
+		fmt.Printf("\n출처: %s\n", linkifyForTerminal(result.SourceURL))
 	}
 }
 
