@@ -69,6 +69,28 @@ func TestSelectTermRow(t *testing.T) {
 	}
 }
 
+func TestNormalizeTermValue(t *testing.T) {
+	got, err := normalizeTermValue("2026-1")
+	if err != nil {
+		t.Fatalf("normalizeTermValue() error = %v", err)
+	}
+	if got != "2026,1" {
+		t.Fatalf("normalizeTermValue() = %q", got)
+	}
+	if _, err := normalizeTermValue("2026-5"); err == nil {
+		t.Fatal("normalizeTermValue() expected error for invalid semester")
+	}
+}
+
+func TestLooksLikeSyllabusCourseCode(t *testing.T) {
+	if !looksLikeSyllabusCourseCode("I040-3-3951-01") {
+		t.Fatal("looksLikeSyllabusCourseCode() expected true")
+	}
+	if looksLikeSyllabusCourseCode("컴퓨터그래픽스") {
+		t.Fatal("looksLikeSyllabusCourseCode() expected false")
+	}
+}
+
 func TestParseAssignmentID(t *testing.T) {
 	courseIndex, ordSeq, err := ParseAssignmentID("3:7")
 	if err != nil {

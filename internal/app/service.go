@@ -45,6 +45,12 @@ type TimetableOptions struct {
 	User UserOption
 }
 
+type SyllabusOptions struct {
+	User      UserOption
+	Selector  string
+	TermValue string
+}
+
 type TermListOptions struct {
 	User UserOption
 }
@@ -118,6 +124,13 @@ type NoticeDetailResult struct {
 type TimetableResult struct {
 	Term    klas.Term
 	Entries []klas.TimetableEntry
+}
+
+type SyllabusResult struct {
+	Term      klas.Term
+	SubjectID string
+	Course    klas.Course
+	Syllabus  klas.Syllabus
 }
 
 type TermRow struct {
@@ -657,6 +670,74 @@ func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (Timetab
 	}, nil
 }
 
+func (s *Service) Syllabus(ctx context.Context, opts SyllabusOptions) (SyllabusResult, error) {
+	selector := strings.TrimSpace(opts.Selector)
+	if selector == "" {
+		return SyllabusResult{}, errors.New("강의계획서 조회 대상이 없습니다")
+	}
+
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return SyllabusResult{}, err
+	}
+	client, err := s.authenticatedClient(ctx, studentID)
+	if err != nil {
+		return SyllabusResult{}, err
+	}
+
+	term, client, err := s.termForSyllabus(ctx, studentID, client, opts.TermValue)
+	if err != nil {
+		return SyllabusResult{}, err
+	}
+
+	course := klas.Course{Name: selector}
+	subjectID := ""
+	if looksLikeSyllabusCourseCode(selector) {
+		subjectID, err = klas.SyllabusSubjectIDFromCourseCode(term.Value, selector)
+		if err != nil {
+			return SyllabusResult{}, err
+		}
+	} else {
+		courses, err := selectedCourses(term, selector)
+		if err != nil {
+			return SyllabusResult{}, err
+		}
+		if len(courses) != 1 {
+			return SyllabusResult{}, fmt.Errorf("강의계획서 조회 대상이 여러 개입니다: %s", selector)
+		}
+		course = courses[0].Course
+		subjectID = course.Value
+	}
+
+	syllabus, err := client.SyllabusBySubjectID(ctx, subjectID)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return SyllabusResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			syllabus, err = client.SyllabusBySubjectID(ctx, subjectID)
+		}
+	}
+	if err != nil {
+		return SyllabusResult{}, err
+	}
+	if strings.TrimSpace(course.Name) == "" || course.Name == selector {
+		course.Name = firstNonEmpty(syllabus.KoreanName, syllabus.FullName, selector)
+	}
+	if strings.TrimSpace(course.Value) == "" {
+		course.Value = subjectID
+	}
+
+	return SyllabusResult{
+		Term:      term,
+		SubjectID: subjectID,
+		Course:    course,
+		Syllabus:  syllabus,
+	}, nil
+}
+
 func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]LectureRow, error) {
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
@@ -1184,6 +1265,27 @@ func (s *Service) latestTerm(ctx context.Context, studentID string) (*klas.Clien
 	return client, term, err
 }
 
+func (s *Service) termForSyllabus(ctx context.Context, studentID string, client *klas.Client, termValue string) (klas.Term, *klas.Client, error) {
+	termValue, err := normalizeTermValue(termValue)
+	if err != nil {
+		return klas.Term{}, client, err
+	}
+	if termValue == "" {
+		return s.selectedTerm(ctx, studentID, client)
+	}
+
+	terms, client, err := s.courses(ctx, studentID, client)
+	if err != nil {
+		return klas.Term{}, client, err
+	}
+	for _, term := range terms {
+		if term.Value == termValue {
+			return term, client, nil
+		}
+	}
+	return klas.Term{}, client, fmt.Errorf("학기를 찾을 수 없습니다: %s", termValue)
+}
+
 func (s *Service) selectedTerm(ctx context.Context, studentID string, client *klas.Client) (klas.Term, *klas.Client, error) {
 	terms, client, err := s.courses(ctx, studentID, client)
 	if err != nil {
@@ -1224,6 +1326,55 @@ func (s *Service) courses(ctx context.Context, studentID string, client *klas.Cl
 		return nil, client, err
 	}
 	return terms, client, nil
+}
+
+func normalizeTermValue(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == '-'
+	})
+	if len(parts) != 2 {
+		return "", errors.New("학기 값은 YYYY-S 형식이어야 합니다")
+	}
+	year := strings.TrimSpace(parts[0])
+	semester := strings.TrimSpace(parts[1])
+	if len(year) != 4 {
+		return "", errors.New("학기 값은 YYYY-S 형식이어야 합니다")
+	}
+	for _, r := range year + semester {
+		if r < '0' || r > '9' {
+			return "", errors.New("학기 값은 YYYY-S 형식이어야 합니다")
+		}
+	}
+	if semester < "1" || semester > "4" {
+		return "", errors.New("학기는 1, 2, 3, 4 중 하나여야 합니다")
+	}
+	return year + "," + semester, nil
+}
+
+func looksLikeSyllabusCourseCode(value string) bool {
+	parts := strings.Split(strings.TrimSpace(value), "-")
+	if len(parts) != 4 {
+		return false
+	}
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (s *Service) selectedStudentID(ctx context.Context, user UserOption) (string, error) {

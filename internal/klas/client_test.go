@@ -124,6 +124,51 @@ func TestParseTimetableEntries(t *testing.T) {
 	}
 }
 
+func TestSyllabusSubjectIDFromCourseCode(t *testing.T) {
+	got, err := SyllabusSubjectIDFromCourseCode("2026,1", "I040-3-3951-01")
+	if err != nil {
+		t.Fatalf("SyllabusSubjectIDFromCourseCode() error = %v", err)
+	}
+	if got != "U202613951I040013" {
+		t.Fatalf("SyllabusSubjectIDFromCourseCode() = %q", got)
+	}
+}
+
+func TestBuildSyllabus(t *testing.T) {
+	syllabus := buildSyllabus("U202613951I040013", syllabusDataItem{
+		OpenMajorCode:  "I040",
+		OpenGrade:      "3",
+		OpenGwamokNo:   "3951",
+		BunbanNo:       "01",
+		KoreanName:     "컴퓨터그래픽스",
+		EnglishName:    "Computer Graphics",
+		Professor:      "김동준",
+		CourseType:     "전선",
+		Credits:        flexibleString("3"),
+		Face100Opt:     "Y",
+		AttendanceRate: 10,
+		MidtermRate:    25,
+		Week1Lecture:   "오리엔테이션",
+		Week10Lecture:  "Global Illumination",
+		Week10Subs:     "동영상 보강",
+	}, []syllabusTimeItem{
+		{Weekday: "화", Time1: flexibleString("3"), Room: "새빛103"},
+	})
+
+	if syllabus.CourseCode != "I040-3-3951-01" || syllabus.Operation != "100%대면강의" {
+		t.Fatalf("buildSyllabus() = %+v", syllabus)
+	}
+	if len(syllabus.Schedule) != 2 || syllabus.Schedule[1].Week != 10 || syllabus.Schedule[1].SubNote != "동영상 보강" {
+		t.Fatalf("buildSyllabus() schedule = %+v", syllabus.Schedule)
+	}
+	if len(syllabus.Times) != 1 || syllabus.Times[0].Periods[0] != 3 || syllabus.Times[0].Room != "새빛103" {
+		t.Fatalf("buildSyllabus() times = %+v", syllabus.Times)
+	}
+	if syllabus.Evaluation.Attendance != 10 || syllabus.Evaluation.Midterm != 25 {
+		t.Fatalf("buildSyllabus() evaluation = %+v", syllabus.Evaluation)
+	}
+}
+
 func TestSplitYearHakgi(t *testing.T) {
 	year, hakgi := splitYearHakgi("2026,1")
 	if year != "2026" || hakgi != "1" {

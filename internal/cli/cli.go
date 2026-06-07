@@ -44,6 +44,8 @@ func Run(ctx context.Context, args []string) error {
 		return runNotice(ctx, service, args[1:])
 	case "timetable":
 		return runTimetable(ctx, service, args[1:])
+	case "syllabus":
+		return runSyllabus(ctx, service, args[1:])
 	case "lecture":
 		return runLecture(ctx, service, args[1:])
 	case "attend":
@@ -312,6 +314,19 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 	return nil
 }
 
+func runSyllabus(ctx context.Context, service *app.Service, args []string) error {
+	opts, err := syllabusOptions(args)
+	if err != nil {
+		return err
+	}
+	result, err := service.Syllabus(ctx, opts)
+	if err != nil {
+		return err
+	}
+	printSyllabus(result)
+	return nil
+}
+
 func runAcademic(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap academic <list>")
@@ -546,6 +561,41 @@ func lectureListOptions(args []string) (app.LectureListOptions, error) {
 	}, nil
 }
 
+func syllabusOptions(args []string) (app.SyllabusOptions, error) {
+	if len(args) == 0 {
+		return app.SyllabusOptions{}, errors.New("usage: klap syllabus <과목명|과목번호|학정번호> [--term YYYY-S] [--user <학번>]")
+	}
+
+	opts := app.SyllabusOptions{User: app.UserOption{StudentID: userFlag(args)}}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--term":
+			if i+1 >= len(args) {
+				return app.SyllabusOptions{}, errors.New("--term에는 YYYY-S 형식의 학기가 필요합니다")
+			}
+			opts.TermValue = args[i+1]
+			i++
+		case "--user":
+			if i+1 >= len(args) {
+				return app.SyllabusOptions{}, errors.New("--user에는 학번이 필요합니다")
+			}
+			i++
+		default:
+			if strings.HasPrefix(args[i], "--") {
+				return app.SyllabusOptions{}, fmt.Errorf("unknown syllabus option: %s", args[i])
+			}
+			if opts.Selector != "" {
+				return app.SyllabusOptions{}, errors.New("강의계획서 조회 대상은 하나만 지정할 수 있습니다")
+			}
+			opts.Selector = args[i]
+		}
+	}
+	if strings.TrimSpace(opts.Selector) == "" {
+		return app.SyllabusOptions{}, errors.New("usage: klap syllabus <과목명|과목번호|학정번호> [--term YYYY-S] [--user <학번>]")
+	}
+	return opts, nil
+}
+
 func dirFlag(args []string) (string, error) {
 	for i := 0; i < len(args); i++ {
 		if args[i] != "--dir" {
@@ -654,6 +704,7 @@ Usage:
   klap notice list       강의 공지 목록 출력
   klap notice detail <공지ID> 강의 공지 상세 출력
   klap timetable         현재 학기 시간표 출력
+  klap syllabus <과목명|과목번호|학정번호> 강의계획서 출력
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
   klap lecture status    온라인 강의 수강 상태 출력
@@ -858,6 +909,56 @@ func printTimetable(result app.TimetableResult) {
 	}
 }
 
+func printSyllabus(result app.SyllabusResult) {
+	syllabus := result.Syllabus
+	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
+	fmt.Printf("과목: %s\n", emptyFallback(syllabus.FullName, emptyFallback(syllabus.KoreanName, result.Course.Name)))
+	fmt.Printf("학정번호: %s\n", emptyFallback(syllabus.CourseCode, "확인 필요"))
+	fmt.Printf("과목ID: %s\n", result.SubjectID)
+	if syllabus.CourseType != "" || syllabus.Credits != "" {
+		fmt.Printf("이수/학점: %s / %s\n", emptyFallback(syllabus.CourseType, "-"), emptyFallback(syllabus.Credits, "-"))
+	}
+	if syllabus.Professor != "" {
+		professor := syllabus.Professor
+		if syllabus.ProfessorTitle != "" {
+			professor += " (" + syllabus.ProfessorTitle + ")"
+		}
+		fmt.Printf("담당교수: %s\n", professor)
+	}
+	if len(syllabus.Times) > 0 {
+		fmt.Printf("강의시간: %s\n", formatSyllabusTimes(syllabus.Times))
+	}
+	if syllabus.Operation != "" {
+		fmt.Printf("운영방식: %s\n", syllabus.Operation)
+	}
+	if syllabus.Competency != "" {
+		fmt.Printf("대표역량: %s\n", syllabus.Competency)
+	}
+	if syllabus.Summary != "" {
+		fmt.Printf("\n개요\n%s\n", syllabus.Summary)
+	}
+	if syllabus.Purpose != "" {
+		fmt.Printf("\n학습목표\n%s\n", syllabus.Purpose)
+	}
+	if syllabus.Outcome != "" {
+		fmt.Printf("\n학습성과\n%s\n", syllabus.Outcome)
+	}
+	if syllabus.BookName != "" {
+		fmt.Printf("\n교재: %s\n", syllabus.BookName)
+	}
+	fmt.Printf("\n평가: %s\n", formatSyllabusEvaluation(syllabus.Evaluation))
+	if len(syllabus.Schedule) > 0 {
+		fmt.Println("\n주차별 계획")
+		for _, week := range syllabus.Schedule {
+			fmt.Printf("  %d주차 | %s", week.Week, strings.ReplaceAll(week.Topic, "\n", " / "))
+			if week.SubNote != "" {
+				fmt.Printf(" | %s", strings.ReplaceAll(week.SubNote, "\n", " / "))
+			}
+			fmt.Println()
+		}
+	}
+}
+
 func printAcademicList(result app.AcademicListResult) {
 	fmt.Printf("%s 학사일정\n", result.Year)
 	if len(result.Events) == 0 {
@@ -883,6 +984,38 @@ func printAcademicList(result app.AcademicListResult) {
 	if result.SourceURL != "" {
 		fmt.Printf("\n출처: %s\n", linkifyForTerminal(result.SourceURL))
 	}
+}
+
+func formatSyllabusTimes(times []klas.SyllabusTime) string {
+	parts := make([]string, 0, len(times))
+	for _, item := range times {
+		label := item.Weekday
+		if len(item.Periods) > 0 {
+			periodLabels := make([]string, 0, len(item.Periods))
+			for _, period := range item.Periods {
+				periodLabels = append(periodLabels, strconv.Itoa(period))
+			}
+			label += " " + strings.Join(periodLabels, ",") + "교시"
+		}
+		if item.Room != "" {
+			label += " (" + item.Room + ")"
+		}
+		parts = append(parts, strings.TrimSpace(label))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatSyllabusEvaluation(evaluation klas.SyllabusEvaluation) string {
+	parts := []string{
+		"출석 " + strconv.Itoa(evaluation.Attendance),
+		"학습 " + strconv.Itoa(evaluation.Learning),
+		"중간 " + strconv.Itoa(evaluation.Midterm),
+		"기말 " + strconv.Itoa(evaluation.Final),
+		"과제 " + strconv.Itoa(evaluation.Report),
+		"퀴즈 " + strconv.Itoa(evaluation.Quiz),
+		"기타 " + strconv.Itoa(evaluation.Other),
+	}
+	return strings.Join(parts, " / ")
 }
 
 func printLectureRows(rows []app.LectureRow) {
