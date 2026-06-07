@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,10 +41,10 @@ func TestIntervalFlag(t *testing.T) {
 	}
 }
 
-func TestProgressBar(t *testing.T) {
-	got := progressBar(25, 8)
-	if got != "[##------]" {
-		t.Fatalf("progressBar() = %q", got)
+func TestRenderProgressBar(t *testing.T) {
+	got := renderProgressBar(25, 12)
+	if got == "" || !strings.Contains(got, "25%") {
+		t.Fatalf("renderProgressBar() = %q", got)
 	}
 }
 

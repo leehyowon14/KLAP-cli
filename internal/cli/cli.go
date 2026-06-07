@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	bubblesprogress "github.com/charmbracelet/bubbles/progress"
 	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/app"
 	"github.com/kw-klap/klap-cli/internal/klas"
@@ -836,17 +837,16 @@ func printLectureProgress(row app.LectureRow, progress klas.LectureProgress) {
 }
 
 func formatLectureProgress(row app.LectureRow, progress klas.LectureProgress) string {
-	return fmt.Sprintf("%s %3.0f%% %s | %s",
-		progressBar(progress.Progress, 20),
-		progress.Progress,
+	return fmt.Sprintf("%s %s | %s",
+		renderProgressBar(progress.Progress, 28),
 		formatProgressMinutes(progress),
 		row.ID,
 	)
 }
 
-func progressBar(percent float64, width int) string {
+func renderProgressBar(percent float64, width int) string {
 	if width <= 0 {
-		width = 20
+		width = 28
 	}
 	if percent < 0 {
 		percent = 0
@@ -854,11 +854,12 @@ func progressBar(percent float64, width int) string {
 	if percent > 100 {
 		percent = 100
 	}
-	filled := int((percent / 100 * float64(width)) + 0.5)
-	if filled > width {
-		filled = width
-	}
-	return "[" + strings.Repeat("#", filled) + strings.Repeat("-", width-filled) + "]"
+
+	bar := bubblesprogress.New(
+		bubblesprogress.WithWidth(width),
+		bubblesprogress.WithFillCharacters('█', '░'),
+	)
+	return bar.ViewAs(percent / 100)
 }
 
 func formatProgressMinutes(progress klas.LectureProgress) string {
