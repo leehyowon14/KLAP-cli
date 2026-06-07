@@ -259,6 +259,16 @@ func TestLectureLearningStatusPayload(t *testing.T) {
 	}
 }
 
+func TestLectureListItemLearningTimeFields(t *testing.T) {
+	var item lectureListItem
+	if err := json.Unmarshal([]byte(`{"rcognTime":10,"achivTime":0,"learnTime":"0","totRcognTime":"60","totAchivTime":"50"}`), &item); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if item.RcognTime.String() != "10" || item.AchivTime.String() != "0" || item.TotRcognTime.String() != "60" {
+		t.Fatalf("learning time fields were not preserved: %+v", item)
+	}
+}
+
 func TestHTMLToTextKeepsBlockBreaks(t *testing.T) {
 	input := `<p>과제 설명</p><p><a href="https://example.com">https://example.com</a></p><p>제출 내용</p><ol><li>GitHub repository 주소</li><li>youtube 링크</li></ol>`
 

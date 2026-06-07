@@ -92,6 +92,7 @@ type Lecture struct {
 	ModuleTitle  string
 	Title        string
 	Progress     string
+	AchievedTime string
 	RequiredTime string
 	StartAt      *time.Time
 	EndAt        *time.Time
@@ -222,35 +223,40 @@ type noticeItem struct {
 type timetableRow map[string]any
 
 type lectureListItem struct {
-	GroupCode   string         `json:"grcode"`
-	SubjectID   string         `json:"subj"`
-	Year        string         `json:"year"`
-	Hakgi       string         `json:"hakgi"`
-	Bunban      string         `json:"bunban"`
-	Module      flexibleString `json:"module"`
-	Lesson      flexibleString `json:"lesson"`
-	OID         string         `json:"oid"`
-	PTime       flexibleString `json:"ptime"`
-	TotalTime   flexibleString `json:"totalTime"`
-	WeekNo      flexibleString `json:"weekNo"`
-	WeeklySeq   flexibleString `json:"weeklyseq"`
-	LearningSeq flexibleString `json:"lrnSn"`
-	FileID      flexibleString `json:"fileId"`
-	IsPreview   string         `json:"ispreview"`
-	Evaluation  string         `json:"evltnSe"`
-	Title       string         `json:"sbjt"`
-	ModuleTitle string         `json:"moduletitle"`
-	Progress    flexibleString `json:"prog"`
-	StartDate   string         `json:"startDate"`
-	EndDate     string         `json:"endDate"`
-	StartY      string         `json:"sdateY"`
-	StartH      string         `json:"sdateH"`
-	StartM      string         `json:"sdateM"`
-	EndY        string         `json:"edateY"`
-	EndH        string         `json:"edateH"`
-	EndM        string         `json:"edateM"`
-	Starting    string         `json:"starting"`
-	MVPLink     string         `json:"mvpLink"`
+	GroupCode    string         `json:"grcode"`
+	SubjectID    string         `json:"subj"`
+	Year         string         `json:"year"`
+	Hakgi        string         `json:"hakgi"`
+	Bunban       string         `json:"bunban"`
+	Module       flexibleString `json:"module"`
+	Lesson       flexibleString `json:"lesson"`
+	OID          string         `json:"oid"`
+	PTime        flexibleString `json:"ptime"`
+	TotalTime    flexibleString `json:"totalTime"`
+	LearnTime    flexibleString `json:"learnTime"`
+	AchivTime    flexibleString `json:"achivTime"`
+	RcognTime    flexibleString `json:"rcognTime"`
+	TotRcognTime flexibleString `json:"totRcognTime"`
+	TotAchivTime flexibleString `json:"totAchivTime"`
+	WeekNo       flexibleString `json:"weekNo"`
+	WeeklySeq    flexibleString `json:"weeklyseq"`
+	LearningSeq  flexibleString `json:"lrnSn"`
+	FileID       flexibleString `json:"fileId"`
+	IsPreview    string         `json:"ispreview"`
+	Evaluation   string         `json:"evltnSe"`
+	Title        string         `json:"sbjt"`
+	ModuleTitle  string         `json:"moduletitle"`
+	Progress     flexibleString `json:"prog"`
+	StartDate    string         `json:"startDate"`
+	EndDate      string         `json:"endDate"`
+	StartY       string         `json:"sdateY"`
+	StartH       string         `json:"sdateH"`
+	StartM       string         `json:"sdateM"`
+	EndY         string         `json:"edateY"`
+	EndH         string         `json:"edateH"`
+	EndM         string         `json:"edateM"`
+	Starting     string         `json:"starting"`
+	MVPLink      string         `json:"mvpLink"`
 }
 
 type mediaCandidate struct {
@@ -598,6 +604,12 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 			title = "제목 없음"
 		}
 		contentID := ExtractKWCommonsContentID(item.MVPLink, item.Starting)
+		requiredTime := firstNonEmpty(item.PTime.String(), item.RcognTime.String(), item.TotRcognTime.String())
+		achievedTime := firstNonEmpty(item.TotalTime.String(), item.AchivTime.String(), item.LearnTime.String(), item.TotAchivTime.String())
+		if contentID == "" {
+			requiredTime = firstNonEmpty(item.RcognTime.String(), item.TotRcognTime.String(), item.PTime.String())
+			achievedTime = firstNonEmpty(item.AchivTime.String(), item.LearnTime.String(), item.TotAchivTime.String(), item.TotalTime.String())
+		}
 		lectures = append(lectures, Lecture{
 			ContentID:    contentID,
 			PlayURL:      normalizeKWCommonsPlayURL(firstNonEmpty(item.MVPLink, item.Starting), contentID),
@@ -606,7 +618,8 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 			ModuleTitle:  strings.TrimSpace(item.ModuleTitle),
 			Title:        title,
 			Progress:     item.Progress.String(),
-			RequiredTime: item.PTime.String(),
+			AchievedTime: achievedTime,
+			RequiredTime: requiredTime,
 			StartAt:      parseLectureDateTime(item.StartDate, item.StartY, item.StartH, item.StartM),
 			EndAt:        parseLectureDateTime(item.EndDate, item.EndY, item.EndH, item.EndM),
 			Raw:          item,

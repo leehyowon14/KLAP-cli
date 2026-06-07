@@ -93,10 +93,10 @@ func TestLectureNeedsAttendance(t *testing.T) {
 	if lectureNeedsAttendance(klas.Lecture{ContentID: "", Progress: "20", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected false without content id")
 	}
-	if !lectureNeedsAttendance(klas.Lecture{LearningSeq: "15", Progress: "0", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
+	if !lectureNeedsAttendance(klas.Lecture{LearningSeq: "15", AchievedTime: "0", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected true for incomplete learning activity")
 	}
-	if lectureNeedsAttendance(klas.Lecture{LearningSeq: "15", Progress: "10", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
+	if lectureNeedsAttendance(klas.Lecture{LearningSeq: "15", AchievedTime: "10", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected false for completed learning activity")
 	}
 }

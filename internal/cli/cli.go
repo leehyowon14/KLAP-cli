@@ -43,6 +43,8 @@ func Run(ctx context.Context, args []string) error {
 		return runTimetable(ctx, service, args[1:])
 	case "lecture":
 		return runLecture(ctx, service, args[1:])
+	case "attend":
+		return runAttend(ctx, service, args[1:])
 	case "config":
 		return runConfig(ctx, service, args[1:])
 	case "help", "-h", "--help":
@@ -277,7 +279,7 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 
 func runLecture(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: klap lecture <list|download>")
+		return errors.New("usage: klap lecture <list|download|attend>")
 	}
 
 	switch args[0] {
@@ -337,15 +339,7 @@ func runLectureAttend(ctx context.Context, service *app.Service, args []string) 
 	if err != nil {
 		return err
 	}
-	onProgress := func(row app.LectureRow, progress klas.LectureProgress) {
-		fmt.Printf("수강중: %s | %s | %.0f%% | %s/%s\n",
-			row.ID,
-			row.Lecture.Title,
-			progress.Progress,
-			emptyFallback(progress.TotalTime, "?"),
-			emptyFallback(progress.PTime, "?"),
-		)
-	}
+	onProgress := printLectureProgress
 
 	if args[0] == "all" {
 		course, err := courseFilter(args[1:])
@@ -373,7 +367,35 @@ func runLectureAttend(ctx context.Context, service *app.Service, args []string) 
 	if err != nil {
 		return err
 	}
-	fmt.Printf("수강 완료: %s | %s | %.0f%%\n", result.Lecture.ID, result.Lecture.Lecture.Title, result.Progress.Progress)
+	fmt.Printf("수강 완료: %s | %s\n", formatLectureProgress(result.Lecture, result.Progress), result.Lecture.Lecture.Title)
+	return nil
+}
+
+func runAttend(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: klap attend <all|과목명|과목번호> [--interval <초>]")
+	}
+
+	courseFilter := ""
+	flagArgs := args[1:]
+	if args[0] != "all" {
+		courseFilter = args[0]
+	}
+
+	interval, err := intervalFlag(flagArgs)
+	if err != nil {
+		return err
+	}
+	result, err := service.AttendAllLectures(ctx, app.LectureAttendAllOptions{
+		User:         app.UserOption{StudentID: userFlag(flagArgs)},
+		CourseFilter: courseFilter,
+		Interval:     interval,
+		OnProgress:   printLectureProgress,
+	})
+	if err != nil {
+		return err
+	}
+	printLectureAttendAllResult(result)
 	return nil
 }
 
@@ -542,7 +564,8 @@ Usage:
   klap timetable         최신 학기 시간표 출력
   klap lecture list      온라인 강의 목록 출력
   klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
-  klap lecture attend <강의ID|all> 온라인 강의 자동 수강
+  klap lecture attend <강의ID> 특정 온라인 강의 자동 수강
+  klap attend <all|과목명|과목번호> 온라인 강의와 학습활동 자동 수강
   klap config reminder  reminder 설정 확인/변경`)
 }
 
@@ -803,9 +826,45 @@ func printLectureAttendAllResult(result app.LectureAttendAllResult) {
 			continue
 		}
 		completed++
-		fmt.Printf("완료: %s | %.0f%%\n", item.Lecture.Lecture.Title, item.Progress.Progress)
+		fmt.Printf("완료: %s | %s\n", formatLectureProgress(item.Lecture, item.Progress), item.Lecture.Lecture.Title)
 	}
 	fmt.Printf("전체 수강 결과: 완료 %d, 실패 %d\n", completed, failed)
+}
+
+func printLectureProgress(row app.LectureRow, progress klas.LectureProgress) {
+	fmt.Printf("수강중: %s | %s\n", formatLectureProgress(row, progress), row.Lecture.Title)
+}
+
+func formatLectureProgress(row app.LectureRow, progress klas.LectureProgress) string {
+	return fmt.Sprintf("%s %3.0f%% %s | %s",
+		progressBar(progress.Progress, 20),
+		progress.Progress,
+		formatProgressMinutes(progress),
+		row.ID,
+	)
+}
+
+func progressBar(percent float64, width int) string {
+	if width <= 0 {
+		width = 20
+	}
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	filled := int((percent / 100 * float64(width)) + 0.5)
+	if filled > width {
+		filled = width
+	}
+	return "[" + strings.Repeat("#", filled) + strings.Repeat("-", width-filled) + "]"
+}
+
+func formatProgressMinutes(progress klas.LectureProgress) string {
+	total := emptyFallback(progress.TotalTime, "?")
+	required := emptyFallback(progress.PTime, "?")
+	return total + "/" + required + "분"
 }
 
 func weekdayLabel(weekday int) string {

@@ -1459,7 +1459,7 @@ func lectureNeedsAttendance(lecture klas.Lecture, now time.Time) bool {
 		if lecture.EndAt != nil && now.After(*lecture.EndAt) {
 			return false
 		}
-		progress, progressErr := strconv.ParseFloat(strings.TrimSpace(lecture.Progress), 64)
+		progress, progressErr := strconv.ParseFloat(strings.TrimSpace(lecture.AchievedTime), 64)
 		required, requiredErr := strconv.ParseFloat(strings.TrimSpace(lecture.RequiredTime), 64)
 		if progressErr == nil && requiredErr == nil && required > 0 && progress >= required {
 			return false

@@ -40,6 +40,13 @@ func TestIntervalFlag(t *testing.T) {
 	}
 }
 
+func TestProgressBar(t *testing.T) {
+	got := progressBar(25, 8)
+	if got != "[##------]" {
+		t.Fatalf("progressBar() = %q", got)
+	}
+}
+
 func TestParseReminderConfigArgs(t *testing.T) {
 	name, useExistingList, ok, err := parseReminderConfigArgs([]string{"--name", "To-do", "--use-existing-list"})
 	if err != nil {
