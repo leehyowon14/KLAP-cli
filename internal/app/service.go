@@ -597,7 +597,7 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 		}
 		for _, lecture := range lectures {
 			rows = append(rows, LectureRow{
-				ID:         LectureID(selectedCourse.Index, lecture.ContentID),
+				ID:         LectureID(selectedCourse.Index, lectureAttendKey(lecture)),
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				Lecture:    lecture,
@@ -803,7 +803,7 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 		return LectureAttendResult{}, err
 	}
 
-	courseIndex, contentID, err := ParseLectureID(id)
+	courseIndex, lectureKey, err := ParseLectureID(id)
 	if err != nil {
 		return LectureAttendResult{}, err
 	}
@@ -829,7 +829,7 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 
 	var matched *klas.Lecture
 	for index := range lectures {
-		if strings.TrimSpace(lectures[index].ContentID) == contentID {
+		if lectureMatchesKey(lectures[index], lectureKey) {
 			matched = &lectures[index]
 			break
 		}
@@ -844,7 +844,7 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 		CourseName: course.Name,
 		Lecture:    *matched,
 	}
-	progress, err := attendLectureLoop(ctx, client, row, opts.Interval, opts.OnProgress)
+	progress, err := attendLecture(ctx, client, row, opts.Interval, opts.OnProgress)
 	if err != nil {
 		return LectureAttendResult{}, err
 	}
@@ -889,12 +889,12 @@ func (s *Service) AttendAllLectures(ctx context.Context, opts LectureAttendAllOp
 				continue
 			}
 			row := LectureRow{
-				ID:         LectureID(selectedCourse.Index, lecture.ContentID),
+				ID:         LectureID(selectedCourse.Index, lectureAttendKey(lecture)),
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				Lecture:    lecture,
 			}
-			progress, err := attendLectureLoop(ctx, client, row, opts.Interval, opts.OnProgress)
+			progress, err := attendLecture(ctx, client, row, opts.Interval, opts.OnProgress)
 			result.Items = append(result.Items, LectureAttendItem{
 				Lecture:  row,
 				Progress: progress,
@@ -1254,29 +1254,29 @@ func ParseNoticeID(id string) (int, string, string, error) {
 	return courseIndex, boardNo, masterNo, nil
 }
 
-func LectureID(courseIndex int, contentID string) string {
-	contentID = strings.TrimSpace(contentID)
-	if contentID == "" {
+func LectureID(courseIndex int, lectureKey string) string {
+	lectureKey = strings.TrimSpace(lectureKey)
+	if lectureKey == "" {
 		return "-"
 	}
-	return fmt.Sprintf("%d:%s", courseIndex, contentID)
+	return fmt.Sprintf("%d:%s", courseIndex, lectureKey)
 }
 
 func ParseLectureID(id string) (int, string, error) {
 	parts := strings.SplitN(strings.TrimSpace(id), ":", 2)
 	if len(parts) != 2 {
-		return 0, "", errors.New("강의ID는 course list 번호와 KWCommons 콘텐츠 ID를 조합한 <과목번호>:<contentID> 형식이어야 합니다")
+		return 0, "", errors.New("강의ID는 course list 번호와 강의 키를 조합한 <과목번호>:<contentID|lrn-lrnSn> 형식이어야 합니다")
 	}
 
 	courseIndex, err := strconv.Atoi(parts[0])
 	if err != nil {
 		return 0, "", fmt.Errorf("과목 번호 파싱 실패: %w", err)
 	}
-	contentID := strings.TrimSpace(parts[1])
-	if contentID == "" {
-		return 0, "", errors.New("강의ID에 콘텐츠 ID가 없습니다")
+	lectureKey := strings.TrimSpace(parts[1])
+	if lectureKey == "" {
+		return 0, "", errors.New("강의ID에 강의 키가 없습니다")
 	}
-	return courseIndex, contentID, nil
+	return courseIndex, lectureKey, nil
 }
 
 func defaultLectureDownloadDir() string {
@@ -1396,6 +1396,24 @@ func downloadFile(ctx context.Context, sourceURL string, path string) (int64, er
 	return offset + written, nil
 }
 
+func attendLecture(ctx context.Context, client *klas.Client, row LectureRow, interval time.Duration, onProgress func(LectureRow, klas.LectureProgress)) (klas.LectureProgress, error) {
+	if lectureIsLearningActivity(row.Lecture) {
+		status := lectureLearningStatus(row.Lecture, time.Now())
+		if status != "Y" {
+			return klas.LectureProgress{}, errors.New("학습기간이 아니어서 학습활동 시간이 반영되지 않습니다")
+		}
+		progress, err := client.SaveLectureLearningStatus(ctx, row.Lecture, status)
+		if err != nil {
+			return progress, err
+		}
+		if onProgress != nil {
+			onProgress(row, progress)
+		}
+		return progress, nil
+	}
+	return attendLectureLoop(ctx, client, row, interval, onProgress)
+}
+
 func attendLectureLoop(ctx context.Context, client *klas.Client, row LectureRow, interval time.Duration, onProgress func(LectureRow, klas.LectureProgress)) (klas.LectureProgress, error) {
 	if interval <= 0 {
 		interval = 60 * time.Second
@@ -1434,6 +1452,21 @@ func attendLectureLoop(ctx context.Context, client *klas.Client, row LectureRow,
 }
 
 func lectureNeedsAttendance(lecture klas.Lecture, now time.Time) bool {
+	if lectureIsLearningActivity(lecture) {
+		if lecture.StartAt != nil && now.Before(*lecture.StartAt) {
+			return false
+		}
+		if lecture.EndAt != nil && now.After(*lecture.EndAt) {
+			return false
+		}
+		progress, progressErr := strconv.ParseFloat(strings.TrimSpace(lecture.Progress), 64)
+		required, requiredErr := strconv.ParseFloat(strings.TrimSpace(lecture.RequiredTime), 64)
+		if progressErr == nil && requiredErr == nil && required > 0 && progress >= required {
+			return false
+		}
+		return strings.TrimSpace(lecture.LearningSeq) != ""
+	}
+
 	progress, err := strconv.ParseFloat(strings.TrimSpace(lecture.Progress), 64)
 	if err == nil && progress >= 100 {
 		return false
@@ -1445,6 +1478,35 @@ func lectureNeedsAttendance(lecture klas.Lecture, now time.Time) bool {
 		return false
 	}
 	return strings.TrimSpace(lecture.ContentID) != ""
+}
+
+func lectureIsLearningActivity(lecture klas.Lecture) bool {
+	return strings.TrimSpace(lecture.ContentID) == "" && strings.TrimSpace(lecture.LearningSeq) != ""
+}
+
+func lectureLearningStatus(lecture klas.Lecture, now time.Time) string {
+	if lecture.StartAt != nil && now.Before(*lecture.StartAt) {
+		return "N"
+	}
+	if lecture.EndAt != nil && now.After(*lecture.EndAt) {
+		return "N"
+	}
+	return "Y"
+}
+
+func lectureAttendKey(lecture klas.Lecture) string {
+	if contentID := strings.TrimSpace(lecture.ContentID); contentID != "" {
+		return contentID
+	}
+	if learningSeq := strings.TrimSpace(lecture.LearningSeq); learningSeq != "" {
+		return "lrn-" + learningSeq
+	}
+	return ""
+}
+
+func lectureMatchesKey(lecture klas.Lecture, key string) bool {
+	key = strings.TrimSpace(key)
+	return key != "" && (strings.TrimSpace(lecture.ContentID) == key || lectureAttendKey(lecture) == key)
 }
 
 func defaultReminderBridgePath() string {

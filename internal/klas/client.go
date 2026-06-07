@@ -85,14 +85,17 @@ type TimetableEntry struct {
 }
 
 type Lecture struct {
-	ContentID   string
-	PlayURL     string
-	ModuleTitle string
-	Title       string
-	Progress    string
-	StartAt     *time.Time
-	EndAt       *time.Time
-	Raw         lectureListItem
+	ContentID    string
+	PlayURL      string
+	LearningSeq  string
+	FileID       string
+	ModuleTitle  string
+	Title        string
+	Progress     string
+	RequiredTime string
+	StartAt      *time.Time
+	EndAt        *time.Time
+	Raw          lectureListItem
 }
 
 type LectureProgress struct {
@@ -231,6 +234,8 @@ type lectureListItem struct {
 	TotalTime   flexibleString `json:"totalTime"`
 	WeekNo      flexibleString `json:"weekNo"`
 	WeeklySeq   flexibleString `json:"weeklyseq"`
+	LearningSeq flexibleString `json:"lrnSn"`
+	FileID      flexibleString `json:"fileId"`
 	IsPreview   string         `json:"ispreview"`
 	Evaluation  string         `json:"evltnSe"`
 	Title       string         `json:"sbjt"`
@@ -594,14 +599,17 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 		}
 		contentID := ExtractKWCommonsContentID(item.MVPLink, item.Starting)
 		lectures = append(lectures, Lecture{
-			ContentID:   contentID,
-			PlayURL:     normalizeKWCommonsPlayURL(firstNonEmpty(item.MVPLink, item.Starting), contentID),
-			ModuleTitle: strings.TrimSpace(item.ModuleTitle),
-			Title:       title,
-			Progress:    item.Progress.String(),
-			StartAt:     parseLectureDateTime(item.StartDate, item.StartY, item.StartH, item.StartM),
-			EndAt:       parseLectureDateTime(item.EndDate, item.EndY, item.EndH, item.EndM),
-			Raw:         item,
+			ContentID:    contentID,
+			PlayURL:      normalizeKWCommonsPlayURL(firstNonEmpty(item.MVPLink, item.Starting), contentID),
+			LearningSeq:  item.LearningSeq.String(),
+			FileID:       item.FileID.String(),
+			ModuleTitle:  strings.TrimSpace(item.ModuleTitle),
+			Title:        title,
+			Progress:     item.Progress.String(),
+			RequiredTime: item.PTime.String(),
+			StartAt:      parseLectureDateTime(item.StartDate, item.StartY, item.StartH, item.StartM),
+			EndAt:        parseLectureDateTime(item.EndDate, item.EndY, item.EndH, item.EndM),
+			Raw:          item,
 		})
 	}
 	return lectures, nil
@@ -679,6 +687,29 @@ func (c *Client) UpdateLectureProgress(ctx context.Context, lecture Lecture, lec
 		return LectureProgress{}, err
 	}
 	return parseLectureProgress(body)
+}
+
+func (c *Client) SaveLectureLearningStatus(ctx context.Context, lecture Lecture, lrnStatus string) (LectureProgress, error) {
+	payload, err := lectureLearningStatusPayload(lecture, lrnStatus)
+	if err != nil {
+		return LectureProgress{}, err
+	}
+
+	body, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/SaveLrnStatus.do", payload)
+	if err != nil {
+		return LectureProgress{}, err
+	}
+	if strings.Trim(strings.TrimSpace(string(body)), `"`) != "Y" {
+		return LectureProgress{}, errors.New("학습활동 수강 상태 저장에 실패했습니다")
+	}
+
+	requiredTime := strings.TrimSpace(lecture.RequiredTime)
+	return LectureProgress{
+		TotalTime: firstNonEmpty(requiredTime, strings.TrimSpace(lecture.Progress)),
+		PTime:     requiredTime,
+		Progress:  100,
+		Completed: true,
+	}, nil
 }
 
 func parseTimetableEntries(response []timetableRow) []TimetableEntry {
@@ -880,6 +911,36 @@ func lectureProgressForm(lecture Lecture, lecKey string) (url.Values, error) {
 	}
 	values.Set("lecKey", lecKey)
 	return values, nil
+}
+
+func lectureLearningStatusPayload(lecture Lecture, lrnStatus string) (map[string]any, error) {
+	item := lecture.Raw
+	required := map[string]string{
+		"grcode": item.GroupCode,
+		"subj":   item.SubjectID,
+		"year":   item.Year,
+		"hakgi":  item.Hakgi,
+		"bunban": item.Bunban,
+		"lrnSn":  item.LearningSeq.String(),
+	}
+	for key, value := range required {
+		if strings.TrimSpace(value) == "" {
+			return nil, fmt.Errorf("학습활동 수강 필드가 없습니다: %s", key)
+		}
+	}
+	if strings.TrimSpace(lrnStatus) == "" {
+		return nil, errors.New("학습활동 수강 상태가 없습니다")
+	}
+
+	return map[string]any{
+		"grcode":    item.GroupCode,
+		"subj":      item.SubjectID,
+		"year":      item.Year,
+		"hakgi":     item.Hakgi,
+		"bunban":    item.Bunban,
+		"lrnSn":     item.LearningSeq.String(),
+		"lrnStatus": lrnStatus,
+	}, nil
 }
 
 func parseLectureProgress(body []byte) (LectureProgress, error) {

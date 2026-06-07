@@ -242,6 +242,23 @@ func TestLectureViewerForm(t *testing.T) {
 	}
 }
 
+func TestLectureLearningStatusPayload(t *testing.T) {
+	payload, err := lectureLearningStatusPayload(Lecture{Raw: lectureListItem{
+		GroupCode:   "G",
+		SubjectID:   "S",
+		Year:        "2026",
+		Hakgi:       "1",
+		Bunban:      "01",
+		LearningSeq: flexibleString("15"),
+	}}, "Y")
+	if err != nil {
+		t.Fatalf("lectureLearningStatusPayload() error = %v", err)
+	}
+	if payload["lrnSn"] != "15" || payload["lrnStatus"] != "Y" {
+		t.Fatalf("lectureLearningStatusPayload() = %v", payload)
+	}
+}
+
 func TestHTMLToTextKeepsBlockBreaks(t *testing.T) {
 	input := `<p>과제 설명</p><p><a href="https://example.com">https://example.com</a></p><p>제출 내용</p><ol><li>GitHub repository 주소</li><li>youtube 링크</li></ol>`
 

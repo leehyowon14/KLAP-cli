@@ -736,8 +736,11 @@ func printLectureRows(rows []app.LectureRow) {
 		id := row.ID
 		status := "다운로드 가능"
 		if row.Lecture.ContentID == "" {
-			id = "-"
-			status = "다운로드 불가"
+			status = "학습활동"
+			if row.Lecture.LearningSeq == "" {
+				id = "-"
+				status = "다운로드 불가"
+			}
 		}
 		fmt.Printf("%s | %s | %s | %s | %s | %s | %s\n",
 			id,

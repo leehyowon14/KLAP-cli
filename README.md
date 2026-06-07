@@ -20,6 +20,7 @@ klap lecture list --course <과목명|번호>
 klap lecture download <과목명|과목번호>
 klap lecture download <과목번호:강의콘텐츠ID>
 klap lecture attend <과목번호:강의콘텐츠ID>
+klap lecture attend <과목번호:lrn-학습활동번호>
 klap lecture attend all
 klap lecture attend all --course <과목명|번호>
 klap config reminder
