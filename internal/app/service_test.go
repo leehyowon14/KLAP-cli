@@ -58,6 +58,27 @@ func TestParseNoticeID(t *testing.T) {
 	}
 }
 
+func TestParseLectureID(t *testing.T) {
+	courseIndex, contentID, err := ParseLectureID("7:content-123")
+	if err != nil {
+		t.Fatalf("ParseLectureID() error = %v", err)
+	}
+	if courseIndex != 7 || contentID != "content-123" {
+		t.Fatalf("ParseLectureID() = %d, %q", courseIndex, contentID)
+	}
+}
+
+func TestLectureFilenameSanitizesPathComponents(t *testing.T) {
+	got := lectureFilename("오픈소스/실습", klas.Lecture{
+		ModuleTitle: "1주차: 소개",
+		Title:       "Git? GitHub* 시작",
+	}, "https://media.example.com/video.mp4?token=1")
+	want := "오픈소스_실습_1주차_ 소개_Git_ GitHub_ 시작.mp4"
+	if got != want {
+		t.Fatalf("lectureFilename() = %q, want %q", got, want)
+	}
+}
+
 func TestBuildReminderNotesIncludesBodyAndMarker(t *testing.T) {
 	dueAt := time.Date(2026, 5, 5, 23, 59, 0, 0, time.FixedZone("KST", 9*60*60))
 	notes := buildReminderNotes(AssignmentDetailResult{

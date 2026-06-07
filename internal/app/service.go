@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -40,6 +42,16 @@ type NoticeListOptions struct {
 
 type TimetableOptions struct {
 	User UserOption
+}
+
+type LectureListOptions struct {
+	User         UserOption
+	CourseFilter string
+}
+
+type LectureDownloadOptions struct {
+	User UserOption
+	Dir  string
 }
 
 type UserRow struct {
@@ -81,6 +93,20 @@ type NoticeDetailResult struct {
 type TimetableResult struct {
 	Term    klas.Term
 	Entries []klas.TimetableEntry
+}
+
+type LectureRow struct {
+	ID         string
+	TermValue  string
+	CourseName string
+	Lecture    klas.Lecture
+}
+
+type LectureDownloadResult struct {
+	Path     string
+	Bytes    int64
+	Lecture  LectureRow
+	MediaURL string
 }
 
 type ReminderSyncResult struct {
@@ -489,6 +515,146 @@ func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (Timetab
 	}, nil
 }
 
+func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]LectureRow, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return nil, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return nil, err
+	}
+
+	courses, err := selectedCourses(term, opts.CourseFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]LectureRow, 0)
+	for _, selectedCourse := range courses {
+		lectures, err := client.Lectures(ctx, term.Value, selectedCourse.Course)
+		if err != nil {
+			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+			if refreshErr != nil {
+				return nil, refreshErr
+			}
+			if refreshed {
+				client = refreshedClient
+				lectures, err = client.Lectures(ctx, term.Value, selectedCourse.Course)
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, lecture := range lectures {
+			rows = append(rows, LectureRow{
+				ID:         LectureID(selectedCourse.Index, lecture.ContentID),
+				TermValue:  term.Value,
+				CourseName: selectedCourse.Course.Name,
+				Lecture:    lecture,
+			})
+		}
+	}
+
+	sort.SliceStable(rows, func(i, j int) bool {
+		left := rows[i].Lecture.StartAt
+		right := rows[j].Lecture.StartAt
+		if left == nil && right == nil {
+			return rows[i].ID < rows[j].ID
+		}
+		if left == nil {
+			return false
+		}
+		if right == nil {
+			return true
+		}
+		if left.Equal(*right) {
+			return rows[i].Lecture.Title < rows[j].Lecture.Title
+		}
+		return left.Before(*right)
+	})
+
+	return rows, nil
+}
+
+func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDownloadOptions) (LectureDownloadResult, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return LectureDownloadResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return LectureDownloadResult{}, err
+	}
+
+	courseIndex, contentID, err := ParseLectureID(id)
+	if err != nil {
+		return LectureDownloadResult{}, err
+	}
+	if courseIndex < 1 || courseIndex > len(term.Courses) {
+		return LectureDownloadResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
+	}
+
+	course := term.Courses[courseIndex-1]
+	lectures, err := client.Lectures(ctx, term.Value, course)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return LectureDownloadResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			lectures, err = client.Lectures(ctx, term.Value, course)
+		}
+	}
+	if err != nil {
+		return LectureDownloadResult{}, err
+	}
+
+	var matched *klas.Lecture
+	for index := range lectures {
+		if strings.TrimSpace(lectures[index].ContentID) == contentID {
+			matched = &lectures[index]
+			break
+		}
+	}
+	if matched == nil {
+		return LectureDownloadResult{}, fmt.Errorf("강의를 찾을 수 없습니다: %s", id)
+	}
+
+	mediaURL, err := client.ResolveLectureMediaURL(ctx, contentID)
+	if err != nil {
+		return LectureDownloadResult{}, err
+	}
+
+	dir := strings.TrimSpace(opts.Dir)
+	if dir == "" {
+		dir = defaultLectureDownloadDir()
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
+	}
+
+	path := filepath.Join(dir, lectureFilename(course.Name, *matched, mediaURL))
+	bytesWritten, err := downloadFile(ctx, mediaURL, path)
+	if err != nil {
+		return LectureDownloadResult{}, err
+	}
+
+	row := LectureRow{
+		ID:         id,
+		TermValue:  term.Value,
+		CourseName: course.Name,
+		Lecture:    *matched,
+	}
+	return LectureDownloadResult{
+		Path:     path,
+		Bytes:    bytesWritten,
+		Lecture:  row,
+		MediaURL: mediaURL,
+	}, nil
+}
+
 func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentListOptions) (ReminderSyncResult, error) {
 	rows, err := s.AssignmentList(ctx, opts)
 	if err != nil {
@@ -836,6 +1002,148 @@ func ParseNoticeID(id string) (int, string, string, error) {
 		return 0, "", "", errors.New("공지ID에 masterNo가 없습니다")
 	}
 	return courseIndex, boardNo, masterNo, nil
+}
+
+func LectureID(courseIndex int, contentID string) string {
+	contentID = strings.TrimSpace(contentID)
+	if contentID == "" {
+		return "-"
+	}
+	return fmt.Sprintf("%d:%s", courseIndex, contentID)
+}
+
+func ParseLectureID(id string) (int, string, error) {
+	parts := strings.SplitN(strings.TrimSpace(id), ":", 2)
+	if len(parts) != 2 {
+		return 0, "", errors.New("강의ID는 course list 번호와 KWCommons 콘텐츠 ID를 조합한 <과목번호>:<contentID> 형식이어야 합니다")
+	}
+
+	courseIndex, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, "", fmt.Errorf("과목 번호 파싱 실패: %w", err)
+	}
+	contentID := strings.TrimSpace(parts[1])
+	if contentID == "" {
+		return 0, "", errors.New("강의ID에 콘텐츠 ID가 없습니다")
+	}
+	return courseIndex, contentID, nil
+}
+
+func defaultLectureDownloadDir() string {
+	return "downloads"
+}
+
+func lectureFilename(courseName string, lecture klas.Lecture, mediaURL string) string {
+	parts := []string{
+		sanitizePathComponent(courseName),
+		sanitizePathComponent(lecture.ModuleTitle),
+		sanitizePathComponent(lecture.Title),
+	}
+
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			filtered = append(filtered, part)
+		}
+	}
+	if len(filtered) == 0 {
+		filtered = append(filtered, "lecture")
+	}
+
+	extension := ".mp4"
+	if parsed, err := url.Parse(mediaURL); err == nil {
+		if ext := filepath.Ext(parsed.Path); ext != "" {
+			extension = ext
+		}
+	}
+	return strings.Join(filtered, "_") + extension
+}
+
+func sanitizePathComponent(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		"/", "_",
+		"\\", "_",
+		":", "_",
+		"*", "_",
+		"?", "_",
+		"\"", "_",
+		"<", "_",
+		">", "_",
+		"|", "_",
+		"\n", " ",
+		"\r", " ",
+		"\t", " ",
+	)
+	value = replacer.Replace(value)
+	value = strings.Join(strings.Fields(value), " ")
+	if len([]rune(value)) > 120 {
+		runes := []rune(value)
+		value = string(runes[:120])
+	}
+	return strings.Trim(value, ". ")
+}
+
+func downloadFile(ctx context.Context, sourceURL string, path string) (int64, error) {
+	if _, err := os.Stat(path); err == nil {
+		return 0, fmt.Errorf("이미 파일이 있습니다: %s", path)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return 0, err
+	}
+
+	partPath := path + ".part"
+	var offset int64
+	if stat, err := os.Stat(partPath); err == nil {
+		offset = stat.Size()
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	request.Header.Set("User-Agent", "KLAP-CLI/0.1")
+	if offset > 0 {
+		request.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return 0, fmt.Errorf("동영상 다운로드 요청 실패: %w", err)
+	}
+	defer response.Body.Close()
+
+	flag := os.O_CREATE | os.O_WRONLY
+	if offset > 0 && response.StatusCode == http.StatusPartialContent {
+		flag |= os.O_APPEND
+	} else {
+		offset = 0
+		flag |= os.O_TRUNC
+	}
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return 0, fmt.Errorf("동영상 다운로드 HTTP 오류: %s", response.Status)
+	}
+
+	file, err := os.OpenFile(partPath, flag, 0o644)
+	if err != nil {
+		return 0, fmt.Errorf("임시 파일 열기 실패: %w", err)
+	}
+	written, copyErr := io.Copy(file, response.Body)
+	closeErr := file.Close()
+	if copyErr != nil {
+		return offset + written, fmt.Errorf("동영상 다운로드 실패: %w", copyErr)
+	}
+	if closeErr != nil {
+		return offset + written, fmt.Errorf("임시 파일 닫기 실패: %w", closeErr)
+	}
+
+	if err := os.Rename(partPath, path); err != nil {
+		return offset + written, fmt.Errorf("다운로드 파일 저장 실패: %w", err)
+	}
+	return offset + written, nil
 }
 
 func defaultReminderBridgePath() string {

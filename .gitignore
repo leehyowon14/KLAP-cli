@@ -3,3 +3,8 @@ dist/
 /klap
 /klap.exe
 *.test
+downloads/
+*.part
+*.mp4
+*.m4v
+*.mov

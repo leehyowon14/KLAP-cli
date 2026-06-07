@@ -127,6 +127,42 @@ func TestSplitYearHakgi(t *testing.T) {
 	}
 }
 
+func TestExtractKWCommonsContentID(t *testing.T) {
+	got := ExtractKWCommonsContentID("https://kwcommons.kw.ac.kr/em/content-123&contents=abc", "")
+	if got != "content-123" {
+		t.Fatalf("ExtractKWCommonsContentID() = %q", got)
+	}
+
+	got = ExtractKWCommonsContentID("", "https://kwcommons.kw.ac.kr/em/fallback-456")
+	if got != "fallback-456" {
+		t.Fatalf("ExtractKWCommonsContentID() fallback = %q", got)
+	}
+}
+
+func TestExtractMediaURLDesktop(t *testing.T) {
+	body := []byte(`<content><desktop><media_uri>https://media.example.com/video.mp4</media_uri></desktop></content>`)
+
+	got, err := ExtractMediaURL(body)
+	if err != nil {
+		t.Fatalf("ExtractMediaURL() error = %v", err)
+	}
+	if got != "https://media.example.com/video.mp4" {
+		t.Fatalf("ExtractMediaURL() = %q", got)
+	}
+}
+
+func TestExtractMediaURLFallbackMainMedia(t *testing.T) {
+	body := []byte(`<content><media_uri target="all">https://media.example.com/path/[MEDIA_FILE]</media_uri><main_media media_id="m1">video.mp4</main_media></content>`)
+
+	got, err := ExtractMediaURL(body)
+	if err != nil {
+		t.Fatalf("ExtractMediaURL() error = %v", err)
+	}
+	if got != "https://media.example.com/path/video.mp4" {
+		t.Fatalf("ExtractMediaURL() = %q", got)
+	}
+}
+
 func TestHTMLToTextKeepsBlockBreaks(t *testing.T) {
 	input := `<p>과제 설명</p><p><a href="https://example.com">https://example.com</a></p><p>제출 내용</p><ol><li>GitHub repository 주소</li><li>youtube 링크</li></ol>`
 

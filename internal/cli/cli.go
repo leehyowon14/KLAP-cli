@@ -40,6 +40,8 @@ func Run(ctx context.Context, args []string) error {
 		return runNotice(ctx, service, args[1:])
 	case "timetable":
 		return runTimetable(ctx, service, args[1:])
+	case "lecture":
+		return runLecture(ctx, service, args[1:])
 	case "config":
 		return runConfig(ctx, service, args[1:])
 	case "help", "-h", "--help":
@@ -272,6 +274,45 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 	return nil
 }
 
+func runLecture(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: klap lecture <list|download>")
+	}
+
+	switch args[0] {
+	case "list":
+		opts, err := lectureListOptions(args[1:])
+		if err != nil {
+			return err
+		}
+		rows, err := service.LectureList(ctx, opts)
+		if err != nil {
+			return err
+		}
+		printLectureRows(rows)
+		return nil
+	case "download":
+		if len(args) < 2 {
+			return errors.New("usage: klap lecture download <강의ID> [--dir <경로>]")
+		}
+		dir, err := dirFlag(args[2:])
+		if err != nil {
+			return err
+		}
+		result, err := service.DownloadLecture(ctx, args[1], app.LectureDownloadOptions{
+			User: app.UserOption{StudentID: userFlag(args[2:])},
+			Dir:  dir,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("다운로드 완료: %s (%s)\n", result.Path, formatBytes(result.Bytes))
+		return nil
+	default:
+		return fmt.Errorf("unknown lecture command: %s", args[0])
+	}
+}
+
 func runAssignmentRemind(ctx context.Context, service *app.Service, args []string) error {
 	auto := hasFlag(args, "--auto")
 	if !auto {
@@ -340,6 +381,30 @@ func noticeListOptions(args []string) (app.NoticeListOptions, error) {
 	}, nil
 }
 
+func lectureListOptions(args []string) (app.LectureListOptions, error) {
+	course, err := courseFilter(args)
+	if err != nil {
+		return app.LectureListOptions{}, err
+	}
+	return app.LectureListOptions{
+		User:         app.UserOption{StudentID: userFlag(args)},
+		CourseFilter: course,
+	}, nil
+}
+
+func dirFlag(args []string) (string, error) {
+	for i := 0; i < len(args); i++ {
+		if args[i] != "--dir" {
+			continue
+		}
+		if i+1 >= len(args) {
+			return "", errors.New("--dir에는 다운로드 폴더 경로가 필요합니다")
+		}
+		return args[i+1], nil
+	}
+	return "", nil
+}
+
 func userFlag(args []string) string {
 	for i := 0; i < len(args); i++ {
 		if args[i] != "--user" {
@@ -390,6 +455,8 @@ Usage:
   klap notice list       강의 공지 목록 출력
   klap notice detail <공지ID> 강의 공지 상세 출력
   klap timetable         최신 학기 시간표 출력
+  klap lecture list      온라인 강의 목록 출력
+  klap lecture download <강의ID> 온라인 강의 다운로드
   klap config reminder  reminder 설정 확인/변경`)
 }
 
@@ -570,6 +637,31 @@ func printTimetable(result app.TimetableResult) {
 	}
 }
 
+func printLectureRows(rows []app.LectureRow) {
+	if len(rows) == 0 {
+		fmt.Println("온라인 강의가 없습니다")
+		return
+	}
+
+	for _, row := range rows {
+		id := row.ID
+		status := "다운로드 가능"
+		if row.Lecture.ContentID == "" {
+			id = "-"
+			status = "다운로드 불가"
+		}
+		fmt.Printf("%s | %s | %s | %s | %s | %s | %s\n",
+			id,
+			formatLectureRange(row.Lecture.StartAt, row.Lecture.EndAt),
+			emptyFallback(row.Lecture.Progress, "진도 확인 필요"),
+			status,
+			row.CourseName,
+			emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요"),
+			row.Lecture.Title,
+		)
+	}
+}
+
 func weekdayLabel(weekday int) string {
 	switch weekday {
 	case 1:
@@ -602,6 +694,36 @@ func emptyFallback(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func formatLectureRange(start *time.Time, end *time.Time) string {
+	if start == nil && end == nil {
+		return "기간 확인 필요"
+	}
+	if start == nil {
+		return "~ " + end.Format("2006-01-02 15:04")
+	}
+	if end == nil {
+		return start.Format("2006-01-02 15:04") + " ~"
+	}
+	return start.Format("2006-01-02 15:04") + " ~ " + end.Format("2006-01-02 15:04")
+}
+
+func formatBytes(value int64) string {
+	const unit = 1024
+	if value < unit {
+		return fmt.Sprintf("%d B", value)
+	}
+	divisor := int64(unit)
+	unitLabel := "KB"
+	for _, label := range []string{"MB", "GB", "TB"} {
+		if value < divisor*unit {
+			break
+		}
+		divisor *= unit
+		unitLabel = label
+	}
+	return fmt.Sprintf("%.1f %s", float64(value)/float64(divisor), unitLabel)
 }
 
 func formatTime(value *time.Time) string {
