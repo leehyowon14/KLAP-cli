@@ -151,6 +151,19 @@ func TestExtractMediaURLDesktop(t *testing.T) {
 	}
 }
 
+func TestExtractMediaURLPreservesExternalDesktopHost(t *testing.T) {
+	body := []byte(`<content><desktop><media_uri>https://professor-media.example.edu/lecture/path/video.m3u8?token=signed</media_uri></desktop></content>`)
+
+	got, err := ExtractMediaURL(body)
+	if err != nil {
+		t.Fatalf("ExtractMediaURL() error = %v", err)
+	}
+	want := "https://professor-media.example.edu/lecture/path/video.m3u8?token=signed"
+	if got != want {
+		t.Fatalf("ExtractMediaURL() = %q, want %q", got, want)
+	}
+}
+
 func TestExtractMediaURLFallbackMainMedia(t *testing.T) {
 	body := []byte(`<content><media_uri target="all">https://media.example.com/path/[MEDIA_FILE]</media_uri><main_media media_id="m1">video.mp4</main_media></content>`)
 
