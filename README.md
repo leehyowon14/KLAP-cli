@@ -13,6 +13,7 @@ klap user rm <학번>
 klap term list
 klap term select <학기번호|학기값>
 klap course list
+klap subject search --name 컴퓨터그래픽스 --professor 김동준
 klap syllabus <과목명|과목번호|학정번호>
 klap syllabus I040-3-3951-01 --term 2026-1
 klap academic list

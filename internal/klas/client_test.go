@@ -134,6 +134,24 @@ func TestSyllabusSubjectIDFromCourseCode(t *testing.T) {
 	}
 }
 
+func TestSyllabusListItemSubjectID(t *testing.T) {
+	item := SyllabusListItem{
+		ThisYear:      "2026",
+		Hakgi:         "1",
+		OpenMajorCode: "I040",
+		OpenGrade:     "3",
+		OpenGwamokNo:  "3951",
+		BunbanNo:      "01",
+	}
+	subjectID, err := item.SubjectID()
+	if err != nil {
+		t.Fatalf("SubjectID() error = %v", err)
+	}
+	if item.CourseCode() != "I040-3-3951-01" || subjectID != "U202613951I040013" {
+		t.Fatalf("item ids = %q, %q", item.CourseCode(), subjectID)
+	}
+}
+
 func TestBuildSyllabus(t *testing.T) {
 	syllabus := buildSyllabus("U202613951I040013", syllabusDataItem{
 		OpenMajorCode:  "I040",

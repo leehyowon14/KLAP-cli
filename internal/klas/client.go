@@ -720,7 +720,7 @@ func (c *Client) Timetable(ctx context.Context, yearHakgi string) ([]TimetableEn
 	return parseTimetableEntries(response), nil
 }
 
-func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, query string) ([]SyllabusListItem, error) {
+func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, name string, professor string) ([]SyllabusListItem, error) {
 	year, hakgi := splitYearHakgi(yearHakgi)
 	body, err := c.do(ctx, http.MethodPost, "/std/cps/atnlc/LectrePlanStdList.do", map[string]any{
 		"list":              []any{},
@@ -732,8 +732,8 @@ func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, query strin
 		"numText":           "",
 		"selectYearList":    []any{},
 		"selectRadio":       "all",
-		"selectText":        strings.TrimSpace(query),
-		"selectProfsr":      "",
+		"selectText":        strings.TrimSpace(name),
+		"selectProfsr":      strings.TrimSpace(professor),
 		"cmmnGamok":         "",
 		"selectCmGamokList": []any{},
 		"selecthakgwa":      "",
@@ -1114,6 +1114,14 @@ func SyllabusCourseCode(openMajorCode string, openGrade string, openGwamokNo str
 		return strings.Join(parts, "-")
 	}
 	return strings.Join(parts, "-")
+}
+
+func (item SyllabusListItem) CourseCode() string {
+	return SyllabusCourseCode(item.OpenMajorCode, item.OpenGrade, item.OpenGwamokNo, item.BunbanNo)
+}
+
+func (item SyllabusListItem) SubjectID() (string, error) {
+	return SyllabusSubjectIDFromCourseCode(item.ThisYear+","+item.Hakgi, item.CourseCode())
 }
 
 func SyllabusSubjectIDFromCourseCode(yearHakgi string, courseCode string) (string, error) {

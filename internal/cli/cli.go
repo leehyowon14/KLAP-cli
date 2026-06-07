@@ -36,6 +36,8 @@ func Run(ctx context.Context, args []string) error {
 		return runUser(ctx, service, args[1:])
 	case "course":
 		return runCourse(ctx, service, args[1:])
+	case "subject":
+		return runSubject(ctx, service, args[1:])
 	case "term":
 		return runTerm(ctx, service, args[1:])
 	case "assignment":
@@ -198,6 +200,28 @@ func runCourse(ctx context.Context, service *app.Service, args []string) error {
 		return nil
 	default:
 		return fmt.Errorf("unknown course command: %s", args[0])
+	}
+}
+
+func runSubject(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: klap subject <search>")
+	}
+
+	switch args[0] {
+	case "search":
+		opts, err := subjectSearchOptions(args[1:])
+		if err != nil {
+			return err
+		}
+		result, err := service.SubjectSearch(ctx, opts)
+		if err != nil {
+			return err
+		}
+		printSubjectSearch(result)
+		return nil
+	default:
+		return fmt.Errorf("unknown subject command: %s", args[0])
 	}
 }
 
@@ -596,6 +620,43 @@ func syllabusOptions(args []string) (app.SyllabusOptions, error) {
 	return opts, nil
 }
 
+func subjectSearchOptions(args []string) (app.SubjectSearchOptions, error) {
+	opts := app.SubjectSearchOptions{User: app.UserOption{StudentID: userFlag(args)}}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--name":
+			if i+1 >= len(args) {
+				return app.SubjectSearchOptions{}, errors.New("--name에는 과목명이 필요합니다")
+			}
+			opts.Name = args[i+1]
+			i++
+		case "--professor":
+			if i+1 >= len(args) {
+				return app.SubjectSearchOptions{}, errors.New("--professor에는 교수명이 필요합니다")
+			}
+			opts.Professor = args[i+1]
+			i++
+		case "--term":
+			if i+1 >= len(args) {
+				return app.SubjectSearchOptions{}, errors.New("--term에는 YYYY-S 형식의 학기가 필요합니다")
+			}
+			opts.TermValue = args[i+1]
+			i++
+		case "--user":
+			if i+1 >= len(args) {
+				return app.SubjectSearchOptions{}, errors.New("--user에는 학번이 필요합니다")
+			}
+			i++
+		default:
+			return app.SubjectSearchOptions{}, fmt.Errorf("unknown subject search option: %s", args[i])
+		}
+	}
+	if strings.TrimSpace(opts.Name) == "" && strings.TrimSpace(opts.Professor) == "" {
+		return app.SubjectSearchOptions{}, errors.New("usage: klap subject search [--name <과목명>] [--professor <교수명>] [--term YYYY-S]")
+	}
+	return opts, nil
+}
+
 func dirFlag(args []string) (string, error) {
 	for i := 0; i < len(args); i++ {
 		if args[i] != "--dir" {
@@ -698,6 +759,7 @@ Usage:
   klap term list         수강 학기 목록 출력
   klap term select <학기번호|학기값> 현재 학기 선택
   klap course list       현재 학기 수업 목록 출력
+  klap subject search    과목 검색
   klap assignment list   과제 목록 출력
   klap assignment detail <과제ID> 과제 상세 출력
   klap assignment remind 과제 마감 reminder 동기화
@@ -739,6 +801,31 @@ func printCourseList(terms []klas.Term) {
 
 	for index, course := range term.Courses {
 		fmt.Printf("%d. %s\n", index+1, strings.TrimSpace(course.Name))
+	}
+}
+
+func printSubjectSearch(result app.SubjectSearchResult) {
+	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
+	if len(result.Rows) == 0 {
+		fmt.Println("검색된 과목이 없습니다")
+		return
+	}
+
+	fmt.Println("학정번호 | 과목명 | 교수 | 강의시간")
+	for _, row := range result.Rows {
+		times := formatSyllabusTimes(row.Times)
+		if times == "" {
+			times = "강의시간 확인 필요"
+		}
+		if row.Err != nil {
+			times = "강의시간 확인 실패"
+		}
+		fmt.Printf("%s | %s | %s | %s\n",
+			emptyFallback(row.CourseCode, "-"),
+			emptyFallback(row.Name, "-"),
+			emptyFallback(row.Professor, "-"),
+			times,
+		)
 	}
 }
 
