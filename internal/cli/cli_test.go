@@ -1,6 +1,9 @@
 package cli
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestCourseFilterRequiresValue(t *testing.T) {
 	_, err := courseFilter([]string{"--course"})
@@ -24,6 +27,16 @@ func TestLooksLikeLectureID(t *testing.T) {
 	}
 	if looksLikeLectureID("오픈소스소프트웨어실습") {
 		t.Fatal("looksLikeLectureID() expected false for course name")
+	}
+}
+
+func TestIntervalFlag(t *testing.T) {
+	got, err := intervalFlag([]string{"--interval", "5"})
+	if err != nil {
+		t.Fatalf("intervalFlag() error = %v", err)
+	}
+	if got != 5*time.Second {
+		t.Fatalf("intervalFlag() = %v", got)
 	}
 }
 

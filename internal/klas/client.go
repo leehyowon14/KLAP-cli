@@ -95,6 +95,13 @@ type Lecture struct {
 	Raw         lectureListItem
 }
 
+type LectureProgress struct {
+	TotalTime string
+	PTime     string
+	Progress  float64
+	Completed bool
+}
+
 type AssignmentDetail struct {
 	OrdSeq         string
 	Title          string
@@ -212,9 +219,19 @@ type noticeItem struct {
 type timetableRow map[string]any
 
 type lectureListItem struct {
+	GroupCode   string         `json:"grcode"`
 	SubjectID   string         `json:"subj"`
+	Year        string         `json:"year"`
+	Hakgi       string         `json:"hakgi"`
+	Bunban      string         `json:"bunban"`
 	Module      flexibleString `json:"module"`
 	Lesson      flexibleString `json:"lesson"`
+	OID         string         `json:"oid"`
+	PTime       flexibleString `json:"ptime"`
+	TotalTime   flexibleString `json:"totalTime"`
+	WeekNo      flexibleString `json:"weekNo"`
+	WeeklySeq   flexibleString `json:"weeklyseq"`
+	IsPreview   string         `json:"ispreview"`
 	Evaluation  string         `json:"evltnSe"`
 	Title       string         `json:"sbjt"`
 	ModuleTitle string         `json:"moduletitle"`
@@ -624,6 +641,46 @@ func (c *Client) ResolveLectureMediaURL(ctx context.Context, contentID string) (
 	return mediaURL, nil
 }
 
+func (c *Client) LectureKey(ctx context.Context, lecture Lecture) (string, error) {
+	form, err := lectureViewerForm(lecture)
+	if err != nil {
+		return "", err
+	}
+
+	body, err := c.doForm(ctx, "/spv/lis/lctre/viewer/LctreCntntsViewSpvPage.do", form, true)
+	if err != nil {
+		return "", err
+	}
+
+	match := lectureKeyPattern.FindSubmatch(body)
+	if len(match) < 2 {
+		return "", errors.New("강의 뷰어 응답에서 lecKey를 찾지 못했습니다")
+	}
+	return string(match[1]), nil
+}
+
+func (c *Client) CheckLectureView(ctx context.Context, lecture Lecture, lecKey string) error {
+	form, err := lectureProgressForm(lecture, lecKey)
+	if err != nil {
+		return err
+	}
+	_, err = c.doForm(ctx, "/spv/lis/lctre/viewer/ChkLctreCntntsView.do", form, false)
+	return err
+}
+
+func (c *Client) UpdateLectureProgress(ctx context.Context, lecture Lecture, lecKey string) (LectureProgress, error) {
+	form, err := lectureProgressForm(lecture, lecKey)
+	if err != nil {
+		return LectureProgress{}, err
+	}
+
+	body, err := c.doForm(ctx, "/spv/lis/lctre/viewer/UpdateProgress.do", form, false)
+	if err != nil {
+		return LectureProgress{}, err
+	}
+	return parseLectureProgress(body)
+}
+
 func parseTimetableEntries(response []timetableRow) []TimetableEntry {
 	entries := make([]TimetableEntry, 0)
 	for _, row := range response {
@@ -767,6 +824,90 @@ func ExtractMediaURL(body []byte) (string, error) {
 	return "", errors.New("KWCommons 응답에서 동영상 URL을 찾을 수 없습니다")
 }
 
+func lectureViewerForm(lecture Lecture) (url.Values, error) {
+	item := lecture.Raw
+	required := map[string]string{
+		"grcode":    item.GroupCode,
+		"subj":      item.SubjectID,
+		"year":      item.Year,
+		"hakgi":     item.Hakgi,
+		"bunban":    item.Bunban,
+		"module":    item.Module.String(),
+		"oid":       item.OID,
+		"ptime":     item.PTime.String(),
+		"weeklyseq": item.WeekNo.String(),
+		"lesson":    item.Lesson.String(),
+	}
+	for key, value := range required {
+		if strings.TrimSpace(value) == "" {
+			return nil, fmt.Errorf("강의 수강 필드가 없습니다: %s", key)
+		}
+	}
+
+	values := url.Values{}
+	values.Set("grcode", item.GroupCode)
+	values.Set("subj", item.SubjectID)
+	values.Set("year", item.Year)
+	values.Set("hakgi", item.Hakgi)
+	values.Set("bunban", item.Bunban)
+	values.Set("module", item.Module.String())
+	values.Set("oid", item.OID)
+	values.Set("ptime", item.PTime.String())
+	values.Set("weeklyseq", item.WeekNo.String())
+	values.Set("weeklysubseq", item.WeeklySeq.String())
+	values.Set("totalTime", item.TotalTime.String())
+	values.Set("prog", item.Progress.String())
+	values.Set("lesson", item.Lesson.String())
+	values.Set("profYN", "Y")
+	values.Set("previewYN", firstNonEmpty(item.IsPreview, "N"))
+	values.Set("late", "N")
+	return values, nil
+}
+
+func lectureProgressForm(lecture Lecture, lecKey string) (url.Values, error) {
+	lecKey = strings.TrimSpace(lecKey)
+	if lecKey == "" {
+		return nil, errors.New("lecKey가 없습니다")
+	}
+
+	viewerForm, err := lectureViewerForm(lecture)
+	if err != nil {
+		return nil, err
+	}
+	values := url.Values{}
+	for _, key := range []string{"grcode", "subj", "year", "hakgi", "bunban", "module", "oid", "ptime", "weeklyseq", "weeklysubseq", "lesson"} {
+		values.Set(key, viewerForm.Get(key))
+	}
+	values.Set("lecKey", lecKey)
+	return values, nil
+}
+
+func parseLectureProgress(body []byte) (LectureProgress, error) {
+	var root map[string]any
+	if err := json.Unmarshal(body, &root); err != nil {
+		return LectureProgress{}, fmt.Errorf("수강 진도 응답 파싱 실패: %w", err)
+	}
+
+	source := root
+	if nested, ok := root["data"].(map[string]any); ok {
+		source = nested
+	}
+	progressText := rowString(source, "prog")
+	if progressText == "" {
+		return LectureProgress{}, errors.New("수강 진도 응답에 prog가 없습니다")
+	}
+	progress, err := strconv.ParseFloat(progressText, 64)
+	if err != nil {
+		return LectureProgress{}, fmt.Errorf("수강 진도 prog 파싱 실패: %w", err)
+	}
+	return LectureProgress{
+		TotalTime: rowString(source, "totalTime"),
+		PTime:     rowString(source, "ptime"),
+		Progress:  progress,
+		Completed: progress >= 100,
+	}, nil
+}
+
 func (c *Client) SetCourseContext(ctx context.Context, yearHakgi string, course Course) error {
 	_, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/LctrumHomeStdInfo.do", map[string]any{
 		"selectYearhakgi": yearHakgi,
@@ -869,6 +1010,40 @@ func (c *Client) do(ctx context.Context, method string, path string, payload any
 	return body, nil
 }
 
+func (c *Client) doForm(ctx context.Context, path string, values url.Values, allowHTML bool) ([]byte, error) {
+	endpoint := c.baseURL.ResolveReference(&url.URL{Path: path})
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(values.Encode()))
+	if err != nil {
+		return nil, err
+	}
+
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	request.Header.Set("X-Requested-With", "XMLHttpRequest")
+	request.Header.Set("User-Agent", "KLAP-CLI/0.1")
+
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("KLAS 요청 실패: %w", err)
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, fmt.Errorf("응답 읽기 실패: %w", err)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("KLAS HTTP 오류: %s", response.Status)
+	}
+	if (!allowHTML && looksLikeLoginHTML(body)) || (allowHTML && looksLikeLoginPageHTML(body)) {
+		return nil, ErrSessionExpired
+	}
+	if err := checkCommonAPIError(body); err != nil {
+		return nil, err
+	}
+
+	return body, nil
+}
+
 func checkCommonAPIError(body []byte) error {
 	var response commonErrorResponse
 	if err := json.Unmarshal(body, &response); err != nil {
@@ -941,6 +1116,17 @@ func looksLikeLoginHTML(body []byte) bool {
 	lower := bytes.ToLower(trimmed)
 	return bytes.Contains(lower, []byte("<html")) ||
 		bytes.Contains(lower, []byte("loginform.do")) ||
+		bytes.Contains(lower, []byte("/usr/cmn/login"))
+}
+
+func looksLikeLoginPageHTML(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || !bytes.HasPrefix(trimmed, []byte("<")) {
+		return false
+	}
+
+	lower := bytes.ToLower(trimmed)
+	return bytes.Contains(lower, []byte("loginform.do")) ||
 		bytes.Contains(lower, []byte("/usr/cmn/login"))
 }
 
@@ -1025,6 +1211,7 @@ var (
 	mediaURIPattern       = regexp.MustCompile(`(?is)<media_uri(?:\s+[^>]*)?>([^<]+)</media_uri>`)
 	desktopMediaPattern   = regexp.MustCompile(`(?is)<desktop\b[^>]*>.*?<media_uri(?:\s+[^>]*)?>([^<]+)</media_uri>.*?</desktop>`)
 	mainMediaPattern      = regexp.MustCompile(`(?is)<main_media(?:\s+[^>]*)?>([^<]+)</main_media>`)
+	lectureKeyPattern     = regexp.MustCompile(`["']lecKey["']\s*:\s*['"]([^'"]+)['"]`)
 )
 
 func htmlToText(value string) string {

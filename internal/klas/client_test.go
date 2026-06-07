@@ -26,6 +26,15 @@ func TestLooksLikeLoginHTML(t *testing.T) {
 	}
 }
 
+func TestLooksLikeLoginPageHTML(t *testing.T) {
+	if looksLikeLoginPageHTML([]byte("<html><body>viewer</body></html>")) {
+		t.Fatal("looksLikeLoginPageHTML() should allow ordinary viewer html")
+	}
+	if !looksLikeLoginPageHTML([]byte("<html><script>location='/usr/cmn/login/LoginForm.do'</script></html>")) {
+		t.Fatal("looksLikeLoginPageHTML() should detect login page")
+	}
+}
+
 func TestFirstFieldError(t *testing.T) {
 	got := firstFieldError([]fieldError{{Message: ""}, {Message: "개인번호 또는 비밀번호가 일치하지 않습니다."}}, "fallback")
 	if got != "개인번호 또는 비밀번호가 일치하지 않습니다." {
@@ -173,6 +182,63 @@ func TestExtractMediaURLFallbackMainMedia(t *testing.T) {
 	}
 	if got != "https://media.example.com/path/video.mp4" {
 		t.Fatalf("ExtractMediaURL() = %q", got)
+	}
+}
+
+func TestLectureKeyPatternSupportsQuoteVariants(t *testing.T) {
+	cases := []string{
+		`"lecKey": 'abc-123'`,
+		`'lecKey': "abc-123"`,
+	}
+
+	for _, body := range cases {
+		match := lectureKeyPattern.FindStringSubmatch(body)
+		if len(match) < 2 || match[1] != "abc-123" {
+			t.Fatalf("lectureKeyPattern did not parse %q: %+v", body, match)
+		}
+	}
+}
+
+func TestParseLectureProgress(t *testing.T) {
+	progress, err := parseLectureProgress([]byte(`{"data":{"totalTime":"10","ptime":"50","prog":20}}`))
+	if err != nil {
+		t.Fatalf("parseLectureProgress() error = %v", err)
+	}
+	if progress.TotalTime != "10" || progress.PTime != "50" || progress.Progress != 20 || progress.Completed {
+		t.Fatalf("parseLectureProgress() = %+v", progress)
+	}
+
+	progress, err = parseLectureProgress([]byte(`{"totalTime":"50","ptime":"50","prog":100}`))
+	if err != nil {
+		t.Fatalf("parseLectureProgress() root error = %v", err)
+	}
+	if !progress.Completed {
+		t.Fatalf("parseLectureProgress() completed = %+v", progress)
+	}
+}
+
+func TestLectureViewerForm(t *testing.T) {
+	form, err := lectureViewerForm(Lecture{Raw: lectureListItem{
+		GroupCode: "G",
+		SubjectID: "S",
+		Year:      "2026",
+		Hakgi:     "1",
+		Bunban:    "01",
+		Module:    flexibleString("M"),
+		OID:       "OID",
+		PTime:     flexibleString("50"),
+		WeekNo:    flexibleString("3"),
+		WeeklySeq: flexibleString("2"),
+		TotalTime: flexibleString("0"),
+		Progress:  flexibleString("0"),
+		Lesson:    flexibleString("001"),
+		IsPreview: "N",
+	}})
+	if err != nil {
+		t.Fatalf("lectureViewerForm() error = %v", err)
+	}
+	if form.Get("weeklyseq") != "3" || form.Get("weeklysubseq") != "2" || form.Get("profYN") != "Y" {
+		t.Fatalf("lectureViewerForm() = %v", form)
 	}
 }
 

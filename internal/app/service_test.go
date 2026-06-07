@@ -79,6 +79,22 @@ func TestLectureFilenameSanitizesPathComponents(t *testing.T) {
 	}
 }
 
+func TestLectureNeedsAttendance(t *testing.T) {
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.FixedZone("KST", 9*60*60))
+	start := now.Add(-time.Hour)
+	end := now.Add(time.Hour)
+
+	if !lectureNeedsAttendance(klas.Lecture{ContentID: "content", Progress: "20", StartAt: &start, EndAt: &end}, now) {
+		t.Fatal("lectureNeedsAttendance() expected true")
+	}
+	if lectureNeedsAttendance(klas.Lecture{ContentID: "content", Progress: "100", StartAt: &start, EndAt: &end}, now) {
+		t.Fatal("lectureNeedsAttendance() expected false for completed lecture")
+	}
+	if lectureNeedsAttendance(klas.Lecture{ContentID: "", Progress: "20", StartAt: &start, EndAt: &end}, now) {
+		t.Fatal("lectureNeedsAttendance() expected false without content id")
+	}
+}
+
 func TestBuildReminderNotesIncludesBodyAndMarker(t *testing.T) {
 	dueAt := time.Date(2026, 5, 5, 23, 59, 0, 0, time.FixedZone("KST", 9*60*60))
 	notes := buildReminderNotes(AssignmentDetailResult{

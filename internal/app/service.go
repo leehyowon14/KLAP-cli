@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/klas"
@@ -58,6 +59,19 @@ type LectureDownloadAllOptions struct {
 	User         UserOption
 	CourseFilter string
 	Dir          string
+}
+
+type LectureAttendOptions struct {
+	User       UserOption
+	Interval   time.Duration
+	OnProgress func(LectureRow, klas.LectureProgress)
+}
+
+type LectureAttendAllOptions struct {
+	User         UserOption
+	CourseFilter string
+	Interval     time.Duration
+	OnProgress   func(LectureRow, klas.LectureProgress)
 }
 
 type UserRow struct {
@@ -125,6 +139,21 @@ type LectureDownloadItem struct {
 
 type LectureDownloadAllResult struct {
 	Items []LectureDownloadItem
+}
+
+type LectureAttendResult struct {
+	Lecture  LectureRow
+	Progress klas.LectureProgress
+}
+
+type LectureAttendItem struct {
+	Lecture  LectureRow
+	Progress klas.LectureProgress
+	Err      error
+}
+
+type LectureAttendAllResult struct {
+	Items []LectureAttendItem
 }
 
 type ReminderSyncResult struct {
@@ -762,6 +791,118 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	return result, nil
 }
 
+func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAttendOptions) (LectureAttendResult, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return LectureAttendResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return LectureAttendResult{}, err
+	}
+
+	courseIndex, contentID, err := ParseLectureID(id)
+	if err != nil {
+		return LectureAttendResult{}, err
+	}
+	if courseIndex < 1 || courseIndex > len(term.Courses) {
+		return LectureAttendResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
+	}
+
+	course := term.Courses[courseIndex-1]
+	lectures, err := client.Lectures(ctx, term.Value, course)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return LectureAttendResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			lectures, err = client.Lectures(ctx, term.Value, course)
+		}
+	}
+	if err != nil {
+		return LectureAttendResult{}, err
+	}
+
+	var matched *klas.Lecture
+	for index := range lectures {
+		if strings.TrimSpace(lectures[index].ContentID) == contentID {
+			matched = &lectures[index]
+			break
+		}
+	}
+	if matched == nil {
+		return LectureAttendResult{}, fmt.Errorf("강의를 찾을 수 없습니다: %s", id)
+	}
+
+	row := LectureRow{
+		ID:         id,
+		TermValue:  term.Value,
+		CourseName: course.Name,
+		Lecture:    *matched,
+	}
+	progress, err := attendLectureLoop(ctx, client, row, opts.Interval, opts.OnProgress)
+	if err != nil {
+		return LectureAttendResult{}, err
+	}
+	return LectureAttendResult{Lecture: row, Progress: progress}, nil
+}
+
+func (s *Service) AttendAllLectures(ctx context.Context, opts LectureAttendAllOptions) (LectureAttendAllResult, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return LectureAttendAllResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return LectureAttendAllResult{}, err
+	}
+
+	courses, err := selectedCourses(term, opts.CourseFilter)
+	if err != nil {
+		return LectureAttendAllResult{}, err
+	}
+
+	result := LectureAttendAllResult{}
+	now := time.Now()
+	for _, selectedCourse := range courses {
+		lectures, err := client.Lectures(ctx, term.Value, selectedCourse.Course)
+		if err != nil {
+			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+			if refreshErr != nil {
+				return LectureAttendAllResult{}, refreshErr
+			}
+			if refreshed {
+				client = refreshedClient
+				lectures, err = client.Lectures(ctx, term.Value, selectedCourse.Course)
+			}
+		}
+		if err != nil {
+			return LectureAttendAllResult{}, err
+		}
+
+		for _, lecture := range lectures {
+			if !lectureNeedsAttendance(lecture, now) {
+				continue
+			}
+			row := LectureRow{
+				ID:         LectureID(selectedCourse.Index, lecture.ContentID),
+				TermValue:  term.Value,
+				CourseName: selectedCourse.Course.Name,
+				Lecture:    lecture,
+			}
+			progress, err := attendLectureLoop(ctx, client, row, opts.Interval, opts.OnProgress)
+			result.Items = append(result.Items, LectureAttendItem{
+				Lecture:  row,
+				Progress: progress,
+				Err:      err,
+			})
+		}
+	}
+	return result, nil
+}
+
 func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentListOptions) (ReminderSyncResult, error) {
 	rows, err := s.AssignmentList(ctx, opts)
 	if err != nil {
@@ -1251,6 +1392,57 @@ func downloadFile(ctx context.Context, sourceURL string, path string) (int64, er
 		return offset + written, fmt.Errorf("다운로드 파일 저장 실패: %w", err)
 	}
 	return offset + written, nil
+}
+
+func attendLectureLoop(ctx context.Context, client *klas.Client, row LectureRow, interval time.Duration, onProgress func(LectureRow, klas.LectureProgress)) (klas.LectureProgress, error) {
+	if interval <= 0 {
+		interval = 60 * time.Second
+	}
+
+	lecKey, err := client.LectureKey(ctx, row.Lecture)
+	if err != nil {
+		return klas.LectureProgress{}, err
+	}
+
+	var lastProgress klas.LectureProgress
+	for {
+		if err := client.CheckLectureView(ctx, row.Lecture, lecKey); err != nil {
+			return lastProgress, err
+		}
+		progress, err := client.UpdateLectureProgress(ctx, row.Lecture, lecKey)
+		if err != nil {
+			return lastProgress, err
+		}
+		lastProgress = progress
+		if onProgress != nil {
+			onProgress(row, progress)
+		}
+		if progress.Completed {
+			return progress, nil
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return lastProgress, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func lectureNeedsAttendance(lecture klas.Lecture, now time.Time) bool {
+	progress, err := strconv.ParseFloat(strings.TrimSpace(lecture.Progress), 64)
+	if err == nil && progress >= 100 {
+		return false
+	}
+	if lecture.StartAt != nil && now.Before(*lecture.StartAt) {
+		return false
+	}
+	if lecture.EndAt != nil && now.After(*lecture.EndAt) {
+		return false
+	}
+	return strings.TrimSpace(lecture.ContentID) != ""
 }
 
 func defaultReminderBridgePath() string {

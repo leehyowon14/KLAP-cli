@@ -19,6 +19,9 @@ klap assignment remind --auto
 klap lecture list --course <과목명|번호>
 klap lecture download <과목명|과목번호>
 klap lecture download <과목번호:강의콘텐츠ID>
+klap lecture attend <과목번호:강의콘텐츠ID>
+klap lecture attend all
+klap lecture attend all --course <과목명|번호>
 klap config reminder
 klap config reminder --name "광운대학교"
 klap config reminder --name "To-do" --use-existing-list

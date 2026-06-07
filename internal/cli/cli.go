@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -320,9 +321,60 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		}
 		fmt.Printf("다운로드 완료: %s (%s)\n", result.Path, formatBytes(result.Bytes))
 		return nil
+	case "attend":
+		return runLectureAttend(ctx, service, args[1:])
 	default:
 		return fmt.Errorf("unknown lecture command: %s", args[0])
 	}
+}
+
+func runLectureAttend(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: klap lecture attend <강의ID|all> [--course <과목명|번호>] [--interval <초>]")
+	}
+
+	interval, err := intervalFlag(args[1:])
+	if err != nil {
+		return err
+	}
+	onProgress := func(row app.LectureRow, progress klas.LectureProgress) {
+		fmt.Printf("수강중: %s | %s | %.0f%% | %s/%s\n",
+			row.ID,
+			row.Lecture.Title,
+			progress.Progress,
+			emptyFallback(progress.TotalTime, "?"),
+			emptyFallback(progress.PTime, "?"),
+		)
+	}
+
+	if args[0] == "all" {
+		course, err := courseFilter(args[1:])
+		if err != nil {
+			return err
+		}
+		result, err := service.AttendAllLectures(ctx, app.LectureAttendAllOptions{
+			User:         app.UserOption{StudentID: userFlag(args[1:])},
+			CourseFilter: course,
+			Interval:     interval,
+			OnProgress:   onProgress,
+		})
+		if err != nil {
+			return err
+		}
+		printLectureAttendAllResult(result)
+		return nil
+	}
+
+	result, err := service.AttendLecture(ctx, args[0], app.LectureAttendOptions{
+		User:       app.UserOption{StudentID: userFlag(args[1:])},
+		Interval:   interval,
+		OnProgress: onProgress,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("수강 완료: %s | %s | %.0f%%\n", result.Lecture.ID, result.Lecture.Lecture.Title, result.Progress.Progress)
+	return nil
 }
 
 func runAssignmentRemind(ctx context.Context, service *app.Service, args []string) error {
@@ -417,6 +469,23 @@ func dirFlag(args []string) (string, error) {
 	return "", nil
 }
 
+func intervalFlag(args []string) (time.Duration, error) {
+	for i := 0; i < len(args); i++ {
+		if args[i] != "--interval" {
+			continue
+		}
+		if i+1 >= len(args) {
+			return 0, errors.New("--interval에는 초 단위 숫자가 필요합니다")
+		}
+		seconds, err := strconv.Atoi(args[i+1])
+		if err != nil || seconds <= 0 {
+			return 0, errors.New("--interval에는 1 이상의 초 단위 숫자가 필요합니다")
+		}
+		return time.Duration(seconds) * time.Second, nil
+	}
+	return 60 * time.Second, nil
+}
+
 func userFlag(args []string) string {
 	for i := 0; i < len(args); i++ {
 		if args[i] != "--user" {
@@ -473,6 +542,7 @@ Usage:
   klap timetable         최신 학기 시간표 출력
   klap lecture list      온라인 강의 목록 출력
   klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
+  klap lecture attend <강의ID|all> 온라인 강의 자동 수강
   klap config reminder  reminder 설정 확인/변경`)
 }
 
@@ -710,6 +780,26 @@ func printLectureDownloadAllResult(result app.LectureDownloadAllResult) {
 	}
 
 	fmt.Printf("전체 다운로드 결과: 완료 %d, 건너뜀 %d, 실패 %d\n", downloaded, skipped, failed)
+}
+
+func printLectureAttendAllResult(result app.LectureAttendAllResult) {
+	if len(result.Items) == 0 {
+		fmt.Println("수강할 온라인 강의가 없습니다")
+		return
+	}
+
+	completed := 0
+	failed := 0
+	for _, item := range result.Items {
+		if item.Err != nil {
+			failed++
+			fmt.Printf("실패: %s (%v)\n", item.Lecture.Lecture.Title, item.Err)
+			continue
+		}
+		completed++
+		fmt.Printf("완료: %s | %.0f%%\n", item.Lecture.Lecture.Title, item.Progress.Progress)
+	}
+	fmt.Printf("전체 수강 결과: 완료 %d, 실패 %d\n", completed, failed)
 }
 
 func weekdayLabel(weekday int) string {
