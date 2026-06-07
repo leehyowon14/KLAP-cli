@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kw-klap/klap-cli/internal/klas"
 )
 
 func TestCourseFilterRequiresValue(t *testing.T) {
@@ -45,6 +47,15 @@ func TestRenderProgressBar(t *testing.T) {
 	got := renderProgressBar(25, 12)
 	if got == "" || !strings.Contains(got, "25%") {
 		t.Fatalf("renderProgressBar() = %q", got)
+	}
+}
+
+func TestLectureStatusPercent(t *testing.T) {
+	if got := lectureStatusPercent(klas.Lecture{ContentID: "content", Progress: "75"}); got != 75 {
+		t.Fatalf("lectureStatusPercent() video = %v", got)
+	}
+	if got := lectureStatusPercent(klas.Lecture{LearningSeq: "10", AchievedTime: "5", RequiredTime: "10"}); got != 50 {
+		t.Fatalf("lectureStatusPercent() activity = %v", got)
 	}
 }
 

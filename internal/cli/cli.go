@@ -295,6 +295,17 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		}
 		printLectureRows(rows)
 		return nil
+	case "status":
+		opts, err := lectureListOptions(args[1:])
+		if err != nil {
+			return err
+		}
+		rows, err := service.LectureList(ctx, opts)
+		if err != nil {
+			return err
+		}
+		printLectureStatusRows(rows)
+		return nil
 	case "download":
 		if len(args) < 2 {
 			return errors.New("usage: klap lecture download <과목명|과목번호|강의ID> [--dir <경로>]")
@@ -564,6 +575,7 @@ Usage:
   klap notice detail <공지ID> 강의 공지 상세 출력
   klap timetable         최신 학기 시간표 출력
   klap lecture list      온라인 강의 목록 출력
+  klap lecture status    온라인 강의 수강 상태 출력
   klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
   klap lecture attend <강의ID> 특정 온라인 강의 자동 수강
   klap attend <all|과목명|과목번호> 온라인 강의와 학습활동 자동 수강
@@ -778,6 +790,25 @@ func printLectureRows(rows []app.LectureRow) {
 	}
 }
 
+func printLectureStatusRows(rows []app.LectureRow) {
+	if len(rows) == 0 {
+		fmt.Println("온라인 강의가 없습니다")
+		return
+	}
+
+	for _, row := range rows {
+		percent := lectureStatusPercent(row.Lecture)
+		fmt.Printf("%s %s | %s | %s | %s | %s\n",
+			renderProgressBar(percent, 28),
+			formatLectureStatusMinutes(row.Lecture),
+			lectureStatusLabel(row.Lecture, percent),
+			row.CourseName,
+			emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요"),
+			row.Lecture.Title,
+		)
+	}
+}
+
 func printLectureDownloadAllResult(result app.LectureDownloadAllResult) {
 	if len(result.Items) == 0 {
 		fmt.Println("다운로드할 온라인 강의가 없습니다")
@@ -866,6 +897,58 @@ func formatProgressMinutes(progress klas.LectureProgress) string {
 	total := emptyFallback(progress.TotalTime, "?")
 	required := emptyFallback(progress.PTime, "?")
 	return total + "/" + required + "분"
+}
+
+func lectureStatusPercent(lecture klas.Lecture) float64 {
+	if lecture.ContentID != "" {
+		return boundedPercent(parseFloatOrDefault(lecture.Progress, 0))
+	}
+
+	achieved := parseFloatOrDefault(lecture.AchievedTime, 0)
+	required := parseFloatOrDefault(lecture.RequiredTime, 0)
+	if required <= 0 {
+		return 0
+	}
+	return boundedPercent(achieved / required * 100)
+}
+
+func lectureStatusLabel(lecture klas.Lecture, percent float64) string {
+	if percent >= 100 {
+		return "완료"
+	}
+	now := time.Now()
+	if lecture.StartAt != nil && now.Before(*lecture.StartAt) {
+		return "예정"
+	}
+	if lecture.EndAt != nil && now.After(*lecture.EndAt) {
+		return "기간 종료"
+	}
+	return "미완료"
+}
+
+func formatLectureStatusMinutes(lecture klas.Lecture) string {
+	if lecture.ContentID != "" {
+		return emptyFallback(lecture.AchievedTime, "0") + "/" + emptyFallback(lecture.RequiredTime, "?") + "분"
+	}
+	return emptyFallback(lecture.AchievedTime, "0") + "/" + emptyFallback(lecture.RequiredTime, "?") + "분"
+}
+
+func parseFloatOrDefault(value string, fallback float64) float64 {
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func boundedPercent(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
 }
 
 func weekdayLabel(weekday int) string {

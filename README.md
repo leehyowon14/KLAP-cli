@@ -17,6 +17,8 @@ klap assignment detail <과목번호:과제번호>
 klap assignment remind
 klap assignment remind --auto
 klap lecture list --course <과목명|번호>
+klap lecture status
+klap lecture status --course <과목명|번호>
 klap lecture download <과목명|과목번호>
 klap lecture download <과목번호:강의콘텐츠ID>
 klap lecture attend <과목번호:강의콘텐츠ID>
