@@ -40,6 +40,8 @@ func Run(ctx context.Context, args []string) error {
 		return runDashboard(ctx, service, args[1:])
 	case "search":
 		return runSearch(ctx, service, args[1:])
+	case "due":
+		return runDue(ctx, service, args[1:])
 	case "cache":
 		return runCache(ctx, service, args[1:])
 	case "course":
@@ -273,6 +275,19 @@ func runSearch(ctx context.Context, service *app.Service, args []string) error {
 		return err
 	}
 	printSearch(result)
+	return nil
+}
+
+func runDue(ctx context.Context, service *app.Service, args []string) error {
+	opts, err := dueOptions(args)
+	if err != nil {
+		return err
+	}
+	result, err := service.Due(ctx, opts)
+	if err != nil {
+		return err
+	}
+	printDue(result)
 	return nil
 }
 
@@ -1056,6 +1071,39 @@ func searchOptions(args []string) (app.SearchOptions, error) {
 	return opts, nil
 }
 
+func dueOptions(args []string) (app.DueOptions, error) {
+	opts := app.DueOptions{
+		User:    app.UserOption{StudentID: userFlag(args)},
+		Days:    14,
+		Refresh: hasFlag(args, "--refresh"),
+	}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--week":
+			opts.Days = 7
+		case "--days":
+			if i+1 >= len(args) {
+				return app.DueOptions{}, errors.New("--days에는 일수가 필요합니다")
+			}
+			days, err := strconv.Atoi(args[i+1])
+			if err != nil || days <= 0 {
+				return app.DueOptions{}, errors.New("--days에는 1 이상의 숫자가 필요합니다")
+			}
+			opts.Days = days
+			i++
+		case "--user":
+			if i+1 >= len(args) {
+				return app.DueOptions{}, errors.New("--user에는 학번이 필요합니다")
+			}
+			i++
+		case "--refresh":
+		default:
+			return app.DueOptions{}, fmt.Errorf("unknown due option: %s", args[i])
+		}
+	}
+	return opts, nil
+}
+
 func subjectSearchOptions(args []string) (app.SubjectSearchOptions, error) {
 	opts := app.SubjectSearchOptions{}
 	for i := 0; i < len(args); i++ {
@@ -1190,6 +1238,7 @@ Usage:
   klap dashboard         현재 학기 대시보드 출력
   klap dashboard --refresh 캐시 무시 후 대시보드 갱신
   klap search <키워드>   과목/과제/공지/온라인 강의/학사일정 통합 검색
+  klap due              과제/온라인 강의/학사일정 데드라인 출력
   klap cache status      캐시 상태 출력
   klap cache clear       캐시 삭제
   klap term list         수강 학기 목록 출력
@@ -1434,6 +1483,44 @@ func printSearch(result app.SearchResult) {
 
 	if len(result.Errors) > 0 {
 		fmt.Println("\n검색 실패")
+		for _, sectionError := range result.Errors {
+			fmt.Printf("  %s: %v\n", sectionError.Section, sectionError.Err)
+		}
+	}
+}
+
+func printDue(result app.DueResult) {
+	fmt.Printf("데드라인: %s ~ %s\n",
+		result.From.Format("2006-01-02"),
+		result.Until.Format("2006-01-02"),
+	)
+	if len(result.Items) == 0 {
+		fmt.Println("예정된 데드라인이 없습니다")
+	}
+	for _, item := range result.Items {
+		course := ""
+		if item.CourseName != "" {
+			course = " | " + item.CourseName
+		}
+		status := ""
+		if item.Status != "" {
+			status = " | " + item.Status
+		}
+		id := ""
+		if item.ID != "" {
+			id = " | " + item.ID
+		}
+		fmt.Printf("%s | %s%s | %s%s%s\n",
+			item.DueAt.Format("2006-01-02 15:04"),
+			item.Kind,
+			id,
+			item.Title,
+			course,
+			status,
+		)
+	}
+	if len(result.Errors) > 0 {
+		fmt.Println("\n확인 실패")
 		for _, sectionError := range result.Errors {
 			fmt.Printf("  %s: %v\n", sectionError.Section, sectionError.Err)
 		}

@@ -14,6 +14,9 @@ klap dashboard
 klap dashboard --refresh
 klap search <키워드>
 klap search <키워드> --type assignment
+klap due
+klap due --week
+klap due --days 30
 klap cache status
 klap cache clear
 klap cache clear assignment
@@ -85,6 +88,9 @@ klap config download --dir ~/Downloads/KLAP
 
 `klap search <키워드>`는 현재 학기 과목, 과제, 공지, 온라인 강의와 올해 학사일정을 한 번에 검색한다.
 `--type course|assignment|notice|lecture|academic`으로 검색 범위를 좁힐 수 있다.
+
+`klap due`는 과제, 미완료 온라인 강의/학습활동, 학사일정을 마감순으로 합쳐 보여준다.
+기본 범위는 14일이며 `--week` 또는 `--days 30`으로 조정할 수 있다.
 
 `klap lecture download`는 `--dir`이 없으면 `klap config download --dir <경로>`로 저장한 기본 다운로드 폴더를 사용한다.
 `klap lecture download status`와 `klap lecture download open`으로 받은 파일을 확인할 수 있다.
