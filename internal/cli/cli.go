@@ -359,6 +359,16 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 }
 
 func runAttendance(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) > 0 && args[0] == "cdp" {
+		result, err := service.CdpAttendance(ctx, app.CdpAttendanceOptions{
+			User: app.UserOption{StudentID: userFlag(args[1:])},
+		})
+		if err != nil {
+			return err
+		}
+		printCdpAttendance(result)
+		return nil
+	}
 	if len(args) > 0 && args[0] == "detail" {
 		if len(args) != 2 {
 			return errors.New("usage: klap attendance detail <과목명|번호|학정번호>")
@@ -918,6 +928,7 @@ Usage:
   klap timetable         현재 학기 시간표 출력
   klap attendance        출석 현황 출력
   klap attendance detail <과목명|번호|학정번호> 주차별 출석 상세 출력
+  klap attendance cdp    CDP 출석내역 출력
   klap grade [학기]      성적 조회
   klap rank [학기]       석차 조회
   klap syllabus <과목명|과목번호|학정번호> 강의계획서 출력
@@ -1201,6 +1212,28 @@ func printAttendanceDetail(result app.AttendanceDetailResult) {
 	}
 }
 
+func printCdpAttendance(result app.CdpAttendanceResult) {
+	report := result.Report
+	fmt.Println("CDP 출석내역")
+	fmt.Printf("총 출석: %s회\n", emptyFallback(report.TotalCount, "0"))
+	if len(report.Rows) == 0 {
+		fmt.Println("CDP 출석내역이 없습니다")
+		fmt.Println("* 출석내역은 출석 후 약 일주일 후에 반영됩니다.")
+		return
+	}
+
+	fmt.Println("날짜 | 회차 | 강의주제 | 강사명")
+	for _, row := range report.Rows {
+		fmt.Printf("%s | %s | %s | %s\n",
+			emptyFallback(formatCdpDate(row.Date), "-"),
+			emptyFallback(row.Seq, "-"),
+			emptyFallback(row.Title, "-"),
+			emptyFallback(row.Speaker, "-"),
+		)
+	}
+	fmt.Println("* 출석내역은 출석 후 약 일주일 후에 반영됩니다.")
+}
+
 func printGrade(result app.GradeResult) {
 	report := result.Report
 	summary := report.Summary
@@ -1349,6 +1382,23 @@ func formatAttendanceDate(value string) string {
 		return value
 	}
 	return value[:4] + "-" + value[4:6] + "-" + value[6:]
+}
+
+func formatCdpDate(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) == 8 && numericString(value) {
+		return value[:4] + "-" + value[4:6] + "-" + value[6:]
+	}
+	return value
+}
+
+func numericString(value string) bool {
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return value != ""
 }
 
 func printSyllabus(result app.SyllabusResult) {

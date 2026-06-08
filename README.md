@@ -21,6 +21,7 @@ klap academic list --year 2026
 klap attendance
 klap attendance list
 klap attendance detail <과목명|번호|학정번호>
+klap attendance cdp
 klap grade
 klap grade list
 klap grade 2025-1

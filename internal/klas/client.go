@@ -110,6 +110,19 @@ type AttendanceSlot struct {
 	Date   string
 }
 
+type CdpAttendanceReport struct {
+	TotalCount string
+	Rows       []CdpAttendance
+}
+
+type CdpAttendance struct {
+	Date    string
+	Seq     string
+	Title   string
+	Speaker string
+	Raw     cdpAttendanceItem
+}
+
 type GradeReport struct {
 	Summary GradeSummary
 	Terms   []GradeTerm
@@ -395,6 +408,14 @@ type attendanceSessionItem struct {
 	AttendanceDate2 string         `json:"attendancedate2"`
 	AttendanceDate3 string         `json:"attendancedate3"`
 	AttendanceDate4 string         `json:"attendancedate4"`
+}
+
+type cdpAttendanceItem struct {
+	Date    string         `json:"cdpDate"`
+	Seq     flexibleString `json:"cdpSeq"`
+	Title   string         `json:"title"`
+	Speaker string         `json:"memberName"`
+	Count   flexibleString `json:"cnt"`
 }
 
 type gradeSummaryItem struct {
@@ -946,6 +967,36 @@ func (c *Client) AttendanceSessions(ctx context.Context, yearHakgi string, cours
 	return sessions, nil
 }
 
+func (c *Client) CdpAttendance(ctx context.Context) (CdpAttendanceReport, error) {
+	body, err := c.do(ctx, http.MethodPost, "/std/cps/atnlc/CdpAtendInfo.do", map[string]any{})
+	if err != nil {
+		return CdpAttendanceReport{}, err
+	}
+
+	var response []cdpAttendanceItem
+	if err := json.Unmarshal(body, &response); err != nil {
+		return CdpAttendanceReport{}, fmt.Errorf("CDP 출석내역 응답 파싱 실패: %w", err)
+	}
+
+	rows := make([]CdpAttendance, 0, len(response))
+	for _, item := range response {
+		row := buildCdpAttendance(item)
+		if strings.TrimSpace(row.Date+row.Seq+row.Title+row.Speaker) == "" {
+			continue
+		}
+		rows = append(rows, row)
+	}
+
+	totalCount := ""
+	if len(response) > 0 {
+		totalCount = response[0].Count.String()
+	}
+	if strings.TrimSpace(totalCount) == "" {
+		totalCount = strconv.Itoa(len(rows))
+	}
+	return CdpAttendanceReport{TotalCount: totalCount, Rows: rows}, nil
+}
+
 func (c *Client) Grades(ctx context.Context) (GradeReport, error) {
 	summaryBody, err := c.do(ctx, http.MethodPost, "/std/cps/inqire/AtnlcScreSungjukTot.do", map[string]any{})
 	if err != nil {
@@ -1460,6 +1511,16 @@ func AttendanceStatusMark(status string) string {
 		return "A"
 	default:
 		return strings.TrimSpace(status)
+	}
+}
+
+func buildCdpAttendance(item cdpAttendanceItem) CdpAttendance {
+	return CdpAttendance{
+		Date:    strings.TrimSpace(item.Date),
+		Seq:     item.Seq.String(),
+		Title:   strings.TrimSpace(item.Title),
+		Speaker: strings.TrimSpace(item.Speaker),
+		Raw:     item,
 	}
 }
 

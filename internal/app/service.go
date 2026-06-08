@@ -54,6 +54,10 @@ type AttendanceDetailOptions struct {
 	Selector string
 }
 
+type CdpAttendanceOptions struct {
+	User UserOption
+}
+
 type GradeOptions struct {
 	User      UserOption
 	TermValue string
@@ -170,6 +174,10 @@ type AttendanceRow struct {
 type AttendanceDetailResult struct {
 	Term klas.Term
 	Row  AttendanceRow
+}
+
+type CdpAttendanceResult struct {
+	Report klas.CdpAttendanceReport
 }
 
 type GradeResult struct {
@@ -825,6 +833,33 @@ func (s *Service) AttendanceDetail(ctx context.Context, opts AttendanceDetailOpt
 		Term: result.Term,
 		Row:  rows[0],
 	}, nil
+}
+
+func (s *Service) CdpAttendance(ctx context.Context, opts CdpAttendanceOptions) (CdpAttendanceResult, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return CdpAttendanceResult{}, err
+	}
+	client, err := s.authenticatedClient(ctx, studentID)
+	if err != nil {
+		return CdpAttendanceResult{}, err
+	}
+
+	report, err := client.CdpAttendance(ctx)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return CdpAttendanceResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			report, err = client.CdpAttendance(ctx)
+		}
+	}
+	if err != nil {
+		return CdpAttendanceResult{}, err
+	}
+	return CdpAttendanceResult{Report: report}, nil
 }
 
 func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, error) {
