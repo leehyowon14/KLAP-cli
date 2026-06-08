@@ -1052,7 +1052,7 @@ func attendanceSummary(row app.AttendanceRow) string {
 	if total == 0 {
 		return "상세 없음"
 	}
-	return fmt.Sprintf("O %d / X %d / L %d / R %d / A %d / 전체 %d",
+	return fmt.Sprintf("출석 %d / 결석 %d / 지각 %d / 조퇴 %d / 공결 %d / 전체 %d",
 		counts["O"],
 		counts["X"],
 		counts["L"],
