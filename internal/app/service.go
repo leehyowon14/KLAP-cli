@@ -49,6 +49,11 @@ type AttendanceListOptions struct {
 	User UserOption
 }
 
+type AttendanceDetailOptions struct {
+	User     UserOption
+	Selector string
+}
+
 type SyllabusOptions struct {
 	User      UserOption
 	Selector  string
@@ -131,6 +136,10 @@ type NoticeDetailResult struct {
 	Detail     klas.NoticeDetail
 }
 
+type OpenURLResult struct {
+	URL string
+}
+
 type TimetableResult struct {
 	Term    klas.Term
 	Entries []klas.TimetableEntry
@@ -146,6 +155,11 @@ type AttendanceRow struct {
 	Course   klas.AttendanceCourse
 	Sessions []klas.AttendanceSession
 	Err      error
+}
+
+type AttendanceDetailResult struct {
+	Term klas.Term
+	Row  AttendanceRow
 }
 
 type SyllabusResult struct {
@@ -555,6 +569,14 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 	}, nil
 }
 
+func (s *Service) AssignmentOpenURL(ctx context.Context, id string, user UserOption) (OpenURLResult, error) {
+	detail, err := s.AssignmentDetail(ctx, id, user)
+	if err != nil {
+		return OpenURLResult{}, err
+	}
+	return OpenURLResult{URL: detail.DetailURL}, nil
+}
+
 func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]NoticeRow, error) {
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
@@ -662,6 +684,14 @@ func (s *Service) NoticeDetail(ctx context.Context, id string, user UserOption) 
 	}, nil
 }
 
+func (s *Service) NoticeOpenURL(ctx context.Context, id string, user UserOption) (OpenURLResult, error) {
+	detail, err := s.NoticeDetail(ctx, id, user)
+	if err != nil {
+		return OpenURLResult{}, err
+	}
+	return OpenURLResult{URL: detail.DetailURL}, nil
+}
+
 func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (TimetableResult, error) {
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
@@ -753,6 +783,28 @@ func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions
 	return AttendanceListResult{
 		Term: term,
 		Rows: rows,
+	}, nil
+}
+
+func (s *Service) AttendanceDetail(ctx context.Context, opts AttendanceDetailOptions) (AttendanceDetailResult, error) {
+	selector := strings.TrimSpace(opts.Selector)
+	if selector == "" {
+		return AttendanceDetailResult{}, errors.New("출석 상세 조회 대상이 없습니다")
+	}
+	result, err := s.AttendanceList(ctx, AttendanceListOptions{User: opts.User})
+	if err != nil {
+		return AttendanceDetailResult{}, err
+	}
+	rows := selectAttendanceRows(result.Rows, selector)
+	if len(rows) == 0 {
+		return AttendanceDetailResult{}, fmt.Errorf("출석 현황 과목을 찾을 수 없습니다: %s", selector)
+	}
+	if len(rows) > 1 {
+		return AttendanceDetailResult{}, fmt.Errorf("출석 현황 과목이 여러 개와 일치합니다. 번호 또는 학정번호를 사용하세요: %s", selector)
+	}
+	return AttendanceDetailResult{
+		Term: result.Term,
+		Row:  rows[0],
 	}, nil
 }
 
@@ -962,6 +1014,52 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 	})
 
 	return rows, nil
+}
+
+func (s *Service) LectureOpenURL(ctx context.Context, id string, user UserOption) (OpenURLResult, error) {
+	studentID, err := s.selectedStudentID(ctx, user)
+	if err != nil {
+		return OpenURLResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return OpenURLResult{}, err
+	}
+
+	courseIndex, lectureKey, err := ParseLectureID(id)
+	if err != nil {
+		return OpenURLResult{}, err
+	}
+	if courseIndex < 1 || courseIndex > len(term.Courses) {
+		return OpenURLResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
+	}
+
+	course := term.Courses[courseIndex-1]
+	lectures, err := client.Lectures(ctx, term.Value, course)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return OpenURLResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			lectures, err = client.Lectures(ctx, term.Value, course)
+		}
+	}
+	if err != nil {
+		return OpenURLResult{}, err
+	}
+
+	for _, lecture := range lectures {
+		if !lectureMatchesKey(lecture, lectureKey) {
+			continue
+		}
+		if strings.TrimSpace(lecture.PlayURL) == "" {
+			return OpenURLResult{}, fmt.Errorf("열 수 있는 강의 URL이 없습니다: %s", id)
+		}
+		return OpenURLResult{URL: lecture.PlayURL}, nil
+	}
+	return OpenURLResult{}, fmt.Errorf("강의를 찾을 수 없습니다: %s", id)
 }
 
 func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDownloadOptions) (LectureDownloadResult, error) {
@@ -1703,6 +1801,28 @@ func selectedCourses(term klas.Term, filter string) ([]selectedCourse, error) {
 		return nil, fmt.Errorf("과목명이 여러 개와 일치합니다. course list 번호를 사용하세요: %s", filter)
 	}
 	return nil, fmt.Errorf("과목을 찾을 수 없습니다: %s", filter)
+}
+
+func selectAttendanceRows(rows []AttendanceRow, selector string) []AttendanceRow {
+	selector = strings.TrimSpace(selector)
+	if number, err := strconv.Atoi(selector); err == nil {
+		if number >= 1 && number <= len(rows) {
+			return []AttendanceRow{rows[number-1]}
+		}
+		return nil
+	}
+
+	matches := make([]AttendanceRow, 0)
+	normalizedSelector := strings.ToLower(selector)
+	for _, row := range rows {
+		course := row.Course
+		if strings.EqualFold(course.CourseCode, selector) ||
+			strings.Contains(strings.ToLower(course.Name), normalizedSelector) ||
+			strings.Contains(strings.ToLower(course.Professor), normalizedSelector) {
+			matches = append(matches, row)
+		}
+	}
+	return matches
 }
 
 func AssignmentID(courseIndex int, ordSeq string) string {

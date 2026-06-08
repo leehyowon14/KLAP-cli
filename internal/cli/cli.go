@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -259,7 +261,7 @@ func runTerm(ctx context.Context, service *app.Service, args []string) error {
 
 func runAssignment(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: klap assignment <list|detail|remind>")
+		return errors.New("usage: klap assignment <list|detail|open|remind>")
 	}
 
 	switch args[0] {
@@ -284,6 +286,12 @@ func runAssignment(ctx context.Context, service *app.Service, args []string) err
 		}
 		printAssignmentDetail(detail)
 		return nil
+	case "open":
+		if len(args) != 2 {
+			return errors.New("usage: klap assignment open <과제ID>")
+		}
+		result, err := service.AssignmentOpenURL(ctx, args[1], app.UserOption{})
+		return openAndPrintURL(result.URL, err)
 	case "remind":
 		return runAssignmentRemind(ctx, service, args[1:])
 	default:
@@ -293,7 +301,7 @@ func runAssignment(ctx context.Context, service *app.Service, args []string) err
 
 func runNotice(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: klap notice <list|detail>")
+		return errors.New("usage: klap notice <list|detail|open>")
 	}
 
 	switch args[0] {
@@ -318,6 +326,12 @@ func runNotice(ctx context.Context, service *app.Service, args []string) error {
 		}
 		printNoticeDetail(detail)
 		return nil
+	case "open":
+		if len(args) != 2 {
+			return errors.New("usage: klap notice open <공지ID>")
+		}
+		result, err := service.NoticeOpenURL(ctx, args[1], app.UserOption{})
+		return openAndPrintURL(result.URL, err)
 	default:
 		return fmt.Errorf("unknown notice command: %s", args[0])
 	}
@@ -341,6 +355,20 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 }
 
 func runAttendance(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) > 0 && args[0] == "detail" {
+		if len(args) != 2 {
+			return errors.New("usage: klap attendance detail <과목명|번호|학정번호>")
+		}
+		result, err := service.AttendanceDetail(ctx, app.AttendanceDetailOptions{
+			User:     app.UserOption{},
+			Selector: args[1],
+		})
+		if err != nil {
+			return err
+		}
+		printAttendanceDetail(result)
+		return nil
+	}
 	if len(args) > 0 && args[0] == "list" {
 		args = args[1:]
 	} else if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
@@ -451,6 +479,12 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		return nil
 	case "attend":
 		return runLectureAttend(ctx, service, args[1:])
+	case "open":
+		if len(args) != 2 {
+			return errors.New("usage: klap lecture open <강의ID>")
+		}
+		result, err := service.LectureOpenURL(ctx, args[1], app.UserOption{})
+		return openAndPrintURL(result.URL, err)
 	default:
 		return fmt.Errorf("unknown lecture command: %s", args[0])
 	}
@@ -776,17 +810,21 @@ Usage:
   klap subject search    과목 검색
   klap assignment list   과제 목록 출력
   klap assignment detail <과제ID> 과제 상세 출력
+  klap assignment open <과제ID> 과제 원문 열기
   klap assignment remind 과제 마감 reminder 동기화
   klap notice list       강의 공지 목록 출력
   klap notice detail <공지ID> 강의 공지 상세 출력
+  klap notice open <공지ID> 강의 공지 원문 열기
   klap timetable         현재 학기 시간표 출력
   klap attendance        출석 현황 출력
+  klap attendance detail <과목명|번호|학정번호> 주차별 출석 상세 출력
   klap syllabus <과목명|과목번호|학정번호> 강의계획서 출력
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
   klap lecture status    온라인 강의 수강 상태 출력
   klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
   klap lecture attend <강의ID> 특정 온라인 강의 자동 수강
+  klap lecture open <강의ID> 온라인 강의 열기
   klap attend <all|과목명|과목번호> 온라인 강의와 학습활동 자동 수강
   klap config reminder  reminder 설정 확인/변경`)
 }
@@ -1033,6 +1071,34 @@ func printAttendanceList(result app.AttendanceListResult) {
 	}
 }
 
+func printAttendanceDetail(result app.AttendanceDetailResult) {
+	row := result.Row
+	course := row.Course
+	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
+	fmt.Printf("과목: %s\n", course.Name)
+	fmt.Printf("학정번호: %s\n", emptyFallback(course.CourseCode, "-"))
+	fmt.Printf("교수: %s\n", emptyFallback(course.Professor, "-"))
+	fmt.Printf("강의시간: %s\n", emptyFallback(course.Weekday, "확인 필요"))
+	fmt.Printf("출석 요약: %s\n", attendanceSummary(row))
+	if row.Err != nil {
+		fmt.Printf("상세 오류: %v\n", row.Err)
+		return
+	}
+	if len(row.Sessions) == 0 {
+		fmt.Println("상세 출석 내역이 없습니다")
+		return
+	}
+
+	fmt.Println("\n주차별 출석")
+	for _, session := range row.Sessions {
+		parts := make([]string, 0, len(session.Slots))
+		for _, slot := range session.Slots {
+			parts = append(parts, fmt.Sprintf("%d차시 %s %s", slot.Index, attendanceMarkLabel(slot.Mark), formatAttendanceDate(slot.Date)))
+		}
+		fmt.Printf("%s주차 | %s\n", emptyFallback(session.Week, "-"), strings.Join(parts, " / "))
+	}
+}
+
 func attendanceSummary(row app.AttendanceRow) string {
 	if row.Err != nil {
 		return "상세 확인 실패"
@@ -1060,6 +1126,31 @@ func attendanceSummary(row app.AttendanceRow) string {
 		counts["A"],
 		total,
 	)
+}
+
+func attendanceMarkLabel(mark string) string {
+	switch mark {
+	case "O":
+		return "출석"
+	case "X":
+		return "결석"
+	case "L":
+		return "지각"
+	case "R":
+		return "조퇴"
+	case "A":
+		return "공결"
+	default:
+		return emptyFallback(mark, "-")
+	}
+}
+
+func formatAttendanceDate(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) != 8 {
+		return value
+	}
+	return value[:4] + "-" + value[4:6] + "-" + value[6:]
 }
 
 func printSyllabus(result app.SyllabusResult) {
@@ -1445,6 +1536,34 @@ func linkifyForTerminal(text string) string {
 		return text
 	}
 	return hyperlinkURLs(text)
+}
+
+func openAndPrintURL(url string, err error) error {
+	if err != nil {
+		return err
+	}
+	fmt.Printf("URL: %s\n", linkifyForTerminal(url))
+	return openBrowser(url)
+}
+
+func openBrowser(url string) error {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return errors.New("열 URL이 없습니다")
+	}
+	var command *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		command = exec.Command("open", url)
+	case "windows":
+		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		command = exec.Command("xdg-open", url)
+	}
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("브라우저 열기 실패: %w", err)
+	}
+	return nil
 }
 
 func terminalHyperlinksEnabled() bool {

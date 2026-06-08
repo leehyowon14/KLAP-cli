@@ -20,16 +20,20 @@ klap academic list
 klap academic list --year 2026
 klap attendance
 klap attendance list
+klap attendance detail <과목명|번호|학정번호>
 klap assignment list
 klap assignment list --course <과목명|번호>
 klap assignment detail <과목번호:과제번호>
+klap assignment open <과목번호:과제번호>
 klap assignment remind
 klap assignment remind --auto
+klap notice open <과목번호:게시판번호:글번호>
 klap lecture list --course <과목명|번호>
 klap lecture status
 klap lecture status --course <과목명|번호>
 klap lecture download <과목명|과목번호>
 klap lecture download <과목번호:강의콘텐츠ID>
+klap lecture open <과목번호:강의콘텐츠ID>
 klap lecture attend <과목번호:강의콘텐츠ID>
 klap lecture attend <과목번호:lrn-학습활동번호>
 klap attend <과목명|번호>
