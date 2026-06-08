@@ -55,7 +55,8 @@ type AttendanceDetailOptions struct {
 }
 
 type GradeOptions struct {
-	User UserOption
+	User      UserOption
+	TermValue string
 }
 
 type RankOptions struct {
@@ -172,7 +173,8 @@ type AttendanceDetailResult struct {
 }
 
 type GradeResult struct {
-	Report klas.GradeReport
+	Report    klas.GradeReport
+	TermValue string
 }
 
 type RankResult struct {
@@ -826,6 +828,10 @@ func (s *Service) AttendanceDetail(ctx context.Context, opts AttendanceDetailOpt
 }
 
 func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, error) {
+	termValue, err := normalizeTermValue(opts.TermValue)
+	if err != nil {
+		return GradeResult{}, err
+	}
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
 		return GradeResult{}, err
@@ -849,7 +855,16 @@ func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, er
 	if err != nil {
 		return GradeResult{}, err
 	}
-	return GradeResult{Report: report}, nil
+	if termValue != "" {
+		filtered := report.Terms[:0]
+		for _, term := range report.Terms {
+			if term.Year+","+term.Hakgi == termValue {
+				filtered = append(filtered, term)
+			}
+		}
+		report.Terms = filtered
+	}
+	return GradeResult{Report: report, TermValue: termValue}, nil
 }
 
 func (s *Service) Rank(ctx context.Context, opts RankOptions) (RankResult, error) {

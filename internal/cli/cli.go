@@ -392,13 +392,13 @@ func runAttendance(ctx context.Context, service *app.Service, args []string) err
 func runGrade(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) > 0 && args[0] == "list" {
 		args = args[1:]
-	} else if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
-		return fmt.Errorf("unknown grade command: %s", args[0])
 	}
 
-	result, err := service.Grade(ctx, app.GradeOptions{
-		User: app.UserOption{StudentID: userFlag(args)},
-	})
+	opts, err := gradeOptions(args)
+	if err != nil {
+		return err
+	}
+	result, err := service.Grade(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -409,8 +409,6 @@ func runGrade(ctx context.Context, service *app.Service, args []string) error {
 func runRank(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) > 0 && args[0] == "list" {
 		args = args[1:]
-	} else if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
-		return fmt.Errorf("unknown rank command: %s", args[0])
 	}
 
 	opts, err := rankOptions(args)
@@ -713,6 +711,37 @@ func syllabusOptions(args []string) (app.SyllabusOptions, error) {
 	return opts, nil
 }
 
+func gradeOptions(args []string) (app.GradeOptions, error) {
+	opts := app.GradeOptions{User: app.UserOption{StudentID: userFlag(args)}}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--term":
+			if i+1 >= len(args) {
+				return app.GradeOptions{}, errors.New("--term에는 YYYY-S 형식의 학기가 필요합니다")
+			}
+			if opts.TermValue != "" {
+				return app.GradeOptions{}, errors.New("학기는 하나만 지정할 수 있습니다")
+			}
+			opts.TermValue = args[i+1]
+			i++
+		case "--user":
+			if i+1 >= len(args) {
+				return app.GradeOptions{}, errors.New("--user에는 학번이 필요합니다")
+			}
+			i++
+		default:
+			if strings.HasPrefix(args[i], "--") {
+				return app.GradeOptions{}, fmt.Errorf("unknown grade option: %s", args[i])
+			}
+			if opts.TermValue != "" {
+				return app.GradeOptions{}, errors.New("학기는 하나만 지정할 수 있습니다")
+			}
+			opts.TermValue = args[i]
+		}
+	}
+	return opts, nil
+}
+
 func rankOptions(args []string) (app.RankOptions, error) {
 	opts := app.RankOptions{User: app.UserOption{StudentID: userFlag(args)}}
 	for i := 0; i < len(args); i++ {
@@ -720,6 +749,9 @@ func rankOptions(args []string) (app.RankOptions, error) {
 		case "--term":
 			if i+1 >= len(args) {
 				return app.RankOptions{}, errors.New("--term에는 YYYY-S 형식의 학기가 필요합니다")
+			}
+			if opts.TermValue != "" {
+				return app.RankOptions{}, errors.New("학기는 하나만 지정할 수 있습니다")
 			}
 			opts.TermValue = args[i+1]
 			i++
@@ -729,7 +761,13 @@ func rankOptions(args []string) (app.RankOptions, error) {
 			}
 			i++
 		default:
-			return app.RankOptions{}, fmt.Errorf("unknown rank option: %s", args[i])
+			if strings.HasPrefix(args[i], "--") {
+				return app.RankOptions{}, fmt.Errorf("unknown rank option: %s", args[i])
+			}
+			if opts.TermValue != "" {
+				return app.RankOptions{}, errors.New("학기는 하나만 지정할 수 있습니다")
+			}
+			opts.TermValue = args[i]
 		}
 	}
 	return opts, nil
@@ -880,8 +918,8 @@ Usage:
   klap timetable         현재 학기 시간표 출력
   klap attendance        출석 현황 출력
   klap attendance detail <과목명|번호|학정번호> 주차별 출석 상세 출력
-  klap grade             성적 조회
-  klap rank              석차 조회
+  klap grade [학기]      성적 조회
+  klap rank [학기]       석차 조회
   klap syllabus <과목명|과목번호|학정번호> 강의계획서 출력
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
@@ -1167,24 +1205,26 @@ func printGrade(result app.GradeResult) {
 	report := result.Report
 	summary := report.Summary
 	fmt.Println("성적")
-	fmt.Printf("신청 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
-		summary.AppliedCredits,
-		summary.MajorAppliedCredits,
-		summary.CultureAppliedCredits,
-		summary.EtcAppliedCredits,
-	)
-	fmt.Printf("취득 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
-		summary.EarnedCredits,
-		summary.MajorEarnedCredits,
-		summary.CultureEarnedCredits,
-		summary.EtcEarnedCredits,
-	)
-	fmt.Printf("평점: 학적부 기준 %s / 성적증명서 기준 %s\n",
-		emptyFallback(summary.GPA, "-"),
-		emptyFallback(summary.RetakeGPA, "-"),
-	)
-	if summary.DeletedCredits > 0 {
-		fmt.Printf("삭제 학점: %d\n", summary.DeletedCredits)
+	if strings.TrimSpace(result.TermValue) == "" {
+		fmt.Printf("신청 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
+			summary.AppliedCredits,
+			summary.MajorAppliedCredits,
+			summary.CultureAppliedCredits,
+			summary.EtcAppliedCredits,
+		)
+		fmt.Printf("취득 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
+			summary.EarnedCredits,
+			summary.MajorEarnedCredits,
+			summary.CultureEarnedCredits,
+			summary.EtcEarnedCredits,
+		)
+		fmt.Printf("평점: 학적부 기준 %s / 성적증명서 기준 %s\n",
+			emptyFallback(summary.GPA, "-"),
+			emptyFallback(summary.RetakeGPA, "-"),
+		)
+		if summary.DeletedCredits > 0 {
+			fmt.Printf("삭제 학점: %d\n", summary.DeletedCredits)
+		}
 	}
 
 	if len(report.Terms) == 0 {
@@ -1192,8 +1232,12 @@ func printGrade(result app.GradeResult) {
 		return
 	}
 
-	for _, term := range report.Terms {
-		fmt.Printf("\n%s\n", emptyFallback(term.Label, "-"))
+	showSummary := strings.TrimSpace(result.TermValue) == ""
+	for index, term := range report.Terms {
+		if showSummary || index > 0 {
+			fmt.Println()
+		}
+		fmt.Printf("%s\n", emptyFallback(term.Label, "-"))
 		fmt.Println("과목 | 이수구분 | 학점 | 성적 | 재수강 | 학정번호")
 		for _, course := range term.Courses {
 			fmt.Printf("%s | %s | %d | %s | %s | %s\n",

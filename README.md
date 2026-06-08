@@ -23,8 +23,11 @@ klap attendance list
 klap attendance detail <과목명|번호|학정번호>
 klap grade
 klap grade list
+klap grade 2025-1
+klap grade list 2025-2
 klap rank
 klap rank list
+klap rank 2025-1
 klap rank --term 2025-1
 klap assignment list
 klap assignment list --course <과목명|번호>
