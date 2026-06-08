@@ -38,6 +38,8 @@ func Run(ctx context.Context, args []string) error {
 		return runUser(ctx, service, args[1:])
 	case "dashboard":
 		return runDashboard(ctx, service, args[1:])
+	case "search":
+		return runSearch(ctx, service, args[1:])
 	case "cache":
 		return runCache(ctx, service, args[1:])
 	case "course":
@@ -211,6 +213,19 @@ func runDashboard(ctx context.Context, service *app.Service, args []string) erro
 		return err
 	}
 	printDashboard(result)
+	return nil
+}
+
+func runSearch(ctx context.Context, service *app.Service, args []string) error {
+	opts, err := searchOptions(args)
+	if err != nil {
+		return err
+	}
+	result, err := service.Search(ctx, opts)
+	if err != nil {
+		return err
+	}
+	printSearch(result)
 	return nil
 }
 
@@ -935,6 +950,41 @@ func dashboardRefreshFlag(args []string) bool {
 	return false
 }
 
+func searchOptions(args []string) (app.SearchOptions, error) {
+	opts := app.SearchOptions{
+		User:    app.UserOption{StudentID: userFlag(args)},
+		Refresh: hasFlag(args, "--refresh"),
+	}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--type":
+			if i+1 >= len(args) {
+				return app.SearchOptions{}, errors.New("--type에는 검색 타입이 필요합니다")
+			}
+			opts.Type = args[i+1]
+			i++
+		case "--user":
+			if i+1 >= len(args) {
+				return app.SearchOptions{}, errors.New("--user에는 학번이 필요합니다")
+			}
+			i++
+		case "--refresh":
+		default:
+			if strings.HasPrefix(args[i], "--") {
+				return app.SearchOptions{}, fmt.Errorf("unknown search option: %s", args[i])
+			}
+			if opts.Query != "" {
+				return app.SearchOptions{}, errors.New("검색어는 하나만 지정할 수 있습니다")
+			}
+			opts.Query = args[i]
+		}
+	}
+	if strings.TrimSpace(opts.Query) == "" {
+		return app.SearchOptions{}, errors.New("usage: klap search <키워드> [--type course|assignment|notice|lecture|academic] [--refresh]")
+	}
+	return opts, nil
+}
+
 func subjectSearchOptions(args []string) (app.SubjectSearchOptions, error) {
 	opts := app.SubjectSearchOptions{}
 	for i := 0; i < len(args); i++ {
@@ -1068,6 +1118,7 @@ Usage:
   klap user rm <학번>    저장된 계정 삭제
   klap dashboard         현재 학기 대시보드 출력
   klap dashboard --refresh 캐시 무시 후 대시보드 갱신
+  klap search <키워드>   과목/과제/공지/온라인 강의/학사일정 통합 검색
   klap cache status      캐시 상태 출력
   klap cache clear       캐시 삭제
   klap term list         수강 학기 목록 출력
@@ -1224,6 +1275,91 @@ func printCacheStatus(result app.CacheStatusResult) {
 	fmt.Printf("캐시 경로: %s\n", emptyFallback(result.Dir, "-"))
 	fmt.Printf("파일 수: %d\n", result.Files)
 	fmt.Printf("크기: %s\n", formatBytes(result.Bytes))
+}
+
+func printSearch(result app.SearchResult) {
+	fmt.Printf("검색: %s", result.Query)
+	if result.Type != "" {
+		fmt.Printf(" (%s)", result.Type)
+	}
+	fmt.Println()
+
+	total := len(result.Courses) + len(result.Assignments) + len(result.Notices) + len(result.Lectures) + len(result.Academics)
+	if total == 0 {
+		fmt.Println("검색 결과가 없습니다")
+	}
+
+	if len(result.Courses) > 0 {
+		fmt.Println("\n과목")
+		for _, row := range result.Courses {
+			fmt.Printf("  %d. %s | %s (%s)\n",
+				row.Index,
+				emptyFallback(row.Course.Name, "-"),
+				row.Term.Label,
+				row.Term.Value,
+			)
+		}
+	}
+
+	if len(result.Assignments) > 0 {
+		fmt.Println("\n과제")
+		for _, row := range result.Assignments {
+			status := "미제출"
+			if row.Assignment.Submitted {
+				status = "제출"
+			}
+			fmt.Printf("  %s | %s | %s | %s | %s\n",
+				row.ID,
+				formatTime(row.Assignment.DueAt),
+				status,
+				row.CourseName,
+				row.Assignment.Title,
+			)
+		}
+	}
+
+	if len(result.Notices) > 0 {
+		fmt.Println("\n공지")
+		for _, row := range result.Notices {
+			fmt.Printf("  %s | %s | %s | %s\n",
+				row.ID,
+				formatNoticeTime(row.Notice.Registered),
+				row.CourseName,
+				row.Notice.Title,
+			)
+		}
+	}
+
+	if len(result.Lectures) > 0 {
+		fmt.Println("\n온라인 강의")
+		for _, row := range result.Lectures {
+			fmt.Printf("  %s | %s | %s | %s | %s\n",
+				row.ID,
+				formatLectureRange(row.Lecture.StartAt, row.Lecture.EndAt),
+				row.CourseName,
+				emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요"),
+				row.Lecture.Title,
+			)
+		}
+	}
+
+	if len(result.Academics) > 0 {
+		fmt.Println("\n학사일정")
+		for _, event := range result.Academics {
+			fmt.Printf("  %s %s | %s", event.Month, event.Date, event.Title)
+			if event.Note != "" {
+				fmt.Printf(" | %s", event.Note)
+			}
+			fmt.Println()
+		}
+	}
+
+	if len(result.Errors) > 0 {
+		fmt.Println("\n검색 실패")
+		for _, sectionError := range result.Errors {
+			fmt.Printf("  %s: %v\n", sectionError.Section, sectionError.Err)
+		}
+	}
 }
 
 func printCourseList(terms []klas.Term) {
