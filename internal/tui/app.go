@@ -387,37 +387,63 @@ func screenSubtitle(value screen) string {
 
 func formatDashboard(result app.DashboardResult) string {
 	var b strings.Builder
-	b.WriteString(badgeStyle.Render(result.Term.Value))
-	b.WriteString(" ")
-	b.WriteString(result.Term.Label)
-	b.WriteString("\n")
+	b.WriteString(formatDashboardOverview(result))
 	if result.Cached {
+		b.WriteString("\n")
 		b.WriteString(mutedStyle.Render("캐시 사용 " + result.CacheCreatedAt.Format("2006-01-02 15:04")))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(renderSection("과제", formatAssignmentSummary(result.Assignments)))
+	b.WriteString(renderSection("FOCUS", formatDashboardFocus(result)))
 	b.WriteString("\n")
-	b.WriteString(renderSection("온라인 강의", formatLectureSummary(result.Lectures)))
-	b.WriteString("\n")
-	b.WriteString(renderSection("공지", formatNoticeSummary(result.Notices)))
-	if result.Attendance.TotalCourses > 0 {
-		b.WriteString("\n")
-		b.WriteString(renderSection("출석", []string{
-			fmt.Sprintf("출석 %d · 결석 %d · 지각 %d · 공결 %d", result.Attendance.Completed, result.Attendance.Absent, result.Attendance.Late, result.Attendance.Excused),
-		}))
-	}
-	if result.Evaluation.Enabled {
-		b.WriteString("\n")
-		b.WriteString(renderSection("수업평가", []string{
-			fmt.Sprintf("완료 %d · 미완료 %d", result.Evaluation.Done, result.Evaluation.Pending),
-		}))
-	}
+	b.WriteString(renderSection("LATEST", formatNoticeSummary(result.Notices)))
 	if len(result.SectionErrors) > 0 {
 		b.WriteString("\n")
 		b.WriteString(formatSectionErrors(result.SectionErrors))
 	}
 	return b.String()
+}
+
+func formatDashboardOverview(result app.DashboardResult) string {
+	lines := []string{
+		fmt.Sprintf("%s  %s", badgeStyle.Render(result.Term.Value), result.Term.Label),
+		dashboardMetric("Due", fmt.Sprintf("%d assignments · %d lectures", len(result.Assignments), len(result.Lectures))),
+		dashboardMetric("Activity", fmt.Sprintf("%d notices", len(result.Notices))),
+	}
+	if result.Attendance.TotalCourses > 0 {
+		total := result.Attendance.Completed + result.Attendance.Absent + result.Attendance.Late + result.Attendance.LeaveEarly + result.Attendance.Excused + result.Attendance.Unknown
+		lines = append(lines, dashboardMetric("Attendance", fmt.Sprintf("출석 %d/%d · 결석 %d · 지각 %d", result.Attendance.Completed, total, result.Attendance.Absent, result.Attendance.Late)))
+	}
+	if result.Evaluation.Enabled {
+		lines = append(lines, dashboardMetric("Evaluation", fmt.Sprintf("완료 %d · 미완료 %d", result.Evaluation.Done, result.Evaluation.Pending)))
+	}
+	return renderSection("OVERVIEW", lines)
+}
+
+func dashboardMetric(label string, value string) string {
+	return mutedStyle.Render(lipgloss.NewStyle().Width(11).Render(label)) + " " + value
+}
+
+func formatDashboardFocus(result app.DashboardResult) []string {
+	lines := make([]string, 0, len(result.Assignments)+len(result.Lectures))
+	for _, row := range result.Assignments {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s",
+			warnBadgeStyle.Render("과제"),
+			mutedStyle.Render(formatTime(row.Assignment.DueAt)),
+			row.CourseName+" · "+row.Assignment.Title,
+		))
+	}
+	for _, row := range result.Lectures {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s",
+			badgeStyle.Render("강의"),
+			mutedStyle.Render(formatTime(row.Lecture.EndAt)),
+			row.CourseName+" · "+row.Lecture.Title,
+		))
+	}
+	if len(lines) == 0 {
+		return []string{emptyStyle.Render("처리할 항목이 없습니다")}
+	}
+	return lines
 }
 
 func formatAssignmentSummary(rows []app.AssignmentRow) []string {
@@ -448,7 +474,11 @@ func formatNoticeSummary(rows []app.NoticeRow) []string {
 	}
 	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
-		lines = append(lines, fmt.Sprintf("%s  %s  %s", mutedStyle.Render(formatTime(row.Notice.Registered)), row.CourseName, row.Notice.Title))
+		lines = append(lines, fmt.Sprintf("%s  %s  %s",
+			mutedStyle.Render(formatTime(row.Notice.Registered)),
+			truncateText(row.CourseName, 22),
+			truncateText(row.Notice.Title, 30),
+		))
 	}
 	return lines
 }
@@ -601,6 +631,28 @@ func emptyFallback(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func truncateText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit <= 0 {
+		return ""
+	}
+	if lipgloss.Width(value) <= limit {
+		return value
+	}
+	if limit <= 1 {
+		return "…"
+	}
+	var b strings.Builder
+	for _, r := range value {
+		next := b.String() + string(r)
+		if lipgloss.Width(next+"…") > limit {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String() + "…"
 }
 
 func minInt(left int, right int) int {

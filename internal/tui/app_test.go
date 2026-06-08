@@ -89,3 +89,44 @@ func TestListFormatsHideInternalIDs(t *testing.T) {
 		t.Fatalf("formatLectures() leaked internal id: %q", lectures)
 	}
 }
+
+func TestDashboardFormatUsesScanSections(t *testing.T) {
+	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	result := app.DashboardResult{
+		Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		Assignments: []app.AssignmentRow{{
+			ID:         "7:7",
+			CourseName: "오픈소스소프트웨어실습",
+			Assignment: klas.Assignment{
+				Title: "기말고사 대체 과제",
+				DueAt: &due,
+			},
+		}},
+		Notices: []app.NoticeRow{{
+			ID:         "2:1151742:1",
+			CourseName: "창의설계입문",
+			Notice: klas.Notice{
+				Title:      "최종 발표 일정 안내",
+				Registered: &due,
+			},
+		}},
+		Attendance: app.DashboardAttendance{
+			TotalCourses: 7,
+			Completed:    138,
+			Absent:       4,
+		},
+	}
+
+	view := formatDashboard(result)
+	for _, want := range []string{"OVERVIEW", "FOCUS", "LATEST", "Due", "Attendance", "기말고사 대체 과제", "최종 발표 일정 안내"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("formatDashboard() missing %q: %q", want, view)
+		}
+	}
+	if strings.Contains(view, "7:7") || strings.Contains(view, "2:1151742:1") {
+		t.Fatalf("formatDashboard() leaked internal id: %q", view)
+	}
+	if strings.Contains(view, "Attendance출석") {
+		t.Fatalf("formatDashboard() metric spacing failed: %q", view)
+	}
+}
