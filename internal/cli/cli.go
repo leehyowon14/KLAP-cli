@@ -52,6 +52,8 @@ func Run(ctx context.Context, args []string) error {
 		return runAttendance(ctx, service, args[1:])
 	case "grade":
 		return runGrade(ctx, service, args[1:])
+	case "rank":
+		return runRank(ctx, service, args[1:])
 	case "syllabus":
 		return runSyllabus(ctx, service, args[1:])
 	case "lecture":
@@ -404,6 +406,25 @@ func runGrade(ctx context.Context, service *app.Service, args []string) error {
 	return nil
 }
 
+func runRank(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) > 0 && args[0] == "list" {
+		args = args[1:]
+	} else if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
+		return fmt.Errorf("unknown rank command: %s", args[0])
+	}
+
+	opts, err := rankOptions(args)
+	if err != nil {
+		return err
+	}
+	result, err := service.Rank(ctx, opts)
+	if err != nil {
+		return err
+	}
+	printRank(result)
+	return nil
+}
+
 func runSyllabus(ctx context.Context, service *app.Service, args []string) error {
 	opts, err := syllabusOptions(args)
 	if err != nil {
@@ -692,6 +713,28 @@ func syllabusOptions(args []string) (app.SyllabusOptions, error) {
 	return opts, nil
 }
 
+func rankOptions(args []string) (app.RankOptions, error) {
+	opts := app.RankOptions{User: app.UserOption{StudentID: userFlag(args)}}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--term":
+			if i+1 >= len(args) {
+				return app.RankOptions{}, errors.New("--term에는 YYYY-S 형식의 학기가 필요합니다")
+			}
+			opts.TermValue = args[i+1]
+			i++
+		case "--user":
+			if i+1 >= len(args) {
+				return app.RankOptions{}, errors.New("--user에는 학번이 필요합니다")
+			}
+			i++
+		default:
+			return app.RankOptions{}, fmt.Errorf("unknown rank option: %s", args[i])
+		}
+	}
+	return opts, nil
+}
+
 func subjectSearchOptions(args []string) (app.SubjectSearchOptions, error) {
 	opts := app.SubjectSearchOptions{}
 	for i := 0; i < len(args); i++ {
@@ -838,6 +881,7 @@ Usage:
   klap attendance        출석 현황 출력
   klap attendance detail <과목명|번호|학정번호> 주차별 출석 상세 출력
   klap grade             성적 조회
+  klap rank              석차 조회
   klap syllabus <과목명|과목번호|학정번호> 강의계획서 출력
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
@@ -1179,6 +1223,34 @@ func yesNo(value bool) string {
 		return "Y"
 	}
 	return "N"
+}
+
+func printRank(result app.RankResult) {
+	fmt.Println("석차")
+	if len(result.Rows) == 0 {
+		fmt.Println("석차 내역이 없습니다")
+		return
+	}
+
+	fmt.Println("학기 | 신청학점 | 총점 | 평점 | 백분율 | 학과석차 | 학사경고")
+	for _, row := range result.Rows {
+		fmt.Printf("%s | %s | %s | %s | %s | %s | %s\n",
+			emptyFallback(row.TermLabel, row.TermValue),
+			emptyFallback(row.AppliedCredits, "-"),
+			emptyFallback(row.TotalScore, "-"),
+			emptyFallback(row.GPA, "-"),
+			emptyFallback(row.Percentile, "-"),
+			formatClassRank(row),
+			emptyFallback(row.Warning, "-"),
+		)
+	}
+}
+
+func formatClassRank(row klas.Rank) string {
+	if strings.TrimSpace(row.ClassRank) == "" && strings.TrimSpace(row.ClassSize) == "" {
+		return "-"
+	}
+	return emptyFallback(row.ClassRank, "-") + " / " + emptyFallback(row.ClassSize, "-")
 }
 
 func attendanceSummary(row app.AttendanceRow) string {

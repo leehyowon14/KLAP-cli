@@ -154,6 +154,21 @@ type GradeCourse struct {
 	Raw           gradeCourseItem
 }
 
+type Rank struct {
+	Year           string
+	Hakgi          string
+	TermValue      string
+	TermLabel      string
+	AppliedCredits string
+	TotalScore     string
+	GPA            string
+	Percentile     string
+	ClassRank      string
+	ClassSize      string
+	Warning        string
+	Raw            rankItem
+}
+
 type Syllabus struct {
 	SubjectID       string
 	CourseCode      string
@@ -416,6 +431,18 @@ type gradeCourseItem struct {
 	RetakeGrade   string `json:"retakeGetGrade"`
 	TermCheckOpen string `json:"termCheck"`
 	TermFinished  string `json:"termFinish"`
+}
+
+type rankItem struct {
+	ThisYear       string         `json:"thisYear"`
+	Hakgi          string         `json:"hakgi"`
+	AppliedCredits flexibleString `json:"applyHakjum"`
+	TotalScore     flexibleString `json:"applySum"`
+	GPA            flexibleString `json:"applyPoint"`
+	ClassRank      flexibleString `json:"classOrder"`
+	ClassSize      flexibleString `json:"manNum"`
+	Warning        string         `json:"warningOpt"`
+	Percentile     flexibleString `json:"pcnt"`
 }
 
 type syllabusDataItem struct {
@@ -951,6 +978,28 @@ func (c *Client) Grades(ctx context.Context) (GradeReport, error) {
 		Summary: buildGradeSummary(summaryItem),
 		Terms:   terms,
 	}, nil
+}
+
+func (c *Client) Ranks(ctx context.Context) ([]Rank, error) {
+	body, err := c.do(ctx, http.MethodPost, "/std/cps/inqire/StandStdList.do", map[string]any{})
+	if err != nil {
+		return nil, err
+	}
+
+	var response []rankItem
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("석차 조회 응답 파싱 실패: %w", err)
+	}
+
+	ranks := make([]Rank, 0, len(response))
+	for _, item := range response {
+		rank := buildRank(item)
+		if strings.TrimSpace(rank.TermValue) == "" {
+			continue
+		}
+		ranks = append(ranks, rank)
+	}
+	return ranks, nil
 }
 
 func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, name string, professor string) ([]SyllabusListItem, error) {
@@ -1502,6 +1551,47 @@ func formatGradeNumber(value float64) string {
 		return "0"
 	}
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", value), "0"), ".")
+}
+
+func buildRank(item rankItem) Rank {
+	year := strings.TrimSpace(item.ThisYear)
+	hakgi := strings.TrimSpace(item.Hakgi)
+	termValue := ""
+	if year != "" && hakgi != "" {
+		termValue = year + "," + hakgi
+	}
+	return Rank{
+		Year:           year,
+		Hakgi:          hakgi,
+		TermValue:      termValue,
+		TermLabel:      rankTermLabel(year, hakgi),
+		AppliedCredits: item.AppliedCredits.String(),
+		TotalScore:     item.TotalScore.String(),
+		GPA:            item.GPA.String(),
+		Percentile:     item.Percentile.String(),
+		ClassRank:      item.ClassRank.String(),
+		ClassSize:      item.ClassSize.String(),
+		Warning:        strings.TrimSpace(item.Warning),
+		Raw:            item,
+	}
+}
+
+func rankTermLabel(year string, hakgi string) string {
+	if year == "" {
+		return strings.TrimSpace(hakgi)
+	}
+	switch strings.TrimSpace(hakgi) {
+	case "1":
+		return year + "년도 1학기"
+	case "2":
+		return year + "년도 2학기"
+	case "3":
+		return year + "년도 여름학기"
+	case "4":
+		return year + "년도 겨울학기"
+	default:
+		return strings.TrimSpace(year + " " + hakgi)
+	}
 }
 
 func (item SyllabusListItem) CourseCode() string {

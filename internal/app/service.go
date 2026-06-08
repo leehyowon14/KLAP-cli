@@ -58,6 +58,11 @@ type GradeOptions struct {
 	User UserOption
 }
 
+type RankOptions struct {
+	User      UserOption
+	TermValue string
+}
+
 type SyllabusOptions struct {
 	User      UserOption
 	Selector  string
@@ -168,6 +173,10 @@ type AttendanceDetailResult struct {
 
 type GradeResult struct {
 	Report klas.GradeReport
+}
+
+type RankResult struct {
+	Rows []klas.Rank
 }
 
 type SyllabusResult struct {
@@ -841,6 +850,46 @@ func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, er
 		return GradeResult{}, err
 	}
 	return GradeResult{Report: report}, nil
+}
+
+func (s *Service) Rank(ctx context.Context, opts RankOptions) (RankResult, error) {
+	termValue, err := normalizeTermValue(opts.TermValue)
+	if err != nil {
+		return RankResult{}, err
+	}
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return RankResult{}, err
+	}
+	client, err := s.authenticatedClient(ctx, studentID)
+	if err != nil {
+		return RankResult{}, err
+	}
+
+	rows, err := client.Ranks(ctx)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return RankResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			rows, err = client.Ranks(ctx)
+		}
+	}
+	if err != nil {
+		return RankResult{}, err
+	}
+	if termValue != "" {
+		filtered := rows[:0]
+		for _, row := range rows {
+			if row.TermValue == termValue {
+				filtered = append(filtered, row)
+			}
+		}
+		rows = filtered
+	}
+	return RankResult{Rows: rows}, nil
 }
 
 func (s *Service) Syllabus(ctx context.Context, opts SyllabusOptions) (SyllabusResult, error) {
