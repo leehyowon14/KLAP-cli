@@ -30,6 +30,10 @@ klap rank
 klap rank list
 klap rank 2025-1
 klap rank --term 2025-1
+klap evaluation list
+klap evaluation submit all
+klap evaluation submit all --yes
+klap evaluation submit <과목명|번호> --yes
 klap assignment list
 klap assignment list --course <과목명|번호>
 klap assignment detail <과목번호:과제번호>
@@ -57,6 +61,9 @@ klap config reminder --name "To-do" --use-existing-list
 
 `klap term select`로 선택한 학기는 `course`, `assignment`, `notice`, `timetable`, `lecture`, `attend` 명령에 공통 적용된다.
 선택한 학기가 없으면 KLAS가 반환하는 최신 학기를 사용한다.
+
+`klap evaluation submit`은 기본적으로 제출하지 않고 미리보기만 출력한다.
+실제 저장 API는 `--yes`가 있을 때만 호출하며, 공학인증 과목은 기본 제외한다.
 
 Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림을 생성한다.
 `--use-existing-list`를 쓰면 지정한 기존 목록만 사용하며, 없을 때 새로 만들지 않는다.
