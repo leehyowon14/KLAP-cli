@@ -13,31 +13,24 @@ import (
 	"github.com/kw-klap/klap-cli/internal/klas"
 )
 
-const sidebarWidth = 30
+const menuNumberWidth = 3
 
 var (
 	appStyle = lipgloss.NewStyle().
-			Padding(1, 1)
+			Padding(1, 2)
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#58A6FF"))
 	headerMetaStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6E7781"))
-	sidebarStyle = lipgloss.NewStyle().
-			Width(sidebarWidth).
-			Border(lipgloss.NormalBorder(), false, true, false, false).
-			BorderForeground(lipgloss.Color("#30363D")).
-			Padding(0, 1, 0, 0)
 	panelStyle = lipgloss.NewStyle().
-			Padding(0, 1)
+			Padding(0, 0)
 	menuItemStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#8C959F")).
-			Padding(0, 1)
+			Padding(0, 0)
 	menuSelectedStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("#FFFFFF")).
-				Background(lipgloss.Color("#30363D")).
-				Padding(0, 1)
+				Foreground(lipgloss.Color("#56D4DD"))
 	sectionStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#58A6FF"))
@@ -66,6 +59,8 @@ var (
 	logoStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#58A6FF"))
+	taglineStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#9ACD32"))
 )
 
 const klapLogo = ` _  __ _      _    ____
@@ -194,24 +189,15 @@ func (m model) View() string {
 	if width <= 0 {
 		width = 96
 	}
-	contentWidth := width - sidebarWidth - 8
-	if contentWidth < 48 {
-		contentWidth = width - 4
+	if m.active == screenHome {
+		return appStyle.Render(m.renderHomeView(width))
 	}
 
 	header := m.renderHeader(width)
-	sidebar := m.renderSidebar()
-	panel := panelStyle.Width(contentWidth).Render(m.renderPanel())
-
-	var body string
-	if width < 82 {
-		body = lipgloss.JoinVertical(lipgloss.Left, sidebar, panel)
-	} else {
-		body = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, "  ", panel)
-	}
-	footer := footerStyle.Render("q 종료  enter 열기  b/esc 뒤로  r 새로고침  ↑↓ 이동")
 	rule := mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120))))
-	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, rule, "", body, "", footer))
+	panel := panelStyle.Width(maxInt(48, width-4)).Render(m.renderPanel())
+	footer := footerStyle.Render("b/esc 뒤로  r 새로고침  q 종료")
+	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, rule, "", panel, "", footer))
 }
 
 func (m model) renderHeader(width int) string {
@@ -233,31 +219,55 @@ func (m model) renderHeader(width int) string {
 	return left + strings.Repeat(" ", spacerWidth) + right
 }
 
-func (m model) renderSidebar() string {
+func (m model) renderHomeView(width int) string {
+	logo := logoStyle.Render(klapLogo)
+	meta := lipgloss.JoinVertical(lipgloss.Left,
+		headerStyle.Render("https://github.com/kw-klap/klap-cli"),
+		taglineStyle.Render("KLAS workflow in your terminal."),
+	)
+	top := logo
+	if width >= 82 {
+		top = lipgloss.JoinHorizontal(lipgloss.Top, logo, "   ", meta)
+	} else {
+		top = lipgloss.JoinVertical(lipgloss.Left, logo, meta)
+	}
+
 	var b strings.Builder
-	b.WriteString(mutedStyle.Render("NAVIGATION"))
-	b.WriteString("\n")
+	b.WriteString(top)
+	b.WriteString("\n\n")
+	b.WriteString(m.renderHomeMenu(width))
+	b.WriteString("\n\n")
+	b.WriteString(footerStyle.Render("↑↓ 이동  |  enter 열기  |  r 새로고침  |  q 종료"))
+	return b.String()
+}
+
+func (m model) renderHomeMenu(width int) string {
+	var b strings.Builder
 	for index, item := range m.menu {
-		label := item.title
-		if (index == m.cursor && m.active == screenHome) || item.screen == m.active {
-			b.WriteString(menuSelectedStyle.Render("> " + label))
-		} else {
-			b.WriteString(menuItemStyle.Render("  " + label))
+		selected := index == m.cursor
+		prefix := fmt.Sprintf("%d.", index+1)
+		marker := "  "
+		if selected {
+			marker = "› "
 		}
-		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render("    " + item.help))
+		number := lipgloss.NewStyle().Width(menuNumberWidth).Render(prefix)
+		title := lipgloss.NewStyle().Width(16).Render(item.title)
+		help := item.help
+		line := marker + number + " " + title + " " + help
+		if selected {
+			line = menuSelectedStyle.Render(line)
+		} else {
+			line = menuItemStyle.Render(line)
+		}
+		b.WriteString(line)
 		if index < len(m.menu)-1 {
 			b.WriteString("\n")
 		}
 	}
-	return sidebarStyle.Render(b.String())
+	return b.String()
 }
 
 func (m model) renderPanel() string {
-	if m.active == screenHome {
-		return m.renderHomePanel()
-	}
-
 	var b strings.Builder
 	b.WriteString(sectionStyle.Render(screenTitle(m.active)))
 	b.WriteString("\n")
@@ -282,20 +292,6 @@ func (m model) renderPanel() string {
 	}
 	b.WriteString(m.content)
 	if !strings.HasSuffix(m.content, "\n") {
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-func (m model) renderHomePanel() string {
-	var b strings.Builder
-	b.WriteString(logoStyle.Render(klapLogo))
-	b.WriteString("\n\n")
-	if len(m.menu) > 0 {
-		item := m.menu[m.cursor]
-		b.WriteString(badgeStyle.Render(item.title))
-		b.WriteString(" ")
-		b.WriteString(item.help)
 		b.WriteString("\n")
 	}
 	return b.String()
