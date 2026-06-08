@@ -291,11 +291,6 @@ func (m model) renderHomePanel() string {
 	var b strings.Builder
 	b.WriteString(logoStyle.Render(klapLogo))
 	b.WriteString("\n\n")
-	b.WriteString(sectionStyle.Render("Today"))
-	b.WriteString("\n")
-	b.WriteString("Dashboard와 Due를 중심으로 오늘 처리할 항목을 확인합니다.\n\n")
-	b.WriteString(mutedStyle.Render("NEXT"))
-	b.WriteString("\n")
 	if len(m.menu) > 0 {
 		item := m.menu[m.cursor]
 		b.WriteString(badgeStyle.Render(item.title))
