@@ -21,7 +21,7 @@ func TestHomeViewShowsMenu(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "https://github.com/kw-klap/klap-cli") || !strings.Contains(view, "› 1.") || !strings.Contains(view, "Dashboard") || !strings.Contains(view, "_  __") {
+	if !strings.Contains(view, "https://github.com/leehyowon14/KLAP-GoLang") || !strings.Contains(view, "› 1.") || !strings.Contains(view, "Dashboard") || !strings.Contains(view, "_  __") {
 		t.Fatalf("View() = %q", view)
 	}
 }

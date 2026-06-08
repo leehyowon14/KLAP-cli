@@ -222,8 +222,8 @@ func (m model) renderHeader(width int) string {
 func (m model) renderHomeView(width int) string {
 	logo := logoStyle.Render(klapLogo)
 	meta := lipgloss.JoinVertical(lipgloss.Left,
-		headerStyle.Render("https://github.com/kw-klap/klap-cli"),
-		taglineStyle.Render("KLAS workflow in your terminal."),
+		headerStyle.Render("https://github.com/leehyowon14/KLAP-GoLang"),
+		taglineStyle.Render("Kwangwoon KLAS in your terminal."),
 	)
 	top := logo
 	if width >= 82 {
