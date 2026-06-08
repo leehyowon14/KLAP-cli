@@ -292,9 +292,6 @@ func (m model) renderHomePanel() string {
 		b.WriteString(item.help)
 		b.WriteString("\n")
 	}
-	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render("현재 TUI는 읽기 전용 요약 화면부터 제공하며, 상세/액션 화면은 같은 프레임 안에 확장됩니다."))
-	b.WriteString("\n")
 	return b.String()
 }
 
