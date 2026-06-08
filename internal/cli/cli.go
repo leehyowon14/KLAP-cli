@@ -46,6 +46,8 @@ func Run(ctx context.Context, args []string) error {
 		return runNotice(ctx, service, args[1:])
 	case "timetable":
 		return runTimetable(ctx, service, args[1:])
+	case "attendance":
+		return runAttendance(ctx, service, args[1:])
 	case "syllabus":
 		return runSyllabus(ctx, service, args[1:])
 	case "lecture":
@@ -335,6 +337,23 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 		return err
 	}
 	printTimetable(result)
+	return nil
+}
+
+func runAttendance(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) > 0 && args[0] == "list" {
+		args = args[1:]
+	} else if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
+		return fmt.Errorf("unknown attendance command: %s", args[0])
+	}
+
+	result, err := service.AttendanceList(ctx, app.AttendanceListOptions{
+		User: app.UserOption{StudentID: userFlag(args)},
+	})
+	if err != nil {
+		return err
+	}
+	printAttendanceList(result)
 	return nil
 }
 
@@ -761,6 +780,7 @@ Usage:
   klap notice list       강의 공지 목록 출력
   klap notice detail <공지ID> 강의 공지 상세 출력
   klap timetable         현재 학기 시간표 출력
+  klap attendance        출석 현황 출력
   klap syllabus <과목명|과목번호|학정번호> 강의계획서 출력
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
@@ -987,6 +1007,27 @@ func printTimetable(result app.TimetableResult) {
 			entry.SubjectName,
 			emptyFallback(entry.Room, "강의실 미지정"),
 			emptyFallback(entry.Professor, "교수 미지정"),
+		)
+	}
+}
+
+func printAttendanceList(result app.AttendanceListResult) {
+	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
+	if len(result.Rows) == 0 {
+		fmt.Println("출석 현황이 없습니다")
+		return
+	}
+
+	fmt.Println("번호 | 학정번호 | 과목 | 교수 | 강의시간 | 수강인원")
+	for _, row := range result.Rows {
+		course := row.Course
+		fmt.Printf("%d. %s | %s | %s | %s | %s\n",
+			row.Index,
+			emptyFallback(course.CourseCode, "-"),
+			emptyFallback(course.Name, "-"),
+			emptyFallback(course.Professor, "-"),
+			emptyFallback(course.Weekday, "확인 필요"),
+			emptyFallback(course.CurrentNum, "-"),
 		)
 	}
 }

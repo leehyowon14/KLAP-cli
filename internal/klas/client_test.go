@@ -152,6 +152,28 @@ func TestSyllabusListItemSubjectID(t *testing.T) {
 	}
 }
 
+func TestBuildAttendanceCourse(t *testing.T) {
+	course := buildAttendanceCourse(attendanceCourseItem{
+		OpenMajorCode: "I040",
+		OpenGrade:     "3",
+		OpenGwamokNo:  "3951",
+		BunbanNo:      "01",
+		KoreanName:    " 컴퓨터그래픽스 ",
+		Professor:     " 김동준 ",
+		CourseType:    "전선",
+		Credits:       flexibleString("3"),
+		CreditHours:   flexibleString("3"),
+		CurrentNum:    flexibleString("40"),
+		Weekday:       "화3,목4",
+	})
+	if course.CourseCode != "I040-3-3951-01" || course.Name != "컴퓨터그래픽스" || course.Professor != "김동준" {
+		t.Fatalf("buildAttendanceCourse() = %+v", course)
+	}
+	if course.Credits != "3" || course.CreditHours != "3" || course.CurrentNum != "40" || course.Weekday != "화3,목4" {
+		t.Fatalf("buildAttendanceCourse() details = %+v", course)
+	}
+}
+
 func TestBuildSyllabus(t *testing.T) {
 	syllabus := buildSyllabus("U202613951I040013", syllabusDataItem{
 		OpenMajorCode:  "I040",

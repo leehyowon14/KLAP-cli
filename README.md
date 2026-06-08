@@ -18,6 +18,8 @@ klap syllabus <과목명|과목번호|학정번호>
 klap syllabus I040-3-3951-01 --term 2026-1
 klap academic list
 klap academic list --year 2026
+klap attendance
+klap attendance list
 klap assignment list
 klap assignment list --course <과목명|번호>
 klap assignment detail <과목번호:과제번호>

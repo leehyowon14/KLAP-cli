@@ -45,6 +45,10 @@ type TimetableOptions struct {
 	User UserOption
 }
 
+type AttendanceListOptions struct {
+	User UserOption
+}
+
 type SyllabusOptions struct {
 	User      UserOption
 	Selector  string
@@ -130,6 +134,16 @@ type NoticeDetailResult struct {
 type TimetableResult struct {
 	Term    klas.Term
 	Entries []klas.TimetableEntry
+}
+
+type AttendanceListResult struct {
+	Term klas.Term
+	Rows []AttendanceRow
+}
+
+type AttendanceRow struct {
+	Index  int
+	Course klas.AttendanceCourse
 }
 
 type SyllabusResult struct {
@@ -687,6 +701,44 @@ func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (Timetab
 	return TimetableResult{
 		Term:    term,
 		Entries: entries,
+	}, nil
+}
+
+func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions) (AttendanceListResult, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return AttendanceListResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	if err != nil {
+		return AttendanceListResult{}, err
+	}
+
+	courses, err := client.AttendanceCourses(ctx, term.Value)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return AttendanceListResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			courses, err = client.AttendanceCourses(ctx, term.Value)
+		}
+	}
+	if err != nil {
+		return AttendanceListResult{}, err
+	}
+
+	rows := make([]AttendanceRow, 0, len(courses))
+	for index, course := range courses {
+		rows = append(rows, AttendanceRow{
+			Index:  index + 1,
+			Course: course,
+		})
+	}
+	return AttendanceListResult{
+		Term: term,
+		Rows: rows,
 	}, nil
 }
 
@@ -1578,9 +1630,7 @@ func (s *Service) authenticatedClient(ctx context.Context, studentID string) (*k
 	if err != nil {
 		return nil, fmt.Errorf("재로그인 실패: %w", err)
 	}
-	if err := s.store.SaveSession(ctx, studentID, session); err != nil {
-		return nil, err
-	}
+	_ = s.store.SaveSession(ctx, studentID, session)
 	return client, nil
 }
 
@@ -1601,9 +1651,7 @@ func (s *Service) refreshedClientAfterSessionError(ctx context.Context, studentI
 	if loginErr != nil {
 		return nil, true, fmt.Errorf("재로그인 실패: %w", loginErr)
 	}
-	if saveErr := s.store.SaveSession(ctx, studentID, session); saveErr != nil {
-		return nil, true, saveErr
-	}
+	_ = s.store.SaveSession(ctx, studentID, session)
 	return client, true, nil
 }
 

@@ -84,6 +84,18 @@ type TimetableEntry struct {
 	Raw         map[string]any
 }
 
+type AttendanceCourse struct {
+	CourseCode  string
+	Name        string
+	Professor   string
+	CourseType  string
+	Credits     string
+	CreditHours string
+	CurrentNum  string
+	Weekday     string
+	Raw         attendanceCourseItem
+}
+
 type Syllabus struct {
 	SubjectID       string
 	CourseCode      string
@@ -282,6 +294,22 @@ type SyllabusListItem struct {
 	Summary       string         `json:"summary"`
 	CloseOpt      string         `json:"closeOpt"`
 	VideoURL      string         `json:"videoUrl"`
+}
+
+type attendanceCourseItem struct {
+	ThisYear      string         `json:"thisYear"`
+	Hakgi         string         `json:"hakgi"`
+	OpenMajorCode string         `json:"openMajorCode"`
+	OpenGrade     string         `json:"openGrade"`
+	OpenGwamokNo  string         `json:"openGwamokNo"`
+	BunbanNo      string         `json:"bunbanNo"`
+	KoreanName    string         `json:"gwamokKname"`
+	Professor     string         `json:"memberName"`
+	CourseType    string         `json:"codeName1"`
+	Credits       flexibleString `json:"hakjumNum"`
+	CreditHours   flexibleString `json:"sisuNum"`
+	CurrentNum    flexibleString `json:"currentNum"`
+	Weekday       string         `json:"yoil"`
 }
 
 type syllabusDataItem struct {
@@ -720,6 +748,32 @@ func (c *Client) Timetable(ctx context.Context, yearHakgi string) ([]TimetableEn
 	return parseTimetableEntries(response), nil
 }
 
+func (c *Client) AttendanceCourses(ctx context.Context, yearHakgi string) ([]AttendanceCourse, error) {
+	year, hakgi := splitYearHakgi(yearHakgi)
+	body, err := c.do(ctx, http.MethodPost, "/std/ads/admst/KwAttendStdGwakmokList.do", map[string]any{
+		"thisYear": year,
+		"hakgi":    hakgi,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var response []attendanceCourseItem
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("출석 현황 응답 파싱 실패: %w", err)
+	}
+
+	courses := make([]AttendanceCourse, 0, len(response))
+	for _, item := range response {
+		course := buildAttendanceCourse(item)
+		if strings.TrimSpace(course.Name) == "" {
+			continue
+		}
+		courses = append(courses, course)
+	}
+	return courses, nil
+}
+
 func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, name string, professor string) ([]SyllabusListItem, error) {
 	year, hakgi := splitYearHakgi(yearHakgi)
 	body, err := c.do(ctx, http.MethodPost, "/std/cps/atnlc/LectrePlanStdList.do", map[string]any{
@@ -1114,6 +1168,20 @@ func SyllabusCourseCode(openMajorCode string, openGrade string, openGwamokNo str
 		return strings.Join(parts, "-")
 	}
 	return strings.Join(parts, "-")
+}
+
+func buildAttendanceCourse(item attendanceCourseItem) AttendanceCourse {
+	return AttendanceCourse{
+		CourseCode:  SyllabusCourseCode(item.OpenMajorCode, item.OpenGrade, item.OpenGwamokNo, item.BunbanNo),
+		Name:        strings.TrimSpace(item.KoreanName),
+		Professor:   strings.TrimSpace(item.Professor),
+		CourseType:  strings.TrimSpace(item.CourseType),
+		Credits:     item.Credits.String(),
+		CreditHours: item.CreditHours.String(),
+		CurrentNum:  item.CurrentNum.String(),
+		Weekday:     strings.TrimSpace(item.Weekday),
+		Raw:         item,
+	}
 }
 
 func (item SyllabusListItem) CourseCode() string {
