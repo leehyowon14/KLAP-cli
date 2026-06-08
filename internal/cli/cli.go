@@ -1453,7 +1453,7 @@ func printEvaluationSubmitResult(result app.EvaluationSubmitResult) {
 		default:
 			ready++
 			parts := []string{
-				"답변=매우 그렇다",
+				"답변=정말그렇다",
 				"기타2=아니오",
 				"서술형=많은 도움 되었습니다. 한학기동안 감사했습니다.",
 			}
