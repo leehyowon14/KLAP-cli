@@ -63,7 +63,7 @@ klap config reminder --name "To-do" --use-existing-list
 선택한 학기가 없으면 KLAS가 반환하는 최신 학기를 사용한다.
 
 `klap evaluation submit`은 기본적으로 제출하지 않고 미리보기만 출력한다.
-실제 저장 API는 `--yes`가 있을 때만 호출하며, 공학인증 과목은 기본 제외한다.
+실제 저장 API는 `--yes`가 있을 때만 호출하며, 공학인증 추가 문항은 기본 제외한다.
 
 Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림을 생성한다.
 `--use-existing-list`를 쓰면 지정한 기존 목록만 사용하며, 없을 때 새로 만들지 않는다.

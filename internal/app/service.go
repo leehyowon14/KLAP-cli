@@ -1037,12 +1037,6 @@ func (s *Service) EvaluationSubmit(ctx context.Context, opts EvaluationSubmitOpt
 			result.Items = append(result.Items, item)
 			continue
 		}
-		if target.Course.Engineering && !opts.IncludeEngineering {
-			item.Skipped = true
-			item.Reason = "공학인증 과목 제외"
-			result.Items = append(result.Items, item)
-			continue
-		}
 
 		form, formErr := client.EvaluationForm(ctx, term, target.Course)
 		if formErr != nil {

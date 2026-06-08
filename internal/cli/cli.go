@@ -1452,10 +1452,15 @@ func printEvaluationSubmitResult(result app.EvaluationSubmitResult) {
 			fmt.Printf("완료: %s\n", label)
 		default:
 			ready++
-			fmt.Printf("제출 가능: %s | 답변=매우 그렇다 | 기타2=아니오 | 서술형=%s\n",
-				label,
-				"많은 도움 되었습니다. 한학기동안 감사했습니다.",
-			)
+			parts := []string{
+				"답변=매우 그렇다",
+				"기타2=아니오",
+				"서술형=많은 도움 되었습니다. 한학기동안 감사했습니다.",
+			}
+			if item.Row.Course.Engineering {
+				parts = append(parts, "공학인증문항=제외")
+			}
+			fmt.Printf("제출 가능: %s | %s\n", label, strings.Join(parts, " | "))
 		}
 	}
 	if result.Submitted {
