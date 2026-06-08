@@ -86,6 +86,7 @@ type TimetableEntry struct {
 
 type AttendanceCourse struct {
 	CourseCode  string
+	SubjectID   string
 	Name        string
 	Professor   string
 	CourseType  string
@@ -94,6 +95,19 @@ type AttendanceCourse struct {
 	CurrentNum  string
 	Weekday     string
 	Raw         attendanceCourseItem
+}
+
+type AttendanceSession struct {
+	Week  string
+	Slots []AttendanceSlot
+	Raw   attendanceSessionItem
+}
+
+type AttendanceSlot struct {
+	Index  int
+	Status string
+	Mark   string
+	Date   string
 }
 
 type Syllabus struct {
@@ -310,6 +324,18 @@ type attendanceCourseItem struct {
 	CreditHours   flexibleString `json:"sisuNum"`
 	CurrentNum    flexibleString `json:"currentNum"`
 	Weekday       string         `json:"yoil"`
+}
+
+type attendanceSessionItem struct {
+	WeeklySeq       flexibleString `json:"weeklyseq"`
+	AttendanceDiv1  string         `json:"attendancediv1"`
+	AttendanceDiv2  string         `json:"attendancediv2"`
+	AttendanceDiv3  string         `json:"attendancediv3"`
+	AttendanceDiv4  string         `json:"attendancediv4"`
+	AttendanceDate1 string         `json:"attendancedate1"`
+	AttendanceDate2 string         `json:"attendancedate2"`
+	AttendanceDate3 string         `json:"attendancedate3"`
+	AttendanceDate4 string         `json:"attendancedate4"`
 }
 
 type syllabusDataItem struct {
@@ -751,8 +777,8 @@ func (c *Client) Timetable(ctx context.Context, yearHakgi string) ([]TimetableEn
 func (c *Client) AttendanceCourses(ctx context.Context, yearHakgi string) ([]AttendanceCourse, error) {
 	year, hakgi := splitYearHakgi(yearHakgi)
 	body, err := c.do(ctx, http.MethodPost, "/std/ads/admst/KwAttendStdGwakmokList.do", map[string]any{
-		"thisYear": year,
-		"hakgi":    hakgi,
+		"selectYear":  year,
+		"selectHakgi": hakgi,
 	})
 	if err != nil {
 		return nil, err
@@ -772,6 +798,45 @@ func (c *Client) AttendanceCourses(ctx context.Context, yearHakgi string) ([]Att
 		courses = append(courses, course)
 	}
 	return courses, nil
+}
+
+func (c *Client) AttendanceSessions(ctx context.Context, yearHakgi string, course AttendanceCourse) ([]AttendanceSession, error) {
+	year, hakgi := splitYearHakgi(yearHakgi)
+	payload := map[string]any{
+		"selectYear":    year,
+		"selectHakgi":   hakgi,
+		"openMajorCode": course.Raw.OpenMajorCode,
+		"openGrade":     course.Raw.OpenGrade,
+		"openGwamokNo":  course.Raw.OpenGwamokNo,
+		"bunbanNo":      course.Raw.BunbanNo,
+		"gwamokKname":   course.Raw.KoreanName,
+		"codeName1":     course.Raw.CourseType,
+		"hakjumNum":     course.Raw.Credits.String(),
+		"sisuNum":       course.Raw.CreditHours.String(),
+		"memberName":    course.Raw.Professor,
+		"currentNum":    course.Raw.CurrentNum.String(),
+		"yoil":          course.Raw.Weekday,
+		"subj":          course.SubjectID,
+	}
+	body, err := c.do(ctx, http.MethodPost, "/std/ads/admst/KwAttendStdAttendList.do", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var response []attendanceSessionItem
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("출석 상세 응답 파싱 실패: %w", err)
+	}
+
+	sessions := make([]AttendanceSession, 0, len(response))
+	for _, item := range response {
+		session := buildAttendanceSession(item)
+		if len(session.Slots) == 0 {
+			continue
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, nil
 }
 
 func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, name string, professor string) ([]SyllabusListItem, error) {
@@ -1171,8 +1236,11 @@ func SyllabusCourseCode(openMajorCode string, openGrade string, openGwamokNo str
 }
 
 func buildAttendanceCourse(item attendanceCourseItem) AttendanceCourse {
+	courseCode := SyllabusCourseCode(item.OpenMajorCode, item.OpenGrade, item.OpenGwamokNo, item.BunbanNo)
+	subjectID, _ := SyllabusSubjectIDFromCourseCode(item.ThisYear+","+item.Hakgi, courseCode)
 	return AttendanceCourse{
-		CourseCode:  SyllabusCourseCode(item.OpenMajorCode, item.OpenGrade, item.OpenGwamokNo, item.BunbanNo),
+		CourseCode:  courseCode,
+		SubjectID:   subjectID,
 		Name:        strings.TrimSpace(item.KoreanName),
 		Professor:   strings.TrimSpace(item.Professor),
 		CourseType:  strings.TrimSpace(item.CourseType),
@@ -1181,6 +1249,54 @@ func buildAttendanceCourse(item attendanceCourseItem) AttendanceCourse {
 		CurrentNum:  item.CurrentNum.String(),
 		Weekday:     strings.TrimSpace(item.Weekday),
 		Raw:         item,
+	}
+}
+
+func buildAttendanceSession(item attendanceSessionItem) AttendanceSession {
+	slots := []AttendanceSlot{
+		attendanceSlot(1, item.AttendanceDiv1, item.AttendanceDate1),
+		attendanceSlot(2, item.AttendanceDiv2, item.AttendanceDate2),
+		attendanceSlot(3, item.AttendanceDiv3, item.AttendanceDate3),
+		attendanceSlot(4, item.AttendanceDiv4, item.AttendanceDate4),
+	}
+	filtered := slots[:0]
+	for _, slot := range slots {
+		if strings.TrimSpace(slot.Status) == "" {
+			continue
+		}
+		filtered = append(filtered, slot)
+	}
+	return AttendanceSession{
+		Week:  item.WeeklySeq.String(),
+		Slots: filtered,
+		Raw:   item,
+	}
+}
+
+func attendanceSlot(index int, status string, date string) AttendanceSlot {
+	status = strings.TrimSpace(status)
+	return AttendanceSlot{
+		Index:  index,
+		Status: status,
+		Mark:   AttendanceStatusMark(status),
+		Date:   strings.TrimSpace(date),
+	}
+}
+
+func AttendanceStatusMark(status string) string {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "AT":
+		return "O"
+	case "AB":
+		return "X"
+	case "LT":
+		return "L"
+	case "LE":
+		return "R"
+	case "OA":
+		return "A"
+	default:
+		return strings.TrimSpace(status)
 	}
 }
 

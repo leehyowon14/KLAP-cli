@@ -142,8 +142,10 @@ type AttendanceListResult struct {
 }
 
 type AttendanceRow struct {
-	Index  int
-	Course klas.AttendanceCourse
+	Index    int
+	Course   klas.AttendanceCourse
+	Sessions []klas.AttendanceSession
+	Err      error
 }
 
 type SyllabusResult struct {
@@ -731,9 +733,21 @@ func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions
 
 	rows := make([]AttendanceRow, 0, len(courses))
 	for index, course := range courses {
+		sessions, detailErr := client.AttendanceSessions(ctx, term.Value, course)
+		if detailErr != nil {
+			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, detailErr)
+			if refreshErr != nil {
+				detailErr = refreshErr
+			} else if refreshed {
+				client = refreshedClient
+				sessions, detailErr = client.AttendanceSessions(ctx, term.Value, course)
+			}
+		}
 		rows = append(rows, AttendanceRow{
-			Index:  index + 1,
-			Course: course,
+			Index:    index + 1,
+			Course:   course,
+			Sessions: sessions,
+			Err:      detailErr,
 		})
 	}
 	return AttendanceListResult{

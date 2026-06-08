@@ -1018,18 +1018,48 @@ func printAttendanceList(result app.AttendanceListResult) {
 		return
 	}
 
-	fmt.Println("번호 | 학정번호 | 과목 | 교수 | 강의시간 | 수강인원")
+	fmt.Println("번호 | 학정번호 | 과목 | 교수 | 강의시간 | 출석 요약")
 	for _, row := range result.Rows {
 		course := row.Course
+		summary := attendanceSummary(row)
 		fmt.Printf("%d. %s | %s | %s | %s | %s\n",
 			row.Index,
 			emptyFallback(course.CourseCode, "-"),
 			emptyFallback(course.Name, "-"),
 			emptyFallback(course.Professor, "-"),
 			emptyFallback(course.Weekday, "확인 필요"),
-			emptyFallback(course.CurrentNum, "-"),
+			summary,
 		)
 	}
+}
+
+func attendanceSummary(row app.AttendanceRow) string {
+	if row.Err != nil {
+		return "상세 확인 실패"
+	}
+	counts := map[string]int{}
+	total := 0
+	for _, session := range row.Sessions {
+		for _, slot := range session.Slots {
+			mark := emptyFallback(slot.Mark, slot.Status)
+			if mark == "" {
+				continue
+			}
+			counts[mark]++
+			total++
+		}
+	}
+	if total == 0 {
+		return "상세 없음"
+	}
+	return fmt.Sprintf("O %d / X %d / L %d / R %d / A %d / 전체 %d",
+		counts["O"],
+		counts["X"],
+		counts["L"],
+		counts["R"],
+		counts["A"],
+		total,
+	)
 }
 
 func printSyllabus(result app.SyllabusResult) {

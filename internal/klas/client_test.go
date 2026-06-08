@@ -154,6 +154,8 @@ func TestSyllabusListItemSubjectID(t *testing.T) {
 
 func TestBuildAttendanceCourse(t *testing.T) {
 	course := buildAttendanceCourse(attendanceCourseItem{
+		ThisYear:      "2026",
+		Hakgi:         "1",
 		OpenMajorCode: "I040",
 		OpenGrade:     "3",
 		OpenGwamokNo:  "3951",
@@ -169,8 +171,30 @@ func TestBuildAttendanceCourse(t *testing.T) {
 	if course.CourseCode != "I040-3-3951-01" || course.Name != "컴퓨터그래픽스" || course.Professor != "김동준" {
 		t.Fatalf("buildAttendanceCourse() = %+v", course)
 	}
+	if course.SubjectID != "U202613951I040013" {
+		t.Fatalf("SubjectID = %q", course.SubjectID)
+	}
 	if course.Credits != "3" || course.CreditHours != "3" || course.CurrentNum != "40" || course.Weekday != "화3,목4" {
 		t.Fatalf("buildAttendanceCourse() details = %+v", course)
+	}
+}
+
+func TestBuildAttendanceSession(t *testing.T) {
+	session := buildAttendanceSession(attendanceSessionItem{
+		WeeklySeq:       flexibleString("1"),
+		AttendanceDiv1:  "AB",
+		AttendanceDiv2:  "AT",
+		AttendanceDate1: "20260306",
+		AttendanceDate2: "20260306",
+	})
+	if session.Week != "1" || len(session.Slots) != 2 {
+		t.Fatalf("buildAttendanceSession() = %+v", session)
+	}
+	if session.Slots[0].Mark != "X" || session.Slots[1].Mark != "O" {
+		t.Fatalf("attendance marks = %+v", session.Slots)
+	}
+	if AttendanceStatusMark("LT") != "L" || AttendanceStatusMark("LE") != "R" || AttendanceStatusMark("OA") != "A" {
+		t.Fatal("AttendanceStatusMark() unexpected mapping")
 	}
 }
 
