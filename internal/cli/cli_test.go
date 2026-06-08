@@ -81,6 +81,19 @@ func TestSearchOptions(t *testing.T) {
 	}
 }
 
+func TestParseDownloadConfigArgs(t *testing.T) {
+	dir, ok, err := parseDownloadConfigArgs([]string{"--dir", "downloads/course"})
+	if err != nil {
+		t.Fatalf("parseDownloadConfigArgs() error = %v", err)
+	}
+	if !ok || dir != "downloads/course" {
+		t.Fatalf("parseDownloadConfigArgs() = %q, %v", dir, ok)
+	}
+	if _, _, err := parseDownloadConfigArgs([]string{"--bad"}); err == nil {
+		t.Fatal("parseDownloadConfigArgs() expected error")
+	}
+}
+
 func TestSyllabusOptions(t *testing.T) {
 	opts, err := syllabusOptions([]string{"I040-3-3951-01", "--term", "2026-1", "--user", "20250000"})
 	if err != nil {

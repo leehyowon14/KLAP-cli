@@ -358,6 +358,23 @@ type LectureDownloadResult struct {
 	MediaURL string
 }
 
+type DownloadSettings struct {
+	Dir string
+}
+
+type DownloadStatusResult struct {
+	Dir   string
+	Files int
+	Bytes int64
+	Items []DownloadFile
+}
+
+type DownloadFile struct {
+	Path       string
+	Bytes      int64
+	ModifiedAt time.Time
+}
+
 type LectureDownloadItem struct {
 	Path    string
 	Bytes   int64
@@ -508,6 +525,68 @@ func (s *Service) SetReminderConfig(name string, useExistingList bool) (Reminder
 		UseExistingList: current.Reminder.UseExistingList,
 		AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 	}, nil
+}
+
+func (s *Service) DownloadSettings() (DownloadSettings, error) {
+	current, err := s.loadSettings()
+	if err != nil {
+		return DownloadSettings{}, err
+	}
+	return DownloadSettings{Dir: current.Download.Dir}, nil
+}
+
+func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return DownloadSettings{}, errors.New("다운로드 폴더 경로가 필요합니다")
+	}
+	current, err := s.loadSettings()
+	if err != nil {
+		return DownloadSettings{}, err
+	}
+	current.Download.Dir = dir
+	if err := s.saveSettings(current); err != nil {
+		return DownloadSettings{}, err
+	}
+	return DownloadSettings{Dir: current.Download.Dir}, nil
+}
+
+func (s *Service) DownloadStatus(dir string) (DownloadStatusResult, error) {
+	dir, err := s.effectiveDownloadDir(dir)
+	if err != nil {
+		return DownloadStatusResult{}, err
+	}
+	result := DownloadStatusResult{Dir: dir}
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return result, nil
+	}
+	if err != nil {
+		return DownloadStatusResult{}, fmt.Errorf("다운로드 폴더 조회 실패: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".part") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return DownloadStatusResult{}, fmt.Errorf("다운로드 파일 확인 실패: %w", err)
+		}
+		result.Files++
+		result.Bytes += info.Size()
+		result.Items = append(result.Items, DownloadFile{
+			Path:       filepath.Join(dir, entry.Name()),
+			Bytes:      info.Size(),
+			ModifiedAt: info.ModTime(),
+		})
+	}
+	sort.SliceStable(result.Items, func(i, j int) bool {
+		return result.Items[j].ModifiedAt.Before(result.Items[i].ModifiedAt)
+	})
+	if len(result.Items) > 10 {
+		result.Items = result.Items[:10]
+	}
+	return result, nil
 }
 
 func (s *Service) CacheStatus() (CacheStatusResult, error) {
@@ -1813,8 +1892,9 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 	}
 
 	dir := strings.TrimSpace(opts.Dir)
-	if dir == "" {
-		dir = defaultLectureDownloadDir()
+	dir, err = s.effectiveDownloadDir(dir)
+	if err != nil {
+		return LectureDownloadResult{}, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
@@ -1860,8 +1940,9 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	}
 
 	dir := strings.TrimSpace(opts.Dir)
-	if dir == "" {
-		dir = defaultLectureDownloadDir()
+	dir, err = s.effectiveDownloadDir(dir)
+	if err != nil {
+		return LectureDownloadAllResult{}, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return LectureDownloadAllResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
@@ -2863,6 +2944,18 @@ func ParseLectureID(id string) (int, string, error) {
 
 func defaultLectureDownloadDir() string {
 	return "downloads"
+}
+
+func (s *Service) effectiveDownloadDir(dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir != "" {
+		return dir, nil
+	}
+	current, err := s.loadSettings()
+	if err != nil {
+		return "", err
+	}
+	return current.Download.Dir, nil
 }
 
 func lectureFilename(courseName string, lecture klas.Lecture, mediaURL string) string {

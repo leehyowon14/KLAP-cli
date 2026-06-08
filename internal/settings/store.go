@@ -13,6 +13,7 @@ const DefaultReminderListName = "Kwangwoon Univ."
 type Settings struct {
 	Reminder Reminder `json:"reminder"`
 	Term     Term     `json:"term"`
+	Download Download `json:"download"`
 }
 
 type Reminder struct {
@@ -23,6 +24,10 @@ type Reminder struct {
 
 type Term struct {
 	Value string `json:"value"`
+}
+
+type Download struct {
+	Dir string `json:"dir"`
 }
 
 type Store struct {
@@ -75,6 +80,9 @@ func Default() Settings {
 			ListName:       DefaultReminderListName,
 			AlarmBeforeMin: 24 * 60,
 		},
+		Download: Download{
+			Dir: "downloads",
+		},
 	}
 }
 
@@ -84,6 +92,9 @@ func (s *Settings) Normalize() {
 	}
 	if s.Reminder.AlarmBeforeMin <= 0 {
 		s.Reminder.AlarmBeforeMin = 24 * 60
+	}
+	if s.Download.Dir == "" {
+		s.Download.Dir = "downloads"
 	}
 }
 

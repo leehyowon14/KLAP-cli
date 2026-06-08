@@ -55,6 +55,8 @@ klap lecture list --course <과목명|번호>
 klap lecture status
 klap lecture status --course <과목명|번호>
 klap lecture status --refresh
+klap lecture download status
+klap lecture download open
 klap lecture download <과목명|과목번호>
 klap lecture download <과목번호:강의콘텐츠ID>
 klap lecture open <과목번호:강의콘텐츠ID>
@@ -65,6 +67,8 @@ klap attend all
 klap config reminder
 klap config reminder --name "광운대학교"
 klap config reminder --name "To-do" --use-existing-list
+klap config download
+klap config download --dir ~/Downloads/KLAP
 ```
 
 `klap auth`는 학번과 비밀번호를 입력받은 뒤 KLAS 로그인 API로 즉시 검증한다.
@@ -81,6 +85,9 @@ klap config reminder --name "To-do" --use-existing-list
 
 `klap search <키워드>`는 현재 학기 과목, 과제, 공지, 온라인 강의와 올해 학사일정을 한 번에 검색한다.
 `--type course|assignment|notice|lecture|academic`으로 검색 범위를 좁힐 수 있다.
+
+`klap lecture download`는 `--dir`이 없으면 `klap config download --dir <경로>`로 저장한 기본 다운로드 폴더를 사용한다.
+`klap lecture download status`와 `klap lecture download open`으로 받은 파일을 확인할 수 있다.
 
 Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림을 생성한다.
 `--use-existing-list`를 쓰면 지정한 기존 목록만 사용하며, 없을 때 새로 만들지 않는다.

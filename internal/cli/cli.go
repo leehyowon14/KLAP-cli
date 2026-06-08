@@ -82,12 +82,14 @@ func Run(ctx context.Context, args []string) error {
 
 func runConfig(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: klap config <reminder>")
+		return errors.New("usage: klap config <reminder|download>")
 	}
 
 	switch args[0] {
 	case "reminder":
 		return runConfigReminder(ctx, service, args[1:])
+	case "download":
+		return runConfigDownload(ctx, service, args[1:])
 	default:
 		return fmt.Errorf("unknown config command: %s", args[0])
 	}
@@ -119,6 +121,51 @@ func runConfigReminder(ctx context.Context, service *app.Service, args []string)
 	}
 
 	return errors.New(`usage: klap config reminder [--name "Kwangwoon Univ." [--use-existing-list]]`)
+}
+
+func runConfigDownload(ctx context.Context, service *app.Service, args []string) error {
+	_ = ctx
+	if len(args) == 0 {
+		settings, err := service.DownloadSettings()
+		if err != nil {
+			return err
+		}
+		printDownloadSettings(settings)
+		return nil
+	}
+
+	dir, ok, err := parseDownloadConfigArgs(args)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New(`usage: klap config download [--dir <다운로드 폴더>]`)
+	}
+	settings, err := service.SetDownloadDir(dir)
+	if err != nil {
+		return err
+	}
+	printDownloadSettings(settings)
+	return nil
+}
+
+func parseDownloadConfigArgs(args []string) (dir string, ok bool, err error) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--dir":
+			if i+1 >= len(args) {
+				return "", false, errors.New("--dir에는 다운로드 폴더 경로가 필요합니다")
+			}
+			dir = args[i+1]
+			i++
+		default:
+			return "", false, fmt.Errorf("unknown download config option: %s", args[i])
+		}
+	}
+	if strings.TrimSpace(dir) == "" {
+		return "", false, nil
+	}
+	return dir, true, nil
 }
 
 func parseReminderConfigArgs(args []string) (name string, useExistingList bool, ok bool, err error) {
@@ -604,7 +651,31 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		return nil
 	case "download":
 		if len(args) < 2 {
-			return errors.New("usage: klap lecture download <과목명|과목번호|강의ID> [--dir <경로>]")
+			return errors.New("usage: klap lecture download <status|open|과목명|과목번호|강의ID> [--dir <경로>]")
+		}
+		if args[1] == "status" {
+			dir, err := dirFlag(args[2:])
+			if err != nil {
+				return err
+			}
+			result, err := service.DownloadStatus(dir)
+			if err != nil {
+				return err
+			}
+			printDownloadStatus(result)
+			return nil
+		}
+		if args[1] == "open" {
+			dir, err := dirFlag(args[2:])
+			if err != nil {
+				return err
+			}
+			result, err := service.DownloadStatus(dir)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("다운로드 폴더: %s\n", result.Dir)
+			return openExternal(result.Dir, "폴더")
 		}
 		dir, err := dirFlag(args[2:])
 		if err != nil {
@@ -1145,10 +1216,13 @@ Usage:
   klap lecture list      온라인 강의 목록 출력
   klap lecture status    온라인 강의 수강 상태 출력
   klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
+  klap lecture download status 다운로드 폴더 상태 출력
+  klap lecture download open 다운로드 폴더 열기
   klap lecture attend <강의ID> 특정 온라인 강의 자동 수강
   klap lecture open <강의ID> 온라인 강의 열기
   klap attend <all|과목명|과목번호> 온라인 강의와 학습활동 자동 수강
-  klap config reminder  reminder 설정 확인/변경`)
+  klap config reminder  reminder 설정 확인/변경
+  klap config download  다운로드 설정 확인/변경`)
 }
 
 func printReminderSettings(settings app.ReminderSettings) {
@@ -1159,6 +1233,10 @@ func printReminderSettings(settings app.ReminderSettings) {
 		fmt.Println("List mode: create if missing")
 	}
 	fmt.Printf("Alarm before: %d분\n", settings.AlarmBeforeMin)
+}
+
+func printDownloadSettings(settings app.DownloadSettings) {
+	fmt.Printf("다운로드 폴더: %s\n", settings.Dir)
 }
 
 func printDashboard(result app.DashboardResult) {
@@ -2139,6 +2217,24 @@ func printLectureDownloadAllResult(result app.LectureDownloadAllResult) {
 	fmt.Printf("전체 다운로드 결과: 완료 %d, 건너뜀 %d, 실패 %d\n", downloaded, skipped, failed)
 }
 
+func printDownloadStatus(result app.DownloadStatusResult) {
+	fmt.Printf("다운로드 폴더: %s\n", result.Dir)
+	fmt.Printf("파일 수: %d\n", result.Files)
+	fmt.Printf("크기: %s\n", formatBytes(result.Bytes))
+	if len(result.Items) == 0 {
+		fmt.Println("다운로드된 파일이 없습니다")
+		return
+	}
+	fmt.Println("\n최근 파일")
+	for _, item := range result.Items {
+		fmt.Printf("  %s | %s | %s\n",
+			item.ModifiedAt.Format("2006-01-02 15:04"),
+			formatBytes(item.Bytes),
+			item.Path,
+		)
+	}
+}
+
 func printLectureAttendAllResult(result app.LectureAttendAllResult) {
 	if len(result.Items) == 0 {
 		fmt.Println("수강할 온라인 강의가 없습니다")
@@ -2339,25 +2435,25 @@ func openAndPrintURL(url string, err error) error {
 		return err
 	}
 	fmt.Printf("URL: %s\n", linkifyForTerminal(url))
-	return openBrowser(url)
+	return openExternal(url, "URL")
 }
 
-func openBrowser(url string) error {
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return errors.New("열 URL이 없습니다")
+func openExternal(target string, kind string) error {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return fmt.Errorf("열 %s이 없습니다", kind)
 	}
 	var command *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		command = exec.Command("open", url)
+		command = exec.Command("open", target)
 	case "windows":
-		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
 	default:
-		command = exec.Command("xdg-open", url)
+		command = exec.Command("xdg-open", target)
 	}
 	if err := command.Start(); err != nil {
-		return fmt.Errorf("브라우저 열기 실패: %w", err)
+		return fmt.Errorf("%s 열기 실패: %w", kind, err)
 	}
 	return nil
 }

@@ -16,6 +16,9 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if got.Term.Value != "" {
 		t.Fatalf("Term.Value = %q", got.Term.Value)
 	}
+	if got.Download.Dir != "downloads" {
+		t.Fatalf("Download.Dir = %q", got.Download.Dir)
+	}
 }
 
 func TestNormalizeReminderSettings(t *testing.T) {
@@ -26,5 +29,8 @@ func TestNormalizeReminderSettings(t *testing.T) {
 	}
 	if settings.Reminder.AlarmBeforeMin != 1440 {
 		t.Fatalf("AlarmBeforeMin = %d", settings.Reminder.AlarmBeforeMin)
+	}
+	if settings.Download.Dir != "downloads" {
+		t.Fatalf("Download.Dir = %q", settings.Download.Dir)
 	}
 }
