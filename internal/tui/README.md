@@ -1,16 +1,21 @@
 # internal/tui
 
-Future Bubble Tea application shell.
+Bubble Tea application shell.
 
-This package should contain interactive screens and view state only. It should call `internal/app` use cases for data and actions.
+This package contains interactive screens and view state only. It calls `internal/app` use cases for data and actions, and must not call `internal/klas`, `internal/account`, or `internal/reminder` directly.
 
-Planned screens:
+Current screens:
 
 - Dashboard
-- Courses
+- Due
 - Assignments
-- Assignment detail
-- Users/settings
-- Reminder sync status
+- Notices
+- Lectures
+- Config
 
-The TUI must not call `internal/klas`, `internal/account`, or `internal/reminder` directly once `internal/app` is in place.
+Planned follow-ups:
+
+- Detail/open actions
+- Search input
+- User/settings editor
+- Reminder sync status

@@ -16,6 +16,7 @@ import (
 	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/app"
 	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/kw-klap/klap-cli/internal/tui"
 	"github.com/kw-klap/klap-cli/internal/ui"
 )
 
@@ -38,6 +39,8 @@ func Run(ctx context.Context, args []string) error {
 		return runUser(ctx, service, args[1:])
 	case "dashboard":
 		return runDashboard(ctx, service, args[1:])
+	case "tui":
+		return tui.Run(ctx, service)
 	case "search":
 		return runSearch(ctx, service, args[1:])
 	case "due":
@@ -1259,6 +1262,7 @@ Usage:
   klap user rm <학번>    저장된 계정 삭제
   klap dashboard         현재 학기 대시보드 출력
   klap dashboard --refresh 캐시 무시 후 대시보드 갱신
+  klap tui               Bubble Tea 기반 TUI 실행
   klap search <키워드>   과목/과제/공지/온라인 강의/학사일정 통합 검색
   klap due              과제/온라인 강의/학사일정 데드라인 출력
   klap cache status      캐시 상태 출력

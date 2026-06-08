@@ -12,6 +12,7 @@ klap user select <학번>
 klap user rm <학번>
 klap dashboard
 klap dashboard --refresh
+klap tui
 klap search <키워드>
 klap search <키워드> --type assignment
 klap due
