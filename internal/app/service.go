@@ -385,6 +385,12 @@ type DownloadSettings struct {
 	Dir string
 }
 
+type ConfigSettings struct {
+	Reminder ReminderSettings
+	Download DownloadSettings
+	Term     TermSettings
+}
+
 type DownloadStatusResult struct {
 	Dir   string
 	Files int
@@ -572,6 +578,64 @@ func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
 		return DownloadSettings{}, err
 	}
 	return DownloadSettings{Dir: current.Download.Dir}, nil
+}
+
+func (s *Service) ConfigSettings() (ConfigSettings, error) {
+	current, err := s.loadSettings()
+	if err != nil {
+		return ConfigSettings{}, err
+	}
+	return ConfigSettings{
+		Reminder: ReminderSettings{
+			ListName:        current.Reminder.ListName,
+			UseExistingList: current.Reminder.UseExistingList,
+			AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
+		},
+		Download: DownloadSettings{Dir: current.Download.Dir},
+		Term:     TermSettings{Value: current.Term.Value, Label: termLabel(current.Term.Value)},
+	}, nil
+}
+
+func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, error) {
+	key = strings.ToLower(strings.TrimSpace(key))
+	value = strings.TrimSpace(value)
+	if key == "" {
+		return ConfigSettings{}, errors.New("설정 키가 필요합니다")
+	}
+	current, err := s.loadSettings()
+	if err != nil {
+		return ConfigSettings{}, err
+	}
+	switch key {
+	case "reminder.name", "reminder.list", "reminder.list-name":
+		if value == "" {
+			return ConfigSettings{}, errors.New("리마인더 목록 이름은 비워둘 수 없습니다")
+		}
+		current.Reminder.ListName = value
+	case "reminder.use-existing-list":
+		parsed, err := parseConfigBool(value)
+		if err != nil {
+			return ConfigSettings{}, err
+		}
+		current.Reminder.UseExistingList = parsed
+	case "download.dir", "download.path":
+		if value == "" {
+			return ConfigSettings{}, errors.New("다운로드 폴더 경로가 필요합니다")
+		}
+		current.Download.Dir = value
+	case "term", "term.value":
+		normalized, err := normalizeTermValue(value)
+		if err != nil {
+			return ConfigSettings{}, err
+		}
+		current.Term.Value = normalized
+	default:
+		return ConfigSettings{}, fmt.Errorf("지원하지 않는 설정 키입니다: %s", key)
+	}
+	if err := s.saveSettings(current); err != nil {
+		return ConfigSettings{}, err
+	}
+	return s.ConfigSettings()
 }
 
 func (s *Service) DownloadStatus(dir string) (DownloadStatusResult, error) {
@@ -2865,6 +2929,17 @@ func academicEventDueAt(event AcademicEvent) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.Local), true
+}
+
+func parseConfigBool(value string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "t", "1", "yes", "y", "on":
+		return true, nil
+	case "false", "f", "0", "no", "n", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("boolean 값이 필요합니다: %s", value)
+	}
 }
 
 func limitAssignments(rows []AssignmentRow, limit int) []AssignmentRow {

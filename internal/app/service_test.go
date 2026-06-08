@@ -176,6 +176,26 @@ func TestAcademicEventDueAt(t *testing.T) {
 	}
 }
 
+func TestParseConfigBool(t *testing.T) {
+	got, err := parseConfigBool("yes")
+	if err != nil {
+		t.Fatalf("parseConfigBool() error = %v", err)
+	}
+	if !got {
+		t.Fatal("parseConfigBool() expected true")
+	}
+	got, err = parseConfigBool("off")
+	if err != nil {
+		t.Fatalf("parseConfigBool() off error = %v", err)
+	}
+	if got {
+		t.Fatal("parseConfigBool() expected false")
+	}
+	if _, err := parseConfigBool("maybe"); err == nil {
+		t.Fatal("parseConfigBool() expected error")
+	}
+}
+
 func TestLectureNeedsAttendance(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.FixedZone("KST", 9*60*60))
 	start := now.Add(-time.Hour)

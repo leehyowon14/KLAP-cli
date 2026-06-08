@@ -84,10 +84,32 @@ func Run(ctx context.Context, args []string) error {
 
 func runConfig(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: klap config <reminder|download>")
+		settings, err := service.ConfigSettings()
+		if err != nil {
+			return err
+		}
+		printConfigSettings(settings)
+		return nil
 	}
 
 	switch args[0] {
+	case "list":
+		settings, err := service.ConfigSettings()
+		if err != nil {
+			return err
+		}
+		printConfigSettings(settings)
+		return nil
+	case "set":
+		if len(args) < 3 {
+			return errors.New("usage: klap config set <key> <value>")
+		}
+		settings, err := service.SetConfigValue(args[1], strings.Join(args[2:], " "))
+		if err != nil {
+			return err
+		}
+		printConfigSettings(settings)
+		return nil
 	case "reminder":
 		return runConfigReminder(ctx, service, args[1:])
 	case "download":
@@ -1270,22 +1292,29 @@ Usage:
   klap lecture attend <강의ID> 특정 온라인 강의 자동 수강
   klap lecture open <강의ID> 온라인 강의 열기
   klap attend <all|과목명|과목번호> 온라인 강의와 학습활동 자동 수강
+  klap config list      전체 설정 출력
+  klap config set <key> <value> 설정 변경
   klap config reminder  reminder 설정 확인/변경
   klap config download  다운로드 설정 확인/변경`)
 }
 
 func printReminderSettings(settings app.ReminderSettings) {
-	fmt.Printf("Reminder list: %s\n", settings.ListName)
-	if settings.UseExistingList {
-		fmt.Println("List mode: existing only")
-	} else {
-		fmt.Println("List mode: create if missing")
-	}
-	fmt.Printf("Alarm before: %d분\n", settings.AlarmBeforeMin)
+	fmt.Printf("리마인더 목록: %s\n", settings.ListName)
+	fmt.Printf("기존 목록만 사용: %s\n", yesNo(settings.UseExistingList))
+	fmt.Printf("알림: 마감 %d분 전\n", settings.AlarmBeforeMin)
 }
 
 func printDownloadSettings(settings app.DownloadSettings) {
 	fmt.Printf("다운로드 폴더: %s\n", settings.Dir)
+}
+
+func printConfigSettings(settings app.ConfigSettings) {
+	fmt.Println("설정")
+	fmt.Printf("term: %s\n", emptyFallback(settings.Term.Value, "자동"))
+	fmt.Printf("reminder.name: %s\n", settings.Reminder.ListName)
+	fmt.Printf("reminder.use-existing-list: %s\n", yesNo(settings.Reminder.UseExistingList))
+	fmt.Printf("reminder.alarm-before-min: %d\n", settings.Reminder.AlarmBeforeMin)
+	fmt.Printf("download.dir: %s\n", settings.Download.Dir)
 }
 
 func printDashboard(result app.DashboardResult) {

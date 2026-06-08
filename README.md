@@ -70,6 +70,10 @@ klap attend all
 klap config reminder
 klap config reminder --name "광운대학교"
 klap config reminder --name "To-do" --use-existing-list
+klap config list
+klap config set term 2026-1
+klap config set reminder.name "광운대학교"
+klap config set reminder.use-existing-list true
 klap config download
 klap config download --dir ~/Downloads/KLAP
 ```
@@ -97,6 +101,9 @@ klap config download --dir ~/Downloads/KLAP
 
 Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림을 생성한다.
 `--use-existing-list`를 쓰면 지정한 기존 목록만 사용하며, 없을 때 새로 만들지 않는다.
+
+`klap config list`는 현재 설정을 한 번에 보여준다.
+`klap config set <key> <value>`는 `term`, `reminder.name`, `reminder.use-existing-list`, `download.dir`를 지원한다.
 
 ## 개발 실행
 
