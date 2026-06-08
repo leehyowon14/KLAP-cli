@@ -4,8 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/kw-klap/klap-cli/internal/app"
+	"github.com/kw-klap/klap-cli/internal/klas"
 )
 
 func TestHomeViewShowsMenu(t *testing.T) {
@@ -18,7 +21,7 @@ func TestHomeViewShowsMenu(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "KLAP tui") || !strings.Contains(view, "NAVIGATION") || !strings.Contains(view, "Dashboard") {
+	if !strings.Contains(view, "KLAP tui") || !strings.Contains(view, "NAVIGATION") || !strings.Contains(view, "Dashboard") || !strings.Contains(view, "_  __") {
 		t.Fatalf("View() = %q", view)
 	}
 }
@@ -42,5 +45,47 @@ func TestHomeNavigation(t *testing.T) {
 	got = updated.(model)
 	if got.cursor != 0 {
 		t.Fatalf("cursor after up = %d", got.cursor)
+	}
+}
+
+func TestListFormatsHideInternalIDs(t *testing.T) {
+	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+
+	assignments := formatAssignments([]app.AssignmentRow{{
+		ID:         "7:7",
+		CourseName: "오픈소스소프트웨어실습",
+		Assignment: klas.Assignment{
+			Title: "기말고사 대체 과제",
+			DueAt: &due,
+		},
+	}})
+	if strings.Contains(assignments, "7:7") {
+		t.Fatalf("formatAssignments() leaked internal id: %q", assignments)
+	}
+
+	notices := formatNotices([]app.NoticeRow{{
+		ID:         "2:1151742:1",
+		CourseName: "창의설계입문",
+		Notice: klas.Notice{
+			Title:      "최종 발표 일정 안내",
+			Registered: &due,
+		},
+	}})
+	if strings.Contains(notices, "2:1151742:1") {
+		t.Fatalf("formatNotices() leaked internal id: %q", notices)
+	}
+
+	lectures := formatLectures([]app.LectureRow{{
+		ID:         "1:6a0ebcc046111",
+		CourseName: "진로탐색및설계",
+		Lecture: klas.Lecture{
+			Title:       "최신 면접 따라잡기",
+			ModuleTitle: "1주차",
+			ContentID:   "6a0ebcc046111",
+			Progress:    "10",
+		},
+	}})
+	if strings.Contains(lectures, "1:6a0ebcc046111") {
+		t.Fatalf("formatLectures() leaked internal id: %q", lectures)
 	}
 }

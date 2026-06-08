@@ -63,7 +63,16 @@ var (
 			Padding(0, 1)
 	footerStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6E7781"))
+	logoStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#58A6FF"))
 )
+
+const klapLogo = ` _  __ _      _    ____
+| |/ /| |    / \  |  _ \
+| ' / | |   / _ \ | |_) |
+| . \ | |__/ ___ \|  __/
+|_|\_\|____/_/   \_\_|`
 
 type screen int
 
@@ -280,6 +289,8 @@ func (m model) renderPanel() string {
 
 func (m model) renderHomePanel() string {
 	var b strings.Builder
+	b.WriteString(logoStyle.Render(klapLogo))
+	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("Today"))
 	b.WriteString("\n")
 	b.WriteString("Dashboard와 Due를 중심으로 오늘 처리할 항목을 확인합니다.\n\n")
@@ -490,8 +501,7 @@ func formatAssignments(rows []app.AssignmentRow) string {
 		if row.Assignment.Submitted {
 			status = successBadgeStyle.Render("제출")
 		}
-		b.WriteString(fmt.Sprintf("%s  %s  %s  %s  %s\n",
-			badgeStyle.Render(row.ID),
+		b.WriteString(fmt.Sprintf("%s  %s  %s  %s\n",
 			mutedStyle.Render(formatTime(row.Assignment.DueAt)),
 			status,
 			row.CourseName,
@@ -507,8 +517,7 @@ func formatNotices(rows []app.NoticeRow) string {
 	}
 	var b strings.Builder
 	for _, row := range rows {
-		b.WriteString(fmt.Sprintf("%s  %s  %s  %s\n",
-			badgeStyle.Render(row.ID),
+		b.WriteString(fmt.Sprintf("%s  %s  %s\n",
 			mutedStyle.Render(formatTime(row.Notice.Registered)),
 			row.CourseName,
 			row.Notice.Title,
@@ -523,8 +532,7 @@ func formatLectures(rows []app.LectureRow) string {
 	}
 	var b strings.Builder
 	for _, row := range rows {
-		b.WriteString(fmt.Sprintf("%s  %s  %s  %s  %s\n",
-			badgeStyle.Render(row.ID),
+		b.WriteString(fmt.Sprintf("%s  %s  %s  %s\n",
 			mutedStyle.Render(lectureProgress(row.Lecture)),
 			row.CourseName,
 			emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요"),
