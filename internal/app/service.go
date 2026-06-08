@@ -38,22 +38,31 @@ type DashboardOptions struct {
 	Refresh bool
 }
 
+type CourseListOptions struct {
+	User    UserOption
+	Refresh bool
+}
+
 type AssignmentListOptions struct {
 	User         UserOption
 	CourseFilter string
+	Refresh      bool
 }
 
 type NoticeListOptions struct {
 	User         UserOption
 	CourseFilter string
+	Refresh      bool
 }
 
 type TimetableOptions struct {
-	User UserOption
+	User    UserOption
+	Refresh bool
 }
 
 type AttendanceListOptions struct {
-	User UserOption
+	User    UserOption
+	Refresh bool
 }
 
 type AttendanceDetailOptions struct {
@@ -68,15 +77,18 @@ type CdpAttendanceOptions struct {
 type GradeOptions struct {
 	User      UserOption
 	TermValue string
+	Refresh   bool
 }
 
 type RankOptions struct {
 	User      UserOption
 	TermValue string
+	Refresh   bool
 }
 
 type EvaluationListOptions struct {
-	User UserOption
+	User    UserOption
+	Refresh bool
 }
 
 type EvaluationSubmitOptions struct {
@@ -105,6 +117,7 @@ type TermListOptions struct {
 type LectureListOptions struct {
 	User         UserOption
 	CourseFilter string
+	Refresh      bool
 }
 
 type LectureDownloadOptions struct {
@@ -493,6 +506,18 @@ func (s *Service) ClearCache() (CacheClearResult, error) {
 	return CacheClearResult{Removed: removed}, nil
 }
 
+func (s *Service) ClearCacheScope(scope string) (CacheClearResult, error) {
+	prefix := cacheScopePrefix(scope)
+	if prefix == "" {
+		return s.ClearCache()
+	}
+	removed, err := s.cacheStore.ClearPrefix(prefix)
+	if err != nil {
+		return CacheClearResult{}, err
+	}
+	return CacheClearResult{Removed: removed}, nil
+}
+
 func (s *Service) TermList(ctx context.Context, opts TermListOptions) ([]TermRow, error) {
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
@@ -580,8 +605,8 @@ func selectTermRow(rows []TermRow, selector string) (TermRow, error) {
 	return *matched, nil
 }
 
-func (s *Service) CourseList(ctx context.Context, user UserOption) ([]klas.Term, error) {
-	studentID, err := s.selectedStudentID(ctx, user)
+func (s *Service) CourseList(ctx context.Context, opts CourseListOptions) ([]klas.Term, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
 		return nil, err
 	}
@@ -595,7 +620,16 @@ func (s *Service) CourseList(ctx context.Context, user UserOption) ([]klas.Term,
 	if err != nil {
 		return nil, err
 	}
-	return []klas.Term{term}, nil
+	cacheKey := listCacheKey("course", studentID, term.Value, "")
+	if !opts.Refresh {
+		var cached []klas.Term
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
+	}
+	result := []klas.Term{term}
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
+	return result, nil
 }
 
 func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (DashboardResult, error) {
@@ -626,35 +660,35 @@ func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (Dashboa
 		GeneratedAt: time.Now(),
 	}
 
-	assignments, err := s.AssignmentList(ctx, AssignmentListOptions{User: user})
+	assignments, err := s.AssignmentList(ctx, AssignmentListOptions{User: user, Refresh: opts.Refresh})
 	if err != nil {
 		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "과제", Err: err})
 	} else {
 		result.Assignments = dashboardAssignments(assignments, 5)
 	}
 
-	lectures, err := s.LectureList(ctx, LectureListOptions{User: user})
+	lectures, err := s.LectureList(ctx, LectureListOptions{User: user, Refresh: opts.Refresh})
 	if err != nil {
 		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "온라인 강의", Err: err})
 	} else {
 		result.Lectures = dashboardLectures(lectures, time.Now(), 5)
 	}
 
-	notices, err := s.NoticeList(ctx, NoticeListOptions{User: user})
+	notices, err := s.NoticeList(ctx, NoticeListOptions{User: user, Refresh: opts.Refresh})
 	if err != nil {
 		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "공지", Err: err})
 	} else {
 		result.Notices = dashboardNotices(notices, 5)
 	}
 
-	attendance, err := s.AttendanceList(ctx, AttendanceListOptions{User: user})
+	attendance, err := s.AttendanceList(ctx, AttendanceListOptions{User: user, Refresh: opts.Refresh})
 	if err != nil {
 		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "출석", Err: err})
 	} else {
 		result.Attendance = dashboardAttendance(attendance.Rows)
 	}
 
-	evaluation, err := s.EvaluationList(ctx, EvaluationListOptions{User: user})
+	evaluation, err := s.EvaluationList(ctx, EvaluationListOptions{User: user, Refresh: opts.Refresh})
 	if err != nil {
 		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "수업평가", Err: err})
 	} else {
@@ -683,6 +717,14 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 	courses, err := selectedCourses(term, opts.CourseFilter)
 	if err != nil {
 		return nil, err
+	}
+
+	cacheKey := listCacheKey("assignment", studentID, term.Value, opts.CourseFilter)
+	if !opts.Refresh {
+		var cached []AssignmentRow
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
 	}
 
 	rows := make([]AssignmentRow, 0)
@@ -728,6 +770,7 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 		return left.Before(*right)
 	})
 
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
 	return rows, nil
 }
 
@@ -814,6 +857,14 @@ func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]Not
 		return nil, err
 	}
 
+	cacheKey := listCacheKey("notice", studentID, term.Value, opts.CourseFilter)
+	if !opts.Refresh {
+		var cached []NoticeRow
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
+	}
+
 	rows := make([]NoticeRow, 0)
 	for _, selectedCourse := range courses {
 		notices, err := client.Notices(ctx, term.Value, selectedCourse.Course)
@@ -860,6 +911,7 @@ func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]Not
 		return right.Before(*left)
 	})
 
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
 	return rows, nil
 }
 
@@ -924,6 +976,14 @@ func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (Timetab
 		return TimetableResult{}, err
 	}
 
+	cacheKey := listCacheKey("timetable", studentID, term.Value, "")
+	if !opts.Refresh {
+		var cached TimetableResult
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
+	}
+
 	entries, err := client.Timetable(ctx, term.Value)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
@@ -952,10 +1012,12 @@ func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (Timetab
 		return entries[i].SubjectName < entries[j].SubjectName
 	})
 
-	return TimetableResult{
+	result := TimetableResult{
 		Term:    term,
 		Entries: entries,
-	}, nil
+	}
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
+	return result, nil
 }
 
 func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions) (AttendanceListResult, error) {
@@ -966,6 +1028,14 @@ func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions
 	client, term, err := s.latestTerm(ctx, studentID)
 	if err != nil {
 		return AttendanceListResult{}, err
+	}
+
+	cacheKey := listCacheKey("attendance", studentID, term.Value, "")
+	if !opts.Refresh {
+		var cached AttendanceListResult
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
 	}
 
 	courses, err := client.AttendanceCourses(ctx, term.Value)
@@ -1002,10 +1072,14 @@ func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions
 			Err:      detailErr,
 		})
 	}
-	return AttendanceListResult{
+	result := AttendanceListResult{
 		Term: term,
 		Rows: rows,
-	}, nil
+	}
+	if attendanceCacheable(result) {
+		_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
+	}
+	return result, nil
 }
 
 func (s *Service) AttendanceDetail(ctx context.Context, opts AttendanceDetailOptions) (AttendanceDetailResult, error) {
@@ -1071,6 +1145,14 @@ func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, er
 		return GradeResult{}, err
 	}
 
+	cacheKey := listCacheKey("grade", studentID, termValue, "")
+	if !opts.Refresh {
+		var cached GradeResult
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
+	}
+
 	report, err := client.Grades(ctx)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
@@ -1094,7 +1176,9 @@ func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, er
 		}
 		report.Terms = filtered
 	}
-	return GradeResult{Report: report, TermValue: termValue}, nil
+	result := GradeResult{Report: report, TermValue: termValue}
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
+	return result, nil
 }
 
 func (s *Service) Rank(ctx context.Context, opts RankOptions) (RankResult, error) {
@@ -1109,6 +1193,14 @@ func (s *Service) Rank(ctx context.Context, opts RankOptions) (RankResult, error
 	client, err := s.authenticatedClient(ctx, studentID)
 	if err != nil {
 		return RankResult{}, err
+	}
+
+	cacheKey := listCacheKey("rank", studentID, termValue, "")
+	if !opts.Refresh {
+		var cached RankResult
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
 	}
 
 	rows, err := client.Ranks(ctx)
@@ -1134,7 +1226,9 @@ func (s *Service) Rank(ctx context.Context, opts RankOptions) (RankResult, error
 		}
 		rows = filtered
 	}
-	return RankResult{Rows: rows}, nil
+	result := RankResult{Rows: rows}
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
+	return result, nil
 }
 
 func (s *Service) EvaluationList(ctx context.Context, opts EvaluationListOptions) (EvaluationListResult, error) {
@@ -1147,12 +1241,22 @@ func (s *Service) EvaluationList(ctx context.Context, opts EvaluationListOptions
 		return EvaluationListResult{}, err
 	}
 
+	cacheKey := listCacheKey("evaluation", studentID, "", "")
+	if !opts.Refresh {
+		var cached EvaluationListResult
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
+	}
+
 	term, courses, _, err := s.evaluationCourses(ctx, studentID, client)
 	if err != nil {
 		return EvaluationListResult{}, err
 	}
 	rows := makeEvaluationRows(courses)
-	return EvaluationListResult{Term: term, Rows: rows}, nil
+	result := EvaluationListResult{Term: term, Rows: rows}
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
+	return result, nil
 }
 
 func (s *Service) EvaluationSubmit(ctx context.Context, opts EvaluationSubmitOptions) (EvaluationSubmitResult, error) {
@@ -1444,6 +1548,14 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 		return nil, err
 	}
 
+	cacheKey := listCacheKey("lecture", studentID, term.Value, opts.CourseFilter)
+	if !opts.Refresh {
+		var cached []LectureRow
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
+	}
+
 	rows := make([]LectureRow, 0)
 	for _, selectedCourse := range courses {
 		lectures, err := client.Lectures(ctx, term.Value, selectedCourse.Course)
@@ -1488,6 +1600,7 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 		return left.Before(*right)
 	})
 
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
 	return rows, nil
 }
 
@@ -2326,6 +2439,61 @@ func dashboardCacheTTL() time.Duration {
 
 func dashboardCacheable(result DashboardResult) bool {
 	return len(result.SectionErrors) == 0 && result.Attendance.DetailErrors == 0
+}
+
+func listCacheKey(scope string, studentID string, termValue string, selector string) string {
+	parts := []string{
+		strings.TrimSpace(scope),
+		"v1",
+		strings.TrimSpace(studentID),
+		strings.TrimSpace(termValue),
+		strings.TrimSpace(selector),
+	}
+	return strings.Join(parts, ":")
+}
+
+func listCacheTTL() time.Duration {
+	return 5 * time.Minute
+}
+
+func attendanceCacheable(result AttendanceListResult) bool {
+	for _, row := range result.Rows {
+		if row.Err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func cacheScopePrefix(scope string) string {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "", "all":
+		return ""
+	case "dashboard":
+		return "dashboard:"
+	case "course", "courses":
+		return "course:"
+	case "assignment", "assignments":
+		return "assignment:"
+	case "notice", "notices":
+		return "notice:"
+	case "lecture", "lectures":
+		return "lecture:"
+	case "timetable":
+		return "timetable:"
+	case "attendance":
+		return "attendance:"
+	case "academic":
+		return "academic:"
+	case "grade", "grades":
+		return "grade:"
+	case "rank", "ranks":
+		return "rank:"
+	case "evaluation", "evaluations":
+		return "evaluation:"
+	default:
+		return strings.TrimSpace(scope) + ":"
+	}
 }
 
 func limitAssignments(rows []AssignmentRow, limit int) []AssignmentRow {

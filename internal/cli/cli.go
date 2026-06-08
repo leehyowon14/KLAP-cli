@@ -228,7 +228,11 @@ func runCache(ctx context.Context, service *app.Service, args []string) error {
 		printCacheStatus(result)
 		return nil
 	case "clear":
-		result, err := service.ClearCache()
+		scope := ""
+		if len(args) > 1 {
+			scope = args[1]
+		}
+		result, err := service.ClearCacheScope(scope)
 		if err != nil {
 			return err
 		}
@@ -246,7 +250,10 @@ func runCourse(ctx context.Context, service *app.Service, args []string) error {
 
 	switch args[0] {
 	case "list":
-		terms, err := service.CourseList(ctx, app.UserOption{StudentID: userFlag(args[1:])})
+		terms, err := service.CourseList(ctx, app.CourseListOptions{
+			User:    app.UserOption{StudentID: userFlag(args[1:])},
+			Refresh: hasFlag(args[1:], "--refresh"),
+		})
 		if err != nil {
 			return err
 		}
@@ -395,7 +402,8 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 	}
 
 	result, err := service.Timetable(ctx, app.TimetableOptions{
-		User: app.UserOption{StudentID: userFlag(args)},
+		User:    app.UserOption{StudentID: userFlag(args)},
+		Refresh: hasFlag(args, "--refresh"),
 	})
 	if err != nil {
 		return err
@@ -436,7 +444,8 @@ func runAttendance(ctx context.Context, service *app.Service, args []string) err
 	}
 
 	result, err := service.AttendanceList(ctx, app.AttendanceListOptions{
-		User: app.UserOption{StudentID: userFlag(args)},
+		User:    app.UserOption{StudentID: userFlag(args)},
+		Refresh: hasFlag(args, "--refresh"),
 	})
 	if err != nil {
 		return err
@@ -486,7 +495,10 @@ func runEvaluation(ctx context.Context, service *app.Service, args []string) err
 
 	switch args[0] {
 	case "list":
-		opts := app.EvaluationListOptions{User: app.UserOption{StudentID: userFlag(args[1:])}}
+		opts := app.EvaluationListOptions{
+			User:    app.UserOption{StudentID: userFlag(args[1:])},
+			Refresh: hasFlag(args[1:], "--refresh"),
+		}
 		result, err := service.EvaluationList(ctx, opts)
 		if err != nil {
 			return err
@@ -533,7 +545,10 @@ func runAcademic(ctx context.Context, service *app.Service, args []string) error
 		if err != nil {
 			return err
 		}
-		result, err := service.AcademicList(ctx, app.AcademicListOptions{Year: year})
+		result, err := service.AcademicList(ctx, app.AcademicListOptions{
+			Year:    year,
+			Refresh: hasFlag(args[1:], "--refresh"),
+		})
 		if err != nil {
 			return err
 		}
@@ -737,6 +752,7 @@ func assignmentListOptions(args []string) (app.AssignmentListOptions, error) {
 	return app.AssignmentListOptions{
 		User:         app.UserOption{StudentID: userFlag(args)},
 		CourseFilter: course,
+		Refresh:      hasFlag(args, "--refresh"),
 	}, nil
 }
 
@@ -748,6 +764,7 @@ func noticeListOptions(args []string) (app.NoticeListOptions, error) {
 	return app.NoticeListOptions{
 		User:         app.UserOption{StudentID: userFlag(args)},
 		CourseFilter: course,
+		Refresh:      hasFlag(args, "--refresh"),
 	}, nil
 }
 
@@ -759,6 +776,7 @@ func lectureListOptions(args []string) (app.LectureListOptions, error) {
 	return app.LectureListOptions{
 		User:         app.UserOption{StudentID: userFlag(args)},
 		CourseFilter: course,
+		Refresh:      hasFlag(args, "--refresh"),
 	}, nil
 }
 
@@ -815,6 +833,8 @@ func gradeOptions(args []string) (app.GradeOptions, error) {
 				return app.GradeOptions{}, errors.New("--user에는 학번이 필요합니다")
 			}
 			i++
+		case "--refresh":
+			opts.Refresh = true
 		default:
 			if strings.HasPrefix(args[i], "--") {
 				return app.GradeOptions{}, fmt.Errorf("unknown grade option: %s", args[i])
@@ -846,6 +866,8 @@ func rankOptions(args []string) (app.RankOptions, error) {
 				return app.RankOptions{}, errors.New("--user에는 학번이 필요합니다")
 			}
 			i++
+		case "--refresh":
+			opts.Refresh = true
 		default:
 			if strings.HasPrefix(args[i], "--") {
 				return app.RankOptions{}, fmt.Errorf("unknown rank option: %s", args[i])

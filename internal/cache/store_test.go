@@ -57,3 +57,32 @@ func TestStoreStatsAndClear(t *testing.T) {
 		t.Fatalf("Clear() removed = %d", removed)
 	}
 }
+
+func TestStoreClearPrefix(t *testing.T) {
+	store, err := NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	if err := store.Set("assignment:v1:user:2026,1", time.Minute, testValue{Name: "assignment"}); err != nil {
+		t.Fatalf("Set() assignment error = %v", err)
+	}
+	if err := store.Set("notice:v1:user:2026,1", time.Minute, testValue{Name: "notice"}); err != nil {
+		t.Fatalf("Set() notice error = %v", err)
+	}
+
+	removed, err := store.ClearPrefix("assignment:")
+	if err != nil {
+		t.Fatalf("ClearPrefix() error = %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("ClearPrefix() removed = %d", removed)
+	}
+
+	var got testValue
+	if _, ok, err := store.Get("assignment:v1:user:2026,1", &got); err != nil || ok {
+		t.Fatalf("Get() assignment = %v, %v", ok, err)
+	}
+	if _, ok, err := store.Get("notice:v1:user:2026,1", &got); err != nil || !ok {
+		t.Fatalf("Get() notice = %v, %v", ok, err)
+	}
+}

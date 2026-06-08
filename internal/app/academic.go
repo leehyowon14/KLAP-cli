@@ -25,7 +25,8 @@ var (
 )
 
 type AcademicListOptions struct {
-	Year string
+	Year    string
+	Refresh bool
 }
 
 type AcademicEvent struct {
@@ -51,6 +52,14 @@ func (s *Service) AcademicList(ctx context.Context, opts AcademicListOptions) (A
 		year = time.Now().In(time.FixedZone("KST", 9*60*60)).Format("2006")
 	}
 
+	cacheKey := listCacheKey("academic", "", year, "")
+	if !opts.Refresh {
+		var cached AcademicListResult
+		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
+			return cached, nil
+		}
+	}
+
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, academicScheduleURL, nil)
 	if err != nil {
 		return AcademicListResult{}, err
@@ -72,11 +81,13 @@ func (s *Service) AcademicList(ctx context.Context, opts AcademicListOptions) (A
 	if err != nil {
 		return AcademicListResult{}, err
 	}
-	return AcademicListResult{
+	result := AcademicListResult{
 		Year:      year,
 		SourceURL: academicScheduleURL,
 		Events:    events,
-	}, nil
+	}
+	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
+	return result, nil
 }
 
 func parseAcademicEvents(body []byte, year string) ([]AcademicEvent, error) {

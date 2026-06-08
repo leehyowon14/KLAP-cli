@@ -108,6 +108,10 @@ func (s *Store) Set(key string, ttl time.Duration, value any) error {
 }
 
 func (s *Store) Clear() (int, error) {
+	return s.ClearPrefix("")
+}
+
+func (s *Store) ClearPrefix(prefix string) (int, error) {
 	if s == nil {
 		return 0, nil
 	}
@@ -124,7 +128,21 @@ func (s *Store) Clear() (int, error) {
 		if item.IsDir() || filepath.Ext(item.Name()) != ".json" {
 			continue
 		}
-		if err := os.Remove(filepath.Join(s.dir, item.Name())); err != nil {
+		path := filepath.Join(s.dir, item.Name())
+		if prefix != "" {
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return count, fmt.Errorf("cache 읽기 실패: %w", err)
+			}
+			var cached entry
+			if err := json.Unmarshal(body, &cached); err != nil {
+				return count, fmt.Errorf("cache 파싱 실패: %w", err)
+			}
+			if !strings.HasPrefix(cached.Key, prefix) {
+				continue
+			}
+		}
+		if err := os.Remove(path); err != nil {
 			return count, fmt.Errorf("cache 삭제 실패: %w", err)
 		}
 		count++
