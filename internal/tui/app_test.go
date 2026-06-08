@@ -18,7 +18,7 @@ func TestHomeViewShowsMenu(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "KLAP TUI") || !strings.Contains(view, "> Dashboard") {
+	if !strings.Contains(view, "KLAP TUI") || !strings.Contains(view, "Navigation") || !strings.Contains(view, "Dashboard") {
 		t.Fatalf("View() = %q", view)
 	}
 }

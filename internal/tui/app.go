@@ -8,8 +8,65 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/kw-klap/klap-cli/internal/app"
 	"github.com/kw-klap/klap-cli/internal/klas"
+)
+
+const sidebarWidth = 30
+
+var (
+	appStyle = lipgloss.NewStyle().
+			Padding(1, 2)
+	headerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#0969DA")).
+			Padding(0, 1)
+	headerMetaStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6E7781"))
+	sidebarStyle = lipgloss.NewStyle().
+			Width(sidebarWidth).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#30363D")).
+			Padding(1, 1)
+	panelStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#30363D")).
+			Padding(1, 2)
+	menuItemStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#8C959F")).
+			Padding(0, 1)
+	menuSelectedStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color("#1F883D")).
+				Padding(0, 1)
+	sectionStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#0969DA"))
+	mutedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6E7781"))
+	errorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#CF222E")).
+			Bold(true)
+	emptyStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6E7781")).
+			Italic(true)
+	badgeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#6E7781")).
+			Padding(0, 1)
+	successBadgeStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color("#1F883D")).
+				Padding(0, 1)
+	warnBadgeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#24292F")).
+			Background(lipgloss.Color("#D4A72C")).
+			Padding(0, 1)
+	footerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6E7781"))
 )
 
 type screen int
@@ -128,46 +185,119 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	var b strings.Builder
-	b.WriteString("KLAP TUI\n")
-	b.WriteString("q: 종료  enter: 열기  b/esc: 뒤로  r: 새로고침\n\n")
+	width := m.width
+	if width <= 0 {
+		width = 96
+	}
+	contentWidth := width - sidebarWidth - 8
+	if contentWidth < 48 {
+		contentWidth = width - 4
+	}
 
+	header := m.renderHeader(width)
+	sidebar := m.renderSidebar()
+	panel := panelStyle.Width(contentWidth).Render(m.renderPanel())
+
+	var body string
+	if width < 82 {
+		body = lipgloss.JoinVertical(lipgloss.Left, sidebar, panel)
+	} else {
+		body = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, "  ", panel)
+	}
+	footer := footerStyle.Render("q 종료  enter 열기  b/esc 뒤로  r 새로고침  ↑↓ 이동")
+	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, "", body, "", footer))
+}
+
+func (m model) renderHeader(width int) string {
+	title := "KLAP"
+	subtitle := screenTitle(m.active)
 	if m.active == screenHome {
-		for index, item := range m.menu {
-			prefix := "  "
-			if index == m.cursor {
-				prefix = "> "
-			}
-			b.WriteString(fmt.Sprintf("%s%s - %s\n", prefix, item.title, item.help))
-		}
-		return b.String()
+		subtitle = "Home"
 	}
+	left := headerStyle.Render(title + " TUI")
+	meta := subtitle
+	if !m.loadedAt.IsZero() && !m.loading && m.active != screenHome {
+		meta += " · " + m.loadedAt.Format("15:04:05")
+	}
+	right := headerMetaStyle.Render(meta)
+	spacerWidth := width - lipgloss.Width(left) - lipgloss.Width(right) - 4
+	if spacerWidth < 1 {
+		spacerWidth = 1
+	}
+	return left + strings.Repeat(" ", spacerWidth) + right
+}
 
-	b.WriteString(screenTitle(m.active))
-	if !m.loadedAt.IsZero() && !m.loading {
-		b.WriteString(" | ")
-		b.WriteString(m.loadedAt.Format("15:04:05"))
-	}
+func (m model) renderSidebar() string {
+	var b strings.Builder
+	b.WriteString(sectionStyle.Render("Navigation"))
 	b.WriteString("\n\n")
+	for index, item := range m.menu {
+		label := item.title
+		if (index == m.cursor && m.active == screenHome) || item.screen == m.active {
+			b.WriteString(menuSelectedStyle.Render(label))
+		} else {
+			b.WriteString(menuItemStyle.Render(label))
+		}
+		b.WriteString("\n")
+		b.WriteString(mutedStyle.Render("  " + item.help))
+		if index < len(m.menu)-1 {
+			b.WriteString("\n\n")
+		}
+	}
+	return sidebarStyle.Render(b.String())
+}
 
+func (m model) renderPanel() string {
+	if m.active == screenHome {
+		return m.renderHomePanel()
+	}
+
+	var b strings.Builder
+	b.WriteString(sectionStyle.Render(screenTitle(m.active)))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render(screenSubtitle(m.active)))
+	b.WriteString("\n\n")
 	if m.loading {
-		b.WriteString("불러오는 중...\n")
+		b.WriteString(warnBadgeStyle.Render("LOADING"))
+		b.WriteString(" 데이터를 불러오는 중입니다\n")
 		return b.String()
 	}
 	if m.err != nil {
-		b.WriteString("오류: ")
+		b.WriteString(errorStyle.Render("ERROR"))
+		b.WriteString(" ")
 		b.WriteString(m.err.Error())
 		b.WriteString("\n")
 		return b.String()
 	}
 	if strings.TrimSpace(m.content) == "" {
-		b.WriteString("표시할 내용이 없습니다\n")
+		b.WriteString(emptyStyle.Render("표시할 내용이 없습니다"))
+		b.WriteString("\n")
 		return b.String()
 	}
 	b.WriteString(m.content)
 	if !strings.HasSuffix(m.content, "\n") {
 		b.WriteString("\n")
 	}
+	return b.String()
+}
+
+func (m model) renderHomePanel() string {
+	var b strings.Builder
+	b.WriteString(sectionStyle.Render("Today"))
+	b.WriteString("\n")
+	b.WriteString("Dashboard와 Due를 중심으로 오늘 처리할 항목을 확인합니다.\n\n")
+	b.WriteString(sectionStyle.Render("Next"))
+	b.WriteString("\n")
+	if len(m.menu) > 0 {
+		item := m.menu[m.cursor]
+		b.WriteString(successBadgeStyle.Render(item.title))
+		b.WriteString(" ")
+		b.WriteString(item.help)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render("현재 TUI는 읽기 전용 요약 화면부터 제공하며, 상세/액션 화면은 같은 프레임 안에 확장됩니다."))
+	b.WriteString("\n")
 	return b.String()
 }
 
@@ -240,57 +370,112 @@ func screenTitle(value screen) string {
 	}
 }
 
+func screenSubtitle(value screen) string {
+	switch value {
+	case screenDashboard:
+		return "과제, 온라인 강의, 공지, 출석, 수업평가 요약"
+	case screenDue:
+		return "다가오는 과제, 온라인 강의, 학사일정"
+	case screenAssignments:
+		return "현재 학기 과제 목록"
+	case screenNotices:
+		return "최근 강의 공지"
+	case screenLectures:
+		return "온라인 강의와 학습활동 상태"
+	case screenConfig:
+		return "현재 유저 설정"
+	default:
+		return ""
+	}
+}
+
 func formatDashboard(result app.DashboardResult) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%s (%s)\n", result.Term.Label, result.Term.Value))
+	b.WriteString(badgeStyle.Render(result.Term.Value))
+	b.WriteString(" ")
+	b.WriteString(result.Term.Label)
+	b.WriteString("\n")
 	if result.Cached {
-		b.WriteString(fmt.Sprintf("캐시 사용: %s\n", result.CacheCreatedAt.Format("2006-01-02 15:04")))
+		b.WriteString(mutedStyle.Render("캐시 사용 " + result.CacheCreatedAt.Format("2006-01-02 15:04")))
+		b.WriteString("\n")
 	}
-	b.WriteString("\n과제\n")
-	if len(result.Assignments) == 0 {
-		b.WriteString("  예정된 과제가 없습니다\n")
-	} else {
-		for _, row := range result.Assignments {
-			b.WriteString(fmt.Sprintf("  %s | %s | %s\n", formatTime(row.Assignment.DueAt), row.CourseName, row.Assignment.Title))
-		}
+	b.WriteString("\n")
+	b.WriteString(renderSection("과제", formatAssignmentSummary(result.Assignments)))
+	b.WriteString("\n")
+	b.WriteString(renderSection("온라인 강의", formatLectureSummary(result.Lectures)))
+	b.WriteString("\n")
+	b.WriteString(renderSection("공지", formatNoticeSummary(result.Notices)))
+	if result.Attendance.TotalCourses > 0 {
+		b.WriteString("\n")
+		b.WriteString(renderSection("출석", []string{
+			fmt.Sprintf("출석 %d · 결석 %d · 지각 %d · 공결 %d", result.Attendance.Completed, result.Attendance.Absent, result.Attendance.Late, result.Attendance.Excused),
+		}))
 	}
-	b.WriteString("\n온라인 강의\n")
-	if len(result.Lectures) == 0 {
-		b.WriteString("  수강할 온라인 강의가 없습니다\n")
-	} else {
-		for _, row := range result.Lectures {
-			b.WriteString(fmt.Sprintf("  %s | %s | %s\n", formatTime(row.Lecture.EndAt), row.CourseName, row.Lecture.Title))
-		}
-	}
-	b.WriteString("\n공지\n")
-	if len(result.Notices) == 0 {
-		b.WriteString("  공지가 없습니다\n")
-	} else {
-		for _, row := range result.Notices {
-			b.WriteString(fmt.Sprintf("  %s | %s | %s\n", formatTime(row.Notice.Registered), row.CourseName, row.Notice.Title))
-		}
+	if result.Evaluation.Enabled {
+		b.WriteString("\n")
+		b.WriteString(renderSection("수업평가", []string{
+			fmt.Sprintf("완료 %d · 미완료 %d", result.Evaluation.Done, result.Evaluation.Pending),
+		}))
 	}
 	if len(result.SectionErrors) > 0 {
-		b.WriteString("\n확인 실패\n")
-		for _, sectionError := range result.SectionErrors {
-			b.WriteString(fmt.Sprintf("  %s: %v\n", sectionError.Section, sectionError.Err))
-		}
+		b.WriteString("\n")
+		b.WriteString(formatSectionErrors(result.SectionErrors))
 	}
 	return b.String()
 }
 
+func formatAssignmentSummary(rows []app.AssignmentRow) []string {
+	if len(rows) == 0 {
+		return []string{emptyStyle.Render("예정된 과제가 없습니다")}
+	}
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s", mutedStyle.Render(formatTime(row.Assignment.DueAt)), row.CourseName, row.Assignment.Title))
+	}
+	return lines
+}
+
+func formatLectureSummary(rows []app.LectureRow) []string {
+	if len(rows) == 0 {
+		return []string{emptyStyle.Render("수강할 온라인 강의가 없습니다")}
+	}
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s", mutedStyle.Render(formatTime(row.Lecture.EndAt)), row.CourseName, row.Lecture.Title))
+	}
+	return lines
+}
+
+func formatNoticeSummary(rows []app.NoticeRow) []string {
+	if len(rows) == 0 {
+		return []string{emptyStyle.Render("공지 없음")}
+	}
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s", mutedStyle.Render(formatTime(row.Notice.Registered)), row.CourseName, row.Notice.Title))
+	}
+	return lines
+}
+
 func formatDue(result app.DueResult) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%s ~ %s\n\n", result.From.Format("2006-01-02"), result.Until.Format("2006-01-02")))
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("%s ~ %s", result.From.Format("2006-01-02"), result.Until.Format("2006-01-02"))))
+	b.WriteString("\n\n")
 	if len(result.Items) == 0 {
-		b.WriteString("예정된 데드라인이 없습니다\n")
+		b.WriteString(emptyStyle.Render("예정된 데드라인이 없습니다"))
+		b.WriteString("\n")
 	}
 	for _, item := range result.Items {
 		course := item.CourseName
 		if course == "" {
 			course = "-"
 		}
-		b.WriteString(fmt.Sprintf("%s | %s | %s | %s\n", item.DueAt.Format("2006-01-02 15:04"), item.Kind, course, item.Title))
+		b.WriteString(fmt.Sprintf("%s  %s  %s  %s\n",
+			mutedStyle.Render(item.DueAt.Format("2006-01-02 15:04")),
+			badgeStyle.Render(item.Kind),
+			course,
+			item.Title,
+		))
 	}
 	if len(result.Errors) > 0 {
 		b.WriteString("\n확인 실패\n")
@@ -303,37 +488,54 @@ func formatDue(result app.DueResult) string {
 
 func formatAssignments(rows []app.AssignmentRow) string {
 	if len(rows) == 0 {
-		return "과제가 없습니다\n"
+		return emptyStyle.Render("과제가 없습니다") + "\n"
 	}
 	var b strings.Builder
 	for _, row := range rows {
-		status := "미제출"
+		status := warnBadgeStyle.Render("미제출")
 		if row.Assignment.Submitted {
-			status = "제출"
+			status = successBadgeStyle.Render("제출")
 		}
-		b.WriteString(fmt.Sprintf("%s | %s | %s | %s | %s\n", row.ID, formatTime(row.Assignment.DueAt), status, row.CourseName, row.Assignment.Title))
+		b.WriteString(fmt.Sprintf("%s  %s  %s  %s  %s\n",
+			badgeStyle.Render(row.ID),
+			mutedStyle.Render(formatTime(row.Assignment.DueAt)),
+			status,
+			row.CourseName,
+			row.Assignment.Title,
+		))
 	}
 	return b.String()
 }
 
 func formatNotices(rows []app.NoticeRow) string {
 	if len(rows) == 0 {
-		return "강의 공지가 없습니다\n"
+		return emptyStyle.Render("강의 공지가 없습니다") + "\n"
 	}
 	var b strings.Builder
 	for _, row := range rows {
-		b.WriteString(fmt.Sprintf("%s | %s | %s | %s\n", row.ID, formatTime(row.Notice.Registered), row.CourseName, row.Notice.Title))
+		b.WriteString(fmt.Sprintf("%s  %s  %s  %s\n",
+			badgeStyle.Render(row.ID),
+			mutedStyle.Render(formatTime(row.Notice.Registered)),
+			row.CourseName,
+			row.Notice.Title,
+		))
 	}
 	return b.String()
 }
 
 func formatLectures(rows []app.LectureRow) string {
 	if len(rows) == 0 {
-		return "온라인 강의가 없습니다\n"
+		return emptyStyle.Render("온라인 강의가 없습니다") + "\n"
 	}
 	var b strings.Builder
 	for _, row := range rows {
-		b.WriteString(fmt.Sprintf("%s | %s | %s | %s | %s\n", row.ID, lectureProgress(row.Lecture), row.CourseName, row.Lecture.ModuleTitle, row.Lecture.Title))
+		b.WriteString(fmt.Sprintf("%s  %s  %s  %s  %s\n",
+			badgeStyle.Render(row.ID),
+			mutedStyle.Render(lectureProgress(row.Lecture)),
+			row.CourseName,
+			emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요"),
+			row.Lecture.Title,
+		))
 	}
 	return b.String()
 }
@@ -343,12 +545,15 @@ func formatConfig(settings app.ConfigSettings) string {
 	if term == "" {
 		term = "자동"
 	}
-	return fmt.Sprintf("term: %s\nreminder.name: %s\nreminder.use-existing-list: %t\ndownload.dir: %s\n",
-		term,
-		settings.Reminder.ListName,
-		settings.Reminder.UseExistingList,
-		settings.Download.Dir,
-	)
+	return renderSection("General", []string{
+		"term  " + term,
+	}) + "\n" + renderSection("Reminder", []string{
+		"name  " + settings.Reminder.ListName,
+		fmt.Sprintf("use-existing-list  %t", settings.Reminder.UseExistingList),
+		fmt.Sprintf("alarm-before-min  %d", settings.Reminder.AlarmBeforeMin),
+	}) + "\n" + renderSection("Download", []string{
+		"dir  " + settings.Download.Dir,
+	})
 }
 
 func formatTime(value *time.Time) string {
@@ -375,4 +580,32 @@ func lectureProgress(lecture klas.Lecture) string {
 		required = "?"
 	}
 	return achieved + "/" + required + "분"
+}
+
+func renderSection(title string, lines []string) string {
+	var b strings.Builder
+	b.WriteString(sectionStyle.Render(title))
+	b.WriteString("\n")
+	for _, line := range lines {
+		b.WriteString("  ")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func formatSectionErrors(errors []app.DashboardSectionError) string {
+	lines := make([]string, 0, len(errors))
+	for _, sectionError := range errors {
+		lines = append(lines, errorStyle.Render(sectionError.Section)+" "+sectionError.Err.Error())
+	}
+	return renderSection("확인 실패", lines)
+}
+
+func emptyFallback(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
 }
