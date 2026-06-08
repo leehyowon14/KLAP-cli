@@ -17,34 +17,30 @@ const sidebarWidth = 30
 
 var (
 	appStyle = lipgloss.NewStyle().
-			Padding(1, 2)
+			Padding(1, 1)
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Background(lipgloss.Color("#0969DA")).
-			Padding(0, 1)
+			Foreground(lipgloss.Color("#58A6FF"))
 	headerMetaStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6E7781"))
 	sidebarStyle = lipgloss.NewStyle().
 			Width(sidebarWidth).
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.NormalBorder(), false, true, false, false).
 			BorderForeground(lipgloss.Color("#30363D")).
-			Padding(1, 1)
+			Padding(0, 1, 0, 0)
 	panelStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#30363D")).
-			Padding(1, 2)
+			Padding(0, 1)
 	menuItemStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#8C959F")).
 			Padding(0, 1)
 	menuSelectedStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("#FFFFFF")).
-				Background(lipgloss.Color("#1F883D")).
+				Background(lipgloss.Color("#30363D")).
 				Padding(0, 1)
 	sectionStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#0969DA"))
+			Foreground(lipgloss.Color("#58A6FF"))
 	mutedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6E7781"))
 	errorStyle = lipgloss.NewStyle().
@@ -55,11 +51,11 @@ var (
 			Italic(true)
 	badgeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FFFFFF")).
-			Background(lipgloss.Color("#6E7781")).
+			Background(lipgloss.Color("#30363D")).
 			Padding(0, 1)
 	successBadgeStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#FFFFFF")).
-				Background(lipgloss.Color("#1F883D")).
+				Background(lipgloss.Color("#238636")).
 				Padding(0, 1)
 	warnBadgeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#24292F")).
@@ -116,11 +112,11 @@ func Run(ctx context.Context, service *app.Service) error {
 		service: service,
 		menu: []menuItem{
 			{title: "Dashboard", help: "현재 학기 요약", screen: screenDashboard},
-			{title: "Due", help: "다가오는 과제/강의/학사일정", screen: screenDue},
+			{title: "Due", help: "다가오는 일정", screen: screenDue},
 			{title: "Assignments", help: "과제 목록", screen: screenAssignments},
-			{title: "Notices", help: "강의 공지", screen: screenNotices},
-			{title: "Lectures", help: "온라인 강의 상태", screen: screenLectures},
-			{title: "Config", help: "현재 설정", screen: screenConfig},
+			{title: "Notices", help: "공지 목록", screen: screenNotices},
+			{title: "Lectures", help: "강의 상태", screen: screenLectures},
+			{title: "Config", help: "설정", screen: screenConfig},
 		},
 	}
 	_, err := tea.NewProgram(initial).Run()
@@ -205,7 +201,8 @@ func (m model) View() string {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, "  ", panel)
 	}
 	footer := footerStyle.Render("q 종료  enter 열기  b/esc 뒤로  r 새로고침  ↑↓ 이동")
-	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, "", body, "", footer))
+	rule := mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120))))
+	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, rule, "", body, "", footer))
 }
 
 func (m model) renderHeader(width int) string {
@@ -214,7 +211,7 @@ func (m model) renderHeader(width int) string {
 	if m.active == screenHome {
 		subtitle = "Home"
 	}
-	left := headerStyle.Render(title + " TUI")
+	left := headerStyle.Render(title) + mutedStyle.Render(" tui")
 	meta := subtitle
 	if !m.loadedAt.IsZero() && !m.loading && m.active != screenHome {
 		meta += " · " + m.loadedAt.Format("15:04:05")
@@ -229,19 +226,19 @@ func (m model) renderHeader(width int) string {
 
 func (m model) renderSidebar() string {
 	var b strings.Builder
-	b.WriteString(sectionStyle.Render("Navigation"))
-	b.WriteString("\n\n")
+	b.WriteString(mutedStyle.Render("NAVIGATION"))
+	b.WriteString("\n")
 	for index, item := range m.menu {
 		label := item.title
 		if (index == m.cursor && m.active == screenHome) || item.screen == m.active {
-			b.WriteString(menuSelectedStyle.Render(label))
+			b.WriteString(menuSelectedStyle.Render("> " + label))
 		} else {
-			b.WriteString(menuItemStyle.Render(label))
+			b.WriteString(menuItemStyle.Render("  " + label))
 		}
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render("  " + item.help))
+		b.WriteString(mutedStyle.Render("    " + item.help))
 		if index < len(m.menu)-1 {
-			b.WriteString("\n\n")
+			b.WriteString("\n")
 		}
 	}
 	return sidebarStyle.Render(b.String())
@@ -286,11 +283,11 @@ func (m model) renderHomePanel() string {
 	b.WriteString(sectionStyle.Render("Today"))
 	b.WriteString("\n")
 	b.WriteString("Dashboard와 Due를 중심으로 오늘 처리할 항목을 확인합니다.\n\n")
-	b.WriteString(sectionStyle.Render("Next"))
+	b.WriteString(mutedStyle.Render("NEXT"))
 	b.WriteString("\n")
 	if len(m.menu) > 0 {
 		item := m.menu[m.cursor]
-		b.WriteString(successBadgeStyle.Render(item.title))
+		b.WriteString(badgeStyle.Render(item.title))
 		b.WriteString(" ")
 		b.WriteString(item.help)
 		b.WriteString("\n")
@@ -608,4 +605,18 @@ func emptyFallback(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func minInt(left int, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
