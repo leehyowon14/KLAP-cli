@@ -123,7 +123,7 @@ func Run(ctx context.Context, service *app.Service) error {
 			{title: "Config", help: "설정", screen: screenConfig},
 		},
 	}
-	_, err := tea.NewProgram(initial).Run()
+	_, err := tea.NewProgram(initial, tea.WithAltScreen()).Run()
 	return err
 }
 
