@@ -50,6 +50,8 @@ func Run(ctx context.Context, args []string) error {
 		return runTimetable(ctx, service, args[1:])
 	case "attendance":
 		return runAttendance(ctx, service, args[1:])
+	case "grade":
+		return runGrade(ctx, service, args[1:])
 	case "syllabus":
 		return runSyllabus(ctx, service, args[1:])
 	case "lecture":
@@ -382,6 +384,23 @@ func runAttendance(ctx context.Context, service *app.Service, args []string) err
 		return err
 	}
 	printAttendanceList(result)
+	return nil
+}
+
+func runGrade(ctx context.Context, service *app.Service, args []string) error {
+	if len(args) > 0 && args[0] == "list" {
+		args = args[1:]
+	} else if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
+		return fmt.Errorf("unknown grade command: %s", args[0])
+	}
+
+	result, err := service.Grade(ctx, app.GradeOptions{
+		User: app.UserOption{StudentID: userFlag(args)},
+	})
+	if err != nil {
+		return err
+	}
+	printGrade(result)
 	return nil
 }
 
@@ -818,6 +837,7 @@ Usage:
   klap timetable         현재 학기 시간표 출력
   klap attendance        출석 현황 출력
   klap attendance detail <과목명|번호|학정번호> 주차별 출석 상세 출력
+  klap grade             성적 조회
   klap syllabus <과목명|과목번호|학정번호> 강의계획서 출력
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
@@ -1097,6 +1117,68 @@ func printAttendanceDetail(result app.AttendanceDetailResult) {
 		}
 		fmt.Printf("%s주차 | %s\n", emptyFallback(session.Week, "-"), strings.Join(parts, " / "))
 	}
+}
+
+func printGrade(result app.GradeResult) {
+	report := result.Report
+	summary := report.Summary
+	fmt.Println("성적")
+	fmt.Printf("신청 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
+		summary.AppliedCredits,
+		summary.MajorAppliedCredits,
+		summary.CultureAppliedCredits,
+		summary.EtcAppliedCredits,
+	)
+	fmt.Printf("취득 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
+		summary.EarnedCredits,
+		summary.MajorEarnedCredits,
+		summary.CultureEarnedCredits,
+		summary.EtcEarnedCredits,
+	)
+	fmt.Printf("평점: %s / 재수강 반영 평점: %s\n",
+		emptyFallback(summary.GPA, "-"),
+		emptyFallback(summary.RetakeGPA, "-"),
+	)
+	if summary.DeletedCredits > 0 {
+		fmt.Printf("삭제 학점: %d\n", summary.DeletedCredits)
+	}
+
+	if len(report.Terms) == 0 {
+		fmt.Println("\n성적 내역이 없습니다")
+		return
+	}
+
+	for _, term := range report.Terms {
+		fmt.Printf("\n%s\n", emptyFallback(term.Label, "-"))
+		fmt.Println("과목 | 이수구분 | 학점 | 성적 | 재수강 | 학정번호")
+		for _, course := range term.Courses {
+			fmt.Printf("%s | %s | %d | %s | %s | %s\n",
+				course.Name,
+				emptyFallback(course.CourseType, "-"),
+				course.Credits,
+				gradeLabel(course),
+				yesNo(course.Retake),
+				emptyFallback(course.CourseCode, "-"),
+			)
+		}
+	}
+}
+
+func gradeLabel(course klas.GradeCourse) string {
+	if strings.TrimSpace(course.Grade) != "" {
+		return strings.TrimSpace(course.Grade)
+	}
+	if !course.TermCheckOpen && !course.TermFinished {
+		return "미공개"
+	}
+	return "-"
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "Y"
+	}
+	return "N"
 }
 
 func attendanceSummary(row app.AttendanceRow) string {

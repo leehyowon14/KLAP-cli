@@ -21,6 +21,8 @@ klap academic list --year 2026
 klap attendance
 klap attendance list
 klap attendance detail <과목명|번호|학정번호>
+klap grade
+klap grade list
 klap assignment list
 klap assignment list --course <과목명|번호>
 klap assignment detail <과목번호:과제번호>

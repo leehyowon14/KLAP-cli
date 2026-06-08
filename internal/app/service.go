@@ -54,6 +54,10 @@ type AttendanceDetailOptions struct {
 	Selector string
 }
 
+type GradeOptions struct {
+	User UserOption
+}
+
 type SyllabusOptions struct {
 	User      UserOption
 	Selector  string
@@ -160,6 +164,10 @@ type AttendanceRow struct {
 type AttendanceDetailResult struct {
 	Term klas.Term
 	Row  AttendanceRow
+}
+
+type GradeResult struct {
+	Report klas.GradeReport
 }
 
 type SyllabusResult struct {
@@ -806,6 +814,33 @@ func (s *Service) AttendanceDetail(ctx context.Context, opts AttendanceDetailOpt
 		Term: result.Term,
 		Row:  rows[0],
 	}, nil
+}
+
+func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return GradeResult{}, err
+	}
+	client, err := s.authenticatedClient(ctx, studentID)
+	if err != nil {
+		return GradeResult{}, err
+	}
+
+	report, err := client.Grades(ctx)
+	if err != nil {
+		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+		if refreshErr != nil {
+			return GradeResult{}, refreshErr
+		}
+		if refreshed {
+			client = refreshedClient
+			report, err = client.Grades(ctx)
+		}
+	}
+	if err != nil {
+		return GradeResult{}, err
+	}
+	return GradeResult{Report: report}, nil
 }
 
 func (s *Service) Syllabus(ctx context.Context, opts SyllabusOptions) (SyllabusResult, error) {
