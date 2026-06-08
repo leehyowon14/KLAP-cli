@@ -10,6 +10,7 @@ klap auth
 klap user list
 klap user select <학번>
 klap user rm <학번>
+klap dashboard
 klap term list
 klap term select <학기번호|학기값>
 klap course list

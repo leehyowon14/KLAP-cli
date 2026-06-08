@@ -31,6 +31,10 @@ type UserOption struct {
 	StudentID string
 }
 
+type DashboardOptions struct {
+	User UserOption
+}
+
 type AssignmentListOptions struct {
 	User         UserOption
 	CourseFilter string
@@ -163,6 +167,41 @@ type NoticeDetailResult struct {
 
 type OpenURLResult struct {
 	URL string
+}
+
+type DashboardResult struct {
+	Term          klas.Term
+	GeneratedAt   time.Time
+	Assignments   []AssignmentRow
+	Notices       []NoticeRow
+	Lectures      []LectureRow
+	Attendance    DashboardAttendance
+	Evaluation    DashboardEvaluation
+	SectionErrors []DashboardSectionError
+}
+
+type DashboardAttendance struct {
+	TotalCourses int
+	Completed    int
+	Absent       int
+	Late         int
+	LeaveEarly   int
+	Excused      int
+	Unknown      int
+	DetailErrors int
+}
+
+type DashboardEvaluation struct {
+	Term    klas.EvaluationTerm
+	Enabled bool
+	Done    int
+	Pending int
+	Rows    []EvaluationRow
+}
+
+type DashboardSectionError struct {
+	Section string
+	Err     error
 }
 
 type TimetableResult struct {
@@ -507,6 +546,61 @@ func (s *Service) CourseList(ctx context.Context, user UserOption) ([]klas.Term,
 		return nil, err
 	}
 	return []klas.Term{term}, nil
+}
+
+func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (DashboardResult, error) {
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return DashboardResult{}, err
+	}
+	client, term, err := s.latestTerm(ctx, studentID)
+	_ = client
+	if err != nil {
+		return DashboardResult{}, err
+	}
+
+	user := UserOption{StudentID: studentID}
+	result := DashboardResult{
+		Term:        term,
+		GeneratedAt: time.Now(),
+	}
+
+	assignments, err := s.AssignmentList(ctx, AssignmentListOptions{User: user})
+	if err != nil {
+		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "과제", Err: err})
+	} else {
+		result.Assignments = dashboardAssignments(assignments, 5)
+	}
+
+	lectures, err := s.LectureList(ctx, LectureListOptions{User: user})
+	if err != nil {
+		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "온라인 강의", Err: err})
+	} else {
+		result.Lectures = dashboardLectures(lectures, time.Now(), 5)
+	}
+
+	notices, err := s.NoticeList(ctx, NoticeListOptions{User: user})
+	if err != nil {
+		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "공지", Err: err})
+	} else {
+		result.Notices = dashboardNotices(notices, 5)
+	}
+
+	attendance, err := s.AttendanceList(ctx, AttendanceListOptions{User: user})
+	if err != nil {
+		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "출석", Err: err})
+	} else {
+		result.Attendance = dashboardAttendance(attendance.Rows)
+	}
+
+	evaluation, err := s.EvaluationList(ctx, EvaluationListOptions{User: user})
+	if err != nil {
+		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "수업평가", Err: err})
+	} else {
+		result.Evaluation = dashboardEvaluation(evaluation)
+	}
+
+	return result, nil
 }
 
 func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions) ([]AssignmentRow, error) {
@@ -2045,6 +2139,122 @@ func selectEvaluationRows(rows []EvaluationRow, selector string) ([]EvaluationRo
 		return nil, fmt.Errorf("수업평가 과목이 여러 개와 일치합니다. evaluation list 번호를 사용하세요: %s", selector)
 	}
 	return nil, fmt.Errorf("수업평가 과목을 찾을 수 없습니다: %s", selector)
+}
+
+func dashboardAssignments(rows []AssignmentRow, limit int) []AssignmentRow {
+	filtered := make([]AssignmentRow, 0, len(rows))
+	now := time.Now()
+	for _, row := range rows {
+		if row.Assignment.Submitted {
+			continue
+		}
+		if row.Assignment.DueAt != nil && row.Assignment.DueAt.Before(now) {
+			continue
+		}
+		filtered = append(filtered, row)
+	}
+	return limitAssignments(filtered, limit)
+}
+
+func dashboardLectures(rows []LectureRow, now time.Time, limit int) []LectureRow {
+	filtered := make([]LectureRow, 0, len(rows))
+	for _, row := range rows {
+		if !lectureNeedsAttendance(row.Lecture, now) {
+			continue
+		}
+		filtered = append(filtered, row)
+	}
+	return limitLectures(filtered, limit)
+}
+
+func dashboardNotices(rows []NoticeRow, limit int) []NoticeRow {
+	sorted := append([]NoticeRow(nil), rows...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		left := sorted[i].Notice.Registered
+		right := sorted[j].Notice.Registered
+		if left == nil && right == nil {
+			return sorted[i].ID < sorted[j].ID
+		}
+		if left == nil {
+			return false
+		}
+		if right == nil {
+			return true
+		}
+		if left.Equal(*right) {
+			return sorted[i].ID < sorted[j].ID
+		}
+		return right.Before(*left)
+	})
+	return limitNotices(sorted, limit)
+}
+
+func dashboardAttendance(rows []AttendanceRow) DashboardAttendance {
+	summary := DashboardAttendance{TotalCourses: len(rows)}
+	for _, row := range rows {
+		if row.Err != nil {
+			summary.DetailErrors++
+			continue
+		}
+		for _, session := range row.Sessions {
+			for _, slot := range session.Slots {
+				switch strings.ToUpper(strings.TrimSpace(slot.Mark)) {
+				case "O":
+					summary.Completed++
+				case "X":
+					summary.Absent++
+				case "L":
+					summary.Late++
+				case "R":
+					summary.LeaveEarly++
+				case "A":
+					summary.Excused++
+				default:
+					if strings.TrimSpace(slot.Mark+slot.Status) != "" {
+						summary.Unknown++
+					}
+				}
+			}
+		}
+	}
+	return summary
+}
+
+func dashboardEvaluation(result EvaluationListResult) DashboardEvaluation {
+	evaluation := DashboardEvaluation{
+		Term:    result.Term,
+		Enabled: result.Term.TermEnabled,
+	}
+	for _, row := range result.Rows {
+		if row.Course.Evaluated {
+			evaluation.Done++
+			continue
+		}
+		evaluation.Pending++
+		evaluation.Rows = append(evaluation.Rows, row)
+	}
+	return evaluation
+}
+
+func limitAssignments(rows []AssignmentRow, limit int) []AssignmentRow {
+	if limit <= 0 || len(rows) <= limit {
+		return rows
+	}
+	return rows[:limit]
+}
+
+func limitLectures(rows []LectureRow, limit int) []LectureRow {
+	if limit <= 0 || len(rows) <= limit {
+		return rows
+	}
+	return rows[:limit]
+}
+
+func limitNotices(rows []NoticeRow, limit int) []NoticeRow {
+	if limit <= 0 || len(rows) <= limit {
+		return rows
+	}
+	return rows[:limit]
 }
 
 func firstNonEmpty(values ...string) string {

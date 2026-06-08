@@ -1,12 +1,15 @@
 package app
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kw-klap/klap-cli/internal/klas"
 )
+
+var errDashboardTest = errors.New("dashboard test error")
 
 func TestSelectedCoursesByNumber(t *testing.T) {
 	term := klas.Term{Courses: []klas.Course{
@@ -177,6 +180,58 @@ func TestLectureNeedsAttendance(t *testing.T) {
 	}
 	if lectureNeedsAttendance(klas.Lecture{LearningSeq: "15", AchievedTime: "10", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected false for completed learning activity")
+	}
+}
+
+func TestDashboardAssignmentsKeepsUpcomingUnsubmitted(t *testing.T) {
+	now := time.Now()
+	past := now.Add(-time.Hour)
+	future := now.Add(time.Hour)
+	rows := []AssignmentRow{
+		{ID: "1:past", Assignment: klas.Assignment{Title: "지난 과제", DueAt: &past}},
+		{ID: "1:done", Assignment: klas.Assignment{Title: "제출 과제", DueAt: &future, Submitted: true}},
+		{ID: "1:todo", Assignment: klas.Assignment{Title: "할 과제", DueAt: &future}},
+	}
+
+	got := dashboardAssignments(rows, 5)
+	if len(got) != 1 || got[0].ID != "1:todo" {
+		t.Fatalf("dashboardAssignments() = %+v", got)
+	}
+}
+
+func TestDashboardAttendanceCountsMarks(t *testing.T) {
+	got := dashboardAttendance([]AttendanceRow{
+		{
+			Sessions: []klas.AttendanceSession{
+				{Slots: []klas.AttendanceSlot{
+					{Mark: "O"},
+					{Mark: "X"},
+					{Mark: "L"},
+					{Mark: "R"},
+					{Mark: "A"},
+					{Mark: "??"},
+				}},
+			},
+		},
+		{Err: errDashboardTest},
+	})
+
+	if got.TotalCourses != 2 || got.Completed != 1 || got.Absent != 1 || got.Late != 1 || got.LeaveEarly != 1 || got.Excused != 1 || got.Unknown != 1 || got.DetailErrors != 1 {
+		t.Fatalf("dashboardAttendance() = %+v", got)
+	}
+}
+
+func TestDashboardNoticesSortsByRecentDate(t *testing.T) {
+	oldDate := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	rows := []NoticeRow{
+		{ID: "old", Notice: klas.Notice{Registered: &oldDate, Top: true}},
+		{ID: "new", Notice: klas.Notice{Registered: &newDate}},
+	}
+
+	got := dashboardNotices(rows, 2)
+	if len(got) != 2 || got[0].ID != "new" || got[1].ID != "old" {
+		t.Fatalf("dashboardNotices() = %+v", got)
 	}
 }
 

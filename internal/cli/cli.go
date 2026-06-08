@@ -36,6 +36,8 @@ func Run(ctx context.Context, args []string) error {
 		return runAuth(ctx, service)
 	case "user":
 		return runUser(ctx, service, args[1:])
+	case "dashboard":
+		return runDashboard(ctx, service, args[1:])
 	case "course":
 		return runCourse(ctx, service, args[1:])
 	case "subject":
@@ -193,6 +195,20 @@ func runUser(ctx context.Context, service *app.Service, args []string) error {
 	default:
 		return fmt.Errorf("unknown user command: %s", args[0])
 	}
+}
+
+func runDashboard(ctx context.Context, service *app.Service, args []string) error {
+	if unknown := firstUnknownDashboardArg(args); unknown != "" {
+		return fmt.Errorf("unknown dashboard option: %s", unknown)
+	}
+	result, err := service.Dashboard(ctx, app.DashboardOptions{
+		User: app.UserOption{StudentID: userFlag(args)},
+	})
+	if err != nil {
+		return err
+	}
+	printDashboard(result)
+	return nil
 }
 
 func runCourse(ctx context.Context, service *app.Service, args []string) error {
@@ -844,6 +860,21 @@ func evaluationSubmitOptions(args []string) (app.EvaluationSubmitOptions, error)
 	return opts, nil
 }
 
+func firstUnknownDashboardArg(args []string) string {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--user":
+			if i+1 >= len(args) {
+				return "--user"
+			}
+			i++
+		default:
+			return args[i]
+		}
+	}
+	return ""
+}
+
 func subjectSearchOptions(args []string) (app.SubjectSearchOptions, error) {
 	opts := app.SubjectSearchOptions{}
 	for i := 0; i < len(args); i++ {
@@ -975,6 +1006,7 @@ Usage:
   klap user list         저장된 학번 목록 출력
   klap user select <학번> 현재 유저 선택
   klap user rm <학번>    저장된 계정 삭제
+  klap dashboard         현재 학기 대시보드 출력
   klap term list         수강 학기 목록 출력
   klap term select <학기번호|학기값> 현재 학기 선택
   klap course list       현재 학기 수업 목록 출력
@@ -1013,6 +1045,102 @@ func printReminderSettings(settings app.ReminderSettings) {
 		fmt.Println("List mode: create if missing")
 	}
 	fmt.Printf("Alarm before: %d분\n", settings.AlarmBeforeMin)
+}
+
+func printDashboard(result app.DashboardResult) {
+	fmt.Printf("KLAP Dashboard | %s (%s)\n", result.Term.Label, result.Term.Value)
+	if !result.GeneratedAt.IsZero() {
+		fmt.Printf("갱신: %s\n", result.GeneratedAt.Format("2006-01-02 15:04"))
+	}
+
+	fmt.Println("\n과제")
+	if len(result.Assignments) == 0 {
+		fmt.Println("  예정된 미제출 과제가 없습니다")
+	} else {
+		for _, row := range result.Assignments {
+			fmt.Printf("  %s | %s | %s | %s\n",
+				row.ID,
+				formatTime(row.Assignment.DueAt),
+				row.CourseName,
+				row.Assignment.Title,
+			)
+		}
+	}
+
+	fmt.Println("\n온라인 강의")
+	if len(result.Lectures) == 0 {
+		fmt.Println("  수강할 온라인 강의/학습활동이 없습니다")
+	} else {
+		for _, row := range result.Lectures {
+			percent := lectureStatusPercent(row.Lecture)
+			fmt.Printf("  %s %s | %s | %s | %s\n",
+				renderProgressBar(percent, 18),
+				formatLectureStatusMinutes(row.Lecture),
+				row.ID,
+				row.CourseName,
+				row.Lecture.Title,
+			)
+		}
+	}
+
+	fmt.Println("\n공지")
+	if len(result.Notices) == 0 {
+		fmt.Println("  최근 강의 공지가 없습니다")
+	} else {
+		for _, row := range result.Notices {
+			fmt.Printf("  %s | %s | %s | %s\n",
+				formatNoticeTime(row.Notice.Registered),
+				row.ID,
+				row.CourseName,
+				row.Notice.Title,
+			)
+		}
+	}
+
+	fmt.Println("\n출석")
+	attendance := result.Attendance
+	if attendance.TotalCourses == 0 {
+		fmt.Println("  출석 현황이 없습니다")
+	} else {
+		fmt.Printf("  과목 %d개 | 출석 %d / 결석 %d / 지각 %d / 조퇴 %d / 공결 %d / 미확인 %d\n",
+			attendance.TotalCourses,
+			attendance.Completed,
+			attendance.Absent,
+			attendance.Late,
+			attendance.LeaveEarly,
+			attendance.Excused,
+			attendance.Unknown,
+		)
+		if attendance.DetailErrors > 0 {
+			fmt.Printf("  상세 확인 실패: %d개 과목\n", attendance.DetailErrors)
+		}
+	}
+
+	fmt.Println("\n수업평가")
+	evaluation := result.Evaluation
+	if !evaluation.Enabled {
+		fmt.Println("  수업평가 기간이 아닙니다")
+	} else {
+		fmt.Printf("  %s | 완료 %d / 미완료 %d\n",
+			emptyFallback(evaluation.Term.JudgeName, evaluation.Term.JudgeChasu),
+			evaluation.Done,
+			evaluation.Pending,
+		)
+		for _, row := range limitEvaluationRows(evaluation.Rows, 5) {
+			extra := ""
+			if row.Course.Engineering {
+				extra = " | 공학인증문항 제외"
+			}
+			fmt.Printf("  %d. %s%s\n", row.Index, row.Course.Name, extra)
+		}
+	}
+
+	if len(result.SectionErrors) > 0 {
+		fmt.Println("\n확인 실패")
+		for _, sectionError := range result.SectionErrors {
+			fmt.Printf("  %s: %v\n", sectionError.Section, sectionError.Err)
+		}
+	}
 }
 
 func printCourseList(terms []klas.Term) {
@@ -1566,6 +1694,13 @@ func evaluationCourseType(course klas.EvaluationCourse) string {
 		return "-"
 	}
 	return strings.Join(parts, " / ")
+}
+
+func limitEvaluationRows(rows []app.EvaluationRow, limit int) []app.EvaluationRow {
+	if limit <= 0 || len(rows) <= limit {
+		return rows
+	}
+	return rows[:limit]
 }
 
 func numericString(value string) bool {
