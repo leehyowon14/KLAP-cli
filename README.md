@@ -11,6 +11,9 @@ klap user list
 klap user select <학번>
 klap user rm <학번>
 klap dashboard
+klap dashboard --refresh
+klap cache status
+klap cache clear
 klap term list
 klap term select <학기번호|학기값>
 klap course list
@@ -65,6 +68,9 @@ klap config reminder --name "To-do" --use-existing-list
 
 `klap evaluation submit`은 기본적으로 제출하지 않고 미리보기만 출력한다.
 실제 저장 API는 `--yes`가 있을 때만 호출하며, 공학인증 추가 문항은 기본 제외한다.
+
+`klap dashboard`는 기본 5분 동안 디스크 캐시를 사용한다.
+즉시 새로 조회하려면 `klap dashboard --refresh`를 사용한다.
 
 Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림을 생성한다.
 `--use-existing-list`를 쓰면 지정한 기존 목록만 사용하며, 없을 때 새로 만들지 않는다.

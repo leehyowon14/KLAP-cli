@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kw-klap/klap-cli/internal/account"
+	"github.com/kw-klap/klap-cli/internal/cache"
 	"github.com/kw-klap/klap-cli/internal/klas"
 	"github.com/kw-klap/klap-cli/internal/reminder"
 	"github.com/kw-klap/klap-cli/internal/settings"
@@ -24,6 +25,7 @@ import (
 type Service struct {
 	store              *account.Store
 	settingsStore      *settings.Store
+	cacheStore         *cache.Store
 	reminderBridgePath string
 }
 
@@ -32,7 +34,8 @@ type UserOption struct {
 }
 
 type DashboardOptions struct {
-	User UserOption
+	User    UserOption
+	Refresh bool
 }
 
 type AssignmentListOptions struct {
@@ -170,14 +173,16 @@ type OpenURLResult struct {
 }
 
 type DashboardResult struct {
-	Term          klas.Term
-	GeneratedAt   time.Time
-	Assignments   []AssignmentRow
-	Notices       []NoticeRow
-	Lectures      []LectureRow
-	Attendance    DashboardAttendance
-	Evaluation    DashboardEvaluation
-	SectionErrors []DashboardSectionError
+	Term           klas.Term
+	GeneratedAt    time.Time
+	Cached         bool
+	CacheCreatedAt time.Time
+	Assignments    []AssignmentRow
+	Notices        []NoticeRow
+	Lectures       []LectureRow
+	Attendance     DashboardAttendance
+	Evaluation     DashboardEvaluation
+	SectionErrors  []DashboardSectionError
 }
 
 type DashboardAttendance struct {
@@ -354,6 +359,16 @@ type ReminderSettings struct {
 	AlarmBeforeMin  int
 }
 
+type CacheStatusResult struct {
+	Dir   string
+	Files int
+	Bytes int64
+}
+
+type CacheClearResult struct {
+	Removed int
+}
+
 type TermSettings struct {
 	Value string
 	Label string
@@ -366,9 +381,11 @@ type selectedCourse struct {
 
 func NewService(store *account.Store) *Service {
 	settingsStore, _ := settings.NewStore()
+	cacheStore, _ := cache.NewStore()
 	return &Service{
 		store:              store,
 		settingsStore:      settingsStore,
+		cacheStore:         cacheStore,
 		reminderBridgePath: defaultReminderBridgePath(),
 	}
 }
@@ -454,6 +471,26 @@ func (s *Service) SetReminderConfig(name string, useExistingList bool) (Reminder
 		UseExistingList: current.Reminder.UseExistingList,
 		AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 	}, nil
+}
+
+func (s *Service) CacheStatus() (CacheStatusResult, error) {
+	stats, err := s.cacheStore.Stats()
+	if err != nil {
+		return CacheStatusResult{}, err
+	}
+	return CacheStatusResult{
+		Dir:   stats.Dir,
+		Files: stats.Files,
+		Bytes: stats.Bytes,
+	}, nil
+}
+
+func (s *Service) ClearCache() (CacheClearResult, error) {
+	removed, err := s.cacheStore.Clear()
+	if err != nil {
+		return CacheClearResult{}, err
+	}
+	return CacheClearResult{Removed: removed}, nil
 }
 
 func (s *Service) TermList(ctx context.Context, opts TermListOptions) ([]TermRow, error) {
@@ -572,6 +609,17 @@ func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (Dashboa
 		return DashboardResult{}, err
 	}
 
+	cacheKey := dashboardCacheKey(studentID, term.Value)
+	if !opts.Refresh {
+		var cached DashboardResult
+		hit, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached)
+		if cacheErr == nil && ok {
+			cached.Cached = true
+			cached.CacheCreatedAt = hit.CreatedAt
+			return cached, nil
+		}
+	}
+
 	user := UserOption{StudentID: studentID}
 	result := DashboardResult{
 		Term:        term,
@@ -613,6 +661,12 @@ func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (Dashboa
 		result.Evaluation = dashboardEvaluation(evaluation)
 	}
 
+	if dashboardCacheable(result) {
+		cacheValue := result
+		cacheValue.Cached = false
+		cacheValue.CacheCreatedAt = time.Time{}
+		_ = s.cacheStore.Set(cacheKey, dashboardCacheTTL(), cacheValue)
+	}
 	return result, nil
 }
 
@@ -2260,6 +2314,18 @@ func dashboardEvaluation(result EvaluationListResult) DashboardEvaluation {
 		evaluation.Rows = append(evaluation.Rows, row)
 	}
 	return evaluation
+}
+
+func dashboardCacheKey(studentID string, termValue string) string {
+	return "dashboard:v1:" + strings.TrimSpace(studentID) + ":" + strings.TrimSpace(termValue)
+}
+
+func dashboardCacheTTL() time.Duration {
+	return 5 * time.Minute
+}
+
+func dashboardCacheable(result DashboardResult) bool {
+	return len(result.SectionErrors) == 0 && result.Attendance.DetailErrors == 0
 }
 
 func limitAssignments(rows []AssignmentRow, limit int) []AssignmentRow {

@@ -56,6 +56,18 @@ func TestAcademicYearFlag(t *testing.T) {
 	}
 }
 
+func TestDashboardRefreshFlag(t *testing.T) {
+	if !dashboardRefreshFlag([]string{"--refresh"}) {
+		t.Fatal("dashboardRefreshFlag() expected true")
+	}
+	if unknown := firstUnknownDashboardArg([]string{"--refresh", "--user", "20260000"}); unknown != "" {
+		t.Fatalf("firstUnknownDashboardArg() = %q", unknown)
+	}
+	if unknown := firstUnknownDashboardArg([]string{"--bad"}); unknown != "--bad" {
+		t.Fatalf("firstUnknownDashboardArg() unknown = %q", unknown)
+	}
+}
+
 func TestSyllabusOptions(t *testing.T) {
 	opts, err := syllabusOptions([]string{"I040-3-3951-01", "--term", "2026-1", "--user", "20250000"})
 	if err != nil {

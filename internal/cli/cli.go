@@ -38,6 +38,8 @@ func Run(ctx context.Context, args []string) error {
 		return runUser(ctx, service, args[1:])
 	case "dashboard":
 		return runDashboard(ctx, service, args[1:])
+	case "cache":
+		return runCache(ctx, service, args[1:])
 	case "course":
 		return runCourse(ctx, service, args[1:])
 	case "subject":
@@ -202,13 +204,39 @@ func runDashboard(ctx context.Context, service *app.Service, args []string) erro
 		return fmt.Errorf("unknown dashboard option: %s", unknown)
 	}
 	result, err := service.Dashboard(ctx, app.DashboardOptions{
-		User: app.UserOption{StudentID: userFlag(args)},
+		User:    app.UserOption{StudentID: userFlag(args)},
+		Refresh: dashboardRefreshFlag(args),
 	})
 	if err != nil {
 		return err
 	}
 	printDashboard(result)
 	return nil
+}
+
+func runCache(ctx context.Context, service *app.Service, args []string) error {
+	_ = ctx
+	if len(args) == 0 {
+		return errors.New("usage: klap cache <status|clear>")
+	}
+	switch args[0] {
+	case "status":
+		result, err := service.CacheStatus()
+		if err != nil {
+			return err
+		}
+		printCacheStatus(result)
+		return nil
+	case "clear":
+		result, err := service.ClearCache()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("캐시 삭제 완료: %d개\n", result.Removed)
+		return nil
+	default:
+		return fmt.Errorf("unknown cache command: %s", args[0])
+	}
 }
 
 func runCourse(ctx context.Context, service *app.Service, args []string) error {
@@ -863,6 +891,7 @@ func evaluationSubmitOptions(args []string) (app.EvaluationSubmitOptions, error)
 func firstUnknownDashboardArg(args []string) string {
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--refresh":
 		case "--user":
 			if i+1 >= len(args) {
 				return "--user"
@@ -873,6 +902,15 @@ func firstUnknownDashboardArg(args []string) string {
 		}
 	}
 	return ""
+}
+
+func dashboardRefreshFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--refresh" {
+			return true
+		}
+	}
+	return false
 }
 
 func subjectSearchOptions(args []string) (app.SubjectSearchOptions, error) {
@@ -1007,6 +1045,9 @@ Usage:
   klap user select <학번> 현재 유저 선택
   klap user rm <학번>    저장된 계정 삭제
   klap dashboard         현재 학기 대시보드 출력
+  klap dashboard --refresh 캐시 무시 후 대시보드 갱신
+  klap cache status      캐시 상태 출력
+  klap cache clear       캐시 삭제
   klap term list         수강 학기 목록 출력
   klap term select <학기번호|학기값> 현재 학기 선택
   klap course list       현재 학기 수업 목록 출력
@@ -1051,6 +1092,13 @@ func printDashboard(result app.DashboardResult) {
 	fmt.Printf("KLAP Dashboard | %s (%s)\n", result.Term.Label, result.Term.Value)
 	if !result.GeneratedAt.IsZero() {
 		fmt.Printf("갱신: %s\n", result.GeneratedAt.Format("2006-01-02 15:04"))
+	}
+	if result.Cached {
+		fmt.Printf("캐시: 사용")
+		if !result.CacheCreatedAt.IsZero() {
+			fmt.Printf(" (%s)", result.CacheCreatedAt.Format("2006-01-02 15:04"))
+		}
+		fmt.Println()
 	}
 
 	fmt.Println("\n과제")
@@ -1148,6 +1196,12 @@ func printDashboard(result app.DashboardResult) {
 			fmt.Printf("  %s: %v\n", sectionError.Section, sectionError.Err)
 		}
 	}
+}
+
+func printCacheStatus(result app.CacheStatusResult) {
+	fmt.Printf("캐시 경로: %s\n", emptyFallback(result.Dir, "-"))
+	fmt.Printf("파일 수: %d\n", result.Files)
+	fmt.Printf("크기: %s\n", formatBytes(result.Bytes))
 }
 
 func printCourseList(terms []klas.Term) {
