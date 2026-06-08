@@ -182,6 +182,7 @@ type DashboardResult struct {
 
 type DashboardAttendance struct {
 	TotalCourses int
+	Rows         []DashboardAttendanceRow
 	Completed    int
 	Absent       int
 	Late         int
@@ -189,6 +190,18 @@ type DashboardAttendance struct {
 	Excused      int
 	Unknown      int
 	DetailErrors int
+}
+
+type DashboardAttendanceRow struct {
+	Index      int
+	Course     klas.AttendanceCourse
+	Completed  int
+	Absent     int
+	Late       int
+	LeaveEarly int
+	Excused    int
+	Unknown    int
+	Err        error
 }
 
 type DashboardEvaluation struct {
@@ -2192,30 +2205,43 @@ func dashboardNotices(rows []NoticeRow, limit int) []NoticeRow {
 func dashboardAttendance(rows []AttendanceRow) DashboardAttendance {
 	summary := DashboardAttendance{TotalCourses: len(rows)}
 	for _, row := range rows {
+		item := DashboardAttendanceRow{
+			Index:  row.Index,
+			Course: row.Course,
+			Err:    row.Err,
+		}
 		if row.Err != nil {
 			summary.DetailErrors++
+			summary.Rows = append(summary.Rows, item)
 			continue
 		}
 		for _, session := range row.Sessions {
 			for _, slot := range session.Slots {
 				switch strings.ToUpper(strings.TrimSpace(slot.Mark)) {
 				case "O":
-					summary.Completed++
+					item.Completed++
 				case "X":
-					summary.Absent++
+					item.Absent++
 				case "L":
-					summary.Late++
+					item.Late++
 				case "R":
-					summary.LeaveEarly++
+					item.LeaveEarly++
 				case "A":
-					summary.Excused++
+					item.Excused++
 				default:
 					if strings.TrimSpace(slot.Mark+slot.Status) != "" {
-						summary.Unknown++
+						item.Unknown++
 					}
 				}
 			}
 		}
+		summary.Completed += item.Completed
+		summary.Absent += item.Absent
+		summary.Late += item.Late
+		summary.LeaveEarly += item.LeaveEarly
+		summary.Excused += item.Excused
+		summary.Unknown += item.Unknown
+		summary.Rows = append(summary.Rows, item)
 	}
 	return summary
 }

@@ -1102,7 +1102,7 @@ func printDashboard(result app.DashboardResult) {
 	if attendance.TotalCourses == 0 {
 		fmt.Println("  출석 현황이 없습니다")
 	} else {
-		fmt.Printf("  과목 %d개 | 출석 %d / 결석 %d / 지각 %d / 조퇴 %d / 공결 %d / 미확인 %d\n",
+		fmt.Printf("  전체 과목 %d개 | 출석 %d / 결석 %d / 지각 %d / 조퇴 %d / 공결 %d / 미확인 %d\n",
 			attendance.TotalCourses,
 			attendance.Completed,
 			attendance.Absent,
@@ -1114,12 +1114,19 @@ func printDashboard(result app.DashboardResult) {
 		if attendance.DetailErrors > 0 {
 			fmt.Printf("  상세 확인 실패: %d개 과목\n", attendance.DetailErrors)
 		}
+		for _, row := range attendance.Rows {
+			fmt.Printf("  %d. %s | %s\n",
+				row.Index,
+				emptyFallback(row.Course.Name, "-"),
+				dashboardAttendanceRowSummary(row),
+			)
+		}
 	}
 
 	fmt.Println("\n수업평가")
 	evaluation := result.Evaluation
 	if !evaluation.Enabled {
-		fmt.Println("  수업평가 기간이 아닙니다")
+		fmt.Println("  수업평가 기간이 아닙니다. 중간/기말 차수는 평가 기간에만 표시됩니다")
 	} else {
 		fmt.Printf("  %s | 완료 %d / 미완료 %d\n",
 			emptyFallback(evaluation.Term.JudgeName, evaluation.Term.JudgeChasu),
@@ -1630,6 +1637,24 @@ func attendanceSummary(row app.AttendanceRow) string {
 		counts["L"],
 		counts["R"],
 		counts["A"],
+		total,
+	)
+}
+
+func dashboardAttendanceRowSummary(row app.DashboardAttendanceRow) string {
+	if row.Err != nil {
+		return "상세 확인 실패"
+	}
+	total := row.Completed + row.Absent + row.Late + row.LeaveEarly + row.Excused + row.Unknown
+	if total == 0 {
+		return "상세 없음"
+	}
+	return fmt.Sprintf("출석 %d / 결석 %d / 지각 %d / 조퇴 %d / 공결 %d / 전체 %d",
+		row.Completed,
+		row.Absent,
+		row.Late,
+		row.LeaveEarly,
+		row.Excused,
 		total,
 	)
 }

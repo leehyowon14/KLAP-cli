@@ -219,6 +219,9 @@ func TestDashboardAttendanceCountsMarks(t *testing.T) {
 	if got.TotalCourses != 2 || got.Completed != 1 || got.Absent != 1 || got.Late != 1 || got.LeaveEarly != 1 || got.Excused != 1 || got.Unknown != 1 || got.DetailErrors != 1 {
 		t.Fatalf("dashboardAttendance() = %+v", got)
 	}
+	if len(got.Rows) != 2 || got.Rows[0].Completed != 1 || got.Rows[0].Unknown != 1 || got.Rows[1].Err == nil {
+		t.Fatalf("dashboardAttendance() rows = %+v", got.Rows)
+	}
 }
 
 func TestDashboardNoticesSortsByRecentDate(t *testing.T) {
