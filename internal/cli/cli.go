@@ -1135,7 +1135,7 @@ func printGrade(result app.GradeResult) {
 		summary.CultureEarnedCredits,
 		summary.EtcEarnedCredits,
 	)
-	fmt.Printf("평점: %s / 재수강 반영 평점: %s\n",
+	fmt.Printf("평점: 학적부 기준 %s / 성적증명서 기준 %s\n",
 		emptyFallback(summary.GPA, "-"),
 		emptyFallback(summary.RetakeGPA, "-"),
 	)
