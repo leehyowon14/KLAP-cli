@@ -194,6 +194,23 @@ func TestTranscriptPath(t *testing.T) {
 	}
 }
 
+func TestTranscriptBridgeCandidatesPreferBuiltBinary(t *testing.T) {
+	got := transcriptBridgeCandidates("bridges/macos")
+	want := []string{
+		filepath.Join("bridges", "macos", ".build", "release", "TranscriptBridge"),
+		filepath.Join("bridges", "macos", ".build", "debug", "TranscriptBridge"),
+		filepath.Join("bridges", "macos", "transcribe.swift"),
+	}
+	if len(got) != len(want) {
+		t.Fatalf("transcriptBridgeCandidates() length = %d, want %d: %#v", len(got), len(want), got)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("transcriptBridgeCandidates()[%d] = %q, want %q", index, got[index], want[index])
+		}
+	}
+}
+
 func TestLectureTranscriptContextIncludesCourseAndCodeSwitching(t *testing.T) {
 	got := lectureTranscriptContext(LectureRow{
 		CourseName: "컴퓨터그래픽스",

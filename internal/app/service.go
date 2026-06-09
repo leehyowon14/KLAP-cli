@@ -4140,15 +4140,14 @@ func defaultTranscriptBridgePath() string {
 		return override
 	}
 
-	candidates := []string{
-		filepath.Join("bridges", "macos", "transcribe.swift"),
-	}
+	candidates := transcriptBridgeCandidates(filepath.Join("bridges", "macos"))
 	if _, currentFile, _, ok := runtime.Caller(0); ok {
 		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "transcribe.swift"))
+		candidates = append(candidates, transcriptBridgeCandidates(filepath.Join(repoRoot, "bridges", "macos"))...)
 	}
 	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "transcribe.swift"))
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "TranscriptBridge"))
+		candidates = append(candidates, transcriptBridgeCandidates(filepath.Join(filepath.Dir(executable), "bridges", "macos"))...)
 	}
 
 	for _, candidate := range candidates {
@@ -4157,4 +4156,12 @@ func defaultTranscriptBridgePath() string {
 		}
 	}
 	return candidates[0]
+}
+
+func transcriptBridgeCandidates(root string) []string {
+	return []string{
+		filepath.Join(root, ".build", "release", "TranscriptBridge"),
+		filepath.Join(root, ".build", "debug", "TranscriptBridge"),
+		filepath.Join(root, "transcribe.swift"),
+	}
 }

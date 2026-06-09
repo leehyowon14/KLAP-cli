@@ -12,3 +12,4 @@ downloads/
 .gocache/
 .tmp/
 Documents/
+bridges/macos/.build/

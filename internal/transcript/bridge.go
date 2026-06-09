@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
+	"strings"
 )
 
 type Job struct {
@@ -50,11 +51,11 @@ type event struct {
 }
 
 type MacOSBridge struct {
-	scriptPath string
+	bridgePath string
 }
 
-func NewMacOSBridge(scriptPath string) MacOSBridge {
-	return MacOSBridge{scriptPath: scriptPath}
+func NewMacOSBridge(bridgePath string) MacOSBridge {
+	return MacOSBridge{bridgePath: bridgePath}
 }
 
 func (b MacOSBridge) Transcribe(request Request) (Response, error) {
@@ -67,7 +68,8 @@ func (b MacOSBridge) Transcribe(request Request) (Response, error) {
 		return Response{}, fmt.Errorf("transcript payload 직렬화 실패: %w", err)
 	}
 
-	command := exec.Command("swift", b.scriptPath)
+	commandName, commandArgs := b.commandSpec()
+	command := exec.Command(commandName, commandArgs...)
 	command.Stdin = bytes.NewReader(payload)
 	output, err := command.CombinedOutput()
 	if err != nil {
@@ -92,7 +94,8 @@ func (b MacOSBridge) TranscribeWithProgress(request Request, onProgress func(Pro
 		return Response{}, fmt.Errorf("transcript payload 직렬화 실패: %w", err)
 	}
 
-	command := exec.Command("swift", b.scriptPath)
+	commandName, commandArgs := b.commandSpec()
+	command := exec.Command(commandName, commandArgs...)
 	command.Stdin = bytes.NewReader(payload)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
@@ -138,4 +141,12 @@ func (b MacOSBridge) TranscribeWithProgress(request Request, onProgress func(Pro
 		return Response{}, fmt.Errorf("Swift transcript bridge 응답이 없습니다\n%s", stderr.String())
 	}
 	return response, nil
+}
+
+func (b MacOSBridge) commandSpec() (string, []string) {
+	bridgePath := strings.TrimSpace(b.bridgePath)
+	if strings.HasSuffix(bridgePath, ".swift") {
+		return "swift", []string{bridgePath}
+	}
+	return bridgePath, nil
 }
