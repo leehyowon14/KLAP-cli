@@ -83,7 +83,7 @@ func Default() Settings {
 			AlarmBeforeMin: 24 * 60,
 		},
 		Download: Download{
-			Dir:         "downloads",
+			Dir:         DefaultDownloadDir(),
 			Concurrency: DefaultDownloadConcurrency,
 		},
 	}
@@ -97,11 +97,19 @@ func (s *Settings) Normalize() {
 		s.Reminder.AlarmBeforeMin = 24 * 60
 	}
 	if s.Download.Dir == "" {
-		s.Download.Dir = "downloads"
+		s.Download.Dir = DefaultDownloadDir()
 	}
 	if s.Download.Concurrency <= 0 {
 		s.Download.Concurrency = DefaultDownloadConcurrency
 	}
+}
+
+func DefaultDownloadDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.Join("Documents", "KLAP")
+	}
+	return filepath.Join(home, "Documents", "KLAP")
 }
 
 func configDir() (string, error) {

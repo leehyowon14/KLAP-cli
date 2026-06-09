@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	bubblesprogress "github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -328,6 +327,7 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 		m.err = err
 		return m, nil
 	}
+	selectedRows := m.selectedDownloadRows()
 	runCtx, cancel := context.WithCancel(m.ctx)
 	progress := lectureDownloadModel{
 		ctx:     runCtx,
@@ -335,13 +335,16 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 		service: m.service,
 		request: LectureDownloadRequest{
 			All:         true,
+			Rows:        selectedRows,
 			LectureIDs:  m.selectedDownloadIDs(),
 			Concurrency: settings.Concurrency,
 			Transcribe:  m.downloadTranscribe,
 		},
-		updates:   make(chan tea.Msg, 64),
-		progress:  bubblesprogress.New(bubblesprogress.WithWidth(36), bubblesprogress.WithFillCharacters('█', '░')),
-		startedAt: time.Now(),
+		updates:           make(chan tea.Msg, 64),
+		items:             initialDownloadStatusLines(selectedRows),
+		startedAt:         time.Now(),
+		transcriptStarted: make(map[string]bool),
+		transcriptRunning: make(map[string]bool),
 	}
 	m.active = screenDownloadProgress
 	m.err = nil
@@ -439,6 +442,16 @@ func (m model) selectedDownloadIDs() []string {
 		}
 	}
 	return ids
+}
+
+func (m model) selectedDownloadRows() []app.LectureRow {
+	rows := make([]app.LectureRow, 0)
+	for _, row := range m.downloadRows {
+		if m.downloadSelected[row.ID] {
+			rows = append(rows, row)
+		}
+	}
+	return rows
 }
 
 type downloadCourseGroup struct {

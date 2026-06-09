@@ -713,28 +713,31 @@ func (s *Service) DownloadStatus(dir string) (DownloadStatusResult, error) {
 		return DownloadStatusResult{}, err
 	}
 	result := DownloadStatusResult{Dir: dir}
-	entries, err := os.ReadDir(dir)
+	err = filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".part") {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		result.Files++
+		result.Bytes += info.Size()
+		result.Items = append(result.Items, DownloadFile{
+			Path:       path,
+			Bytes:      info.Size(),
+			ModifiedAt: info.ModTime(),
+		})
+		return nil
+	})
 	if errors.Is(err, os.ErrNotExist) {
 		return result, nil
 	}
 	if err != nil {
 		return DownloadStatusResult{}, fmt.Errorf("다운로드 폴더 조회 실패: %w", err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".part") {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return DownloadStatusResult{}, fmt.Errorf("다운로드 파일 확인 실패: %w", err)
-		}
-		result.Files++
-		result.Bytes += info.Size()
-		result.Items = append(result.Items, DownloadFile{
-			Path:       filepath.Join(dir, entry.Name()),
-			Bytes:      info.Size(),
-			ModifiedAt: info.ModTime(),
-		})
 	}
 	sort.SliceStable(result.Items, func(i, j int) bool {
 		return result.Items[j].ModifiedAt.Before(result.Items[i].ModifiedAt)
@@ -2145,7 +2148,10 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
 
-	path := filepath.Join(dir, lectureFilename(course.Name, *matched, mediaURL))
+	path := lectureVideoPath(dir, course.Name, *matched, mediaURL)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
+	}
 	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 		Lecture:      row,
 		Path:         path,
@@ -2359,7 +2365,19 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, i
 		return item
 	}
 
-	item.Path = filepath.Join(dir, lectureFilename(course.Name, row.Lecture, mediaURL))
+	item.Path = lectureVideoPath(dir, course.Name, row.Lecture, mediaURL)
+	if err := os.MkdirAll(filepath.Dir(item.Path), 0o755); err != nil {
+		item.Err = err
+		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Path:         item.Path,
+			Stage:        "error",
+			CurrentIndex: index,
+			TotalItems:   total,
+			Err:          err,
+		})
+		return item
+	}
 	if _, err := os.Stat(item.Path); err == nil {
 		item.Skipped = true
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
@@ -2436,6 +2454,16 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 			continue
 		}
 		outputPath := transcriptPath(item.Path)
+		if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+			emitLectureTranscriptProgress(opts.OnProgress, LectureTranscriptProgress{
+				Lecture:    item.Lecture,
+				InputPath:  item.Path,
+				OutputPath: outputPath,
+				Stage:      "transcript-error",
+				Err:        err,
+			})
+			continue
+		}
 		rows = append(rows, item.Lecture)
 		jobs = append(jobs, transcript.Job{
 			InputPath:  item.Path,
@@ -2520,11 +2548,15 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 }
 
 func transcriptPath(path string) string {
+	dir := filepath.Dir(path)
+	if filepath.Base(dir) == "video" {
+		dir = filepath.Join(filepath.Dir(dir), "transcription")
+	}
 	ext := filepath.Ext(path)
 	if ext == "" {
-		return path + ".txt"
+		return filepath.Join(dir, filepath.Base(path)+".txt")
 	}
-	return strings.TrimSuffix(path, ext) + ".txt"
+	return filepath.Join(dir, strings.TrimSuffix(filepath.Base(path), ext)+".txt")
 }
 
 func emitLectureTranscriptProgress(onProgress func(LectureTranscriptProgress), progress LectureTranscriptProgress) {
@@ -3533,7 +3565,7 @@ func ParseLectureID(id string) (int, string, error) {
 }
 
 func defaultLectureDownloadDir() string {
-	return "downloads"
+	return settings.DefaultDownloadDir()
 }
 
 func (s *Service) effectiveDownloadDir(dir string) (string, error) {
@@ -3562,9 +3594,20 @@ func (s *Service) effectiveDownloadConcurrency(concurrency int) (int, error) {
 	return current.Download.Concurrency, nil
 }
 
-func lectureFilename(courseName string, lecture klas.Lecture, mediaURL string) string {
+func lectureVideoPath(root string, courseName string, lecture klas.Lecture, mediaURL string) string {
+	return filepath.Join(root, lectureCourseDirName(courseName), "video", lectureFilename(lecture, mediaURL))
+}
+
+func lectureCourseDirName(courseName string) string {
+	courseDir := sanitizePathComponent(courseName)
+	if courseDir == "" {
+		return "course"
+	}
+	return courseDir
+}
+
+func lectureFilename(lecture klas.Lecture, mediaURL string) string {
 	parts := []string{
-		sanitizePathComponent(courseName),
 		sanitizePathComponent(lecture.ModuleTitle),
 		sanitizePathComponent(lecture.Title),
 	}

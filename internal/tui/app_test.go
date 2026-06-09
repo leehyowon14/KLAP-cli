@@ -192,6 +192,38 @@ func TestLectureDownloadFormatting(t *testing.T) {
 	}
 }
 
+func TestLectureDownloadProgressListUsesProgressRows(t *testing.T) {
+	rows := []app.LectureRow{
+		{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", ModuleTitle: "1주차", Title: "소개"}},
+		{ID: "1:b", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "b", ModuleTitle: "2주차", Title: "렌더링"}},
+	}
+	m := lectureDownloadModel{
+		width:  96,
+		height: 24,
+		items:  initialDownloadStatusLines(rows),
+	}
+	view := m.renderProgressList(96)
+	if strings.Contains(view, "QUEUE") {
+		t.Fatalf("renderProgressList() leaked QUEUE header: %q", view)
+	}
+	if !strings.Contains(view, "컴퓨터그래픽스 · 1주차 · 소개") || !strings.Contains(view, "░") {
+		t.Fatalf("renderProgressList() missing progress rows: %q", view)
+	}
+}
+
+func TestLectureDownloadTranscriptStatusPreservesDoneOverwrite(t *testing.T) {
+	row := app.LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", Title: "소개"}}
+	m := lectureDownloadModel{items: initialDownloadStatusLines([]app.LectureRow{row})}
+	m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{Lecture: row, Stage: "transcribe", OutputPath: "lecture.txt"})
+	m.upsertStatusLine(app.LectureDownloadProgress{Lecture: row, Stage: "done", Path: "lecture.mp4", Bytes: 10, TotalBytes: 10})
+	if got := m.items[0].status; got != "transcribe" {
+		t.Fatalf("status = %q, want transcribe", got)
+	}
+	if got := itemProgressPercent(downloadStatusLine{status: "download", bytes: 5, total: 10}); got != 0.5 {
+		t.Fatalf("itemProgressPercent() = %f", got)
+	}
+}
+
 func TestConfirmAcceptsKoreanKeyboardKeys(t *testing.T) {
 	m := confirmModel{value: false}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅛ")})

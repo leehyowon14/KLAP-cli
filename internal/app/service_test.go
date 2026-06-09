@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -142,10 +143,10 @@ func TestCopyWithProgressReportsOffsetAndTotal(t *testing.T) {
 }
 
 func TestTranscriptPath(t *testing.T) {
-	if got := transcriptPath("downloads/lecture.mp4"); got != "downloads/lecture.txt" {
+	if got := transcriptPath(filepath.Join("downloads", "컴퓨터그래픽스", "video", "lecture.mp4")); got != filepath.Join("downloads", "컴퓨터그래픽스", "transcription", "lecture.txt") {
 		t.Fatalf("transcriptPath() = %q", got)
 	}
-	if got := transcriptPath("downloads/lecture"); got != "downloads/lecture.txt" {
+	if got := transcriptPath(filepath.Join("downloads", "lecture")); got != filepath.Join("downloads", "lecture.txt") {
 		t.Fatalf("transcriptPath() without extension = %q", got)
 	}
 }
@@ -181,13 +182,13 @@ func TestParseLectureID(t *testing.T) {
 }
 
 func TestLectureFilenameSanitizesPathComponents(t *testing.T) {
-	got := lectureFilename("오픈소스/실습", klas.Lecture{
+	got := lectureVideoPath("root", "오픈소스/실습", klas.Lecture{
 		ModuleTitle: "1주차: 소개",
 		Title:       "Git? GitHub* 시작",
 	}, "https://media.example.com/video.mp4?token=1")
-	want := "오픈소스_실습_1주차_ 소개_Git_ GitHub_ 시작.mp4"
+	want := filepath.Join("root", "오픈소스_실습", "video", "1주차_ 소개_Git_ GitHub_ 시작.mp4")
 	if got != want {
-		t.Fatalf("lectureFilename() = %q, want %q", got, want)
+		t.Fatalf("lectureVideoPath() = %q, want %q", got, want)
 	}
 }
 

@@ -18,33 +18,39 @@ type LectureDownloadRequest struct {
 	User        app.UserOption
 	Dir         string
 	All         bool
+	Rows        []app.LectureRow
 	LectureIDs  []string
 	Concurrency int
 	Transcribe  bool
 }
 
 type lectureDownloadModel struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	service    *app.Service
-	request    LectureDownloadRequest
-	updates    chan tea.Msg
-	progress   bubblesprogress.Model
-	width      int
-	startedAt  time.Time
-	current    app.LectureDownloadProgress
-	items      []downloadStatusLine
-	done       bool
-	canceling  bool
-	err        error
-	quitOnDone bool
+	ctx               context.Context
+	cancel            context.CancelFunc
+	service           *app.Service
+	request           LectureDownloadRequest
+	updates           chan tea.Msg
+	width             int
+	height            int
+	startedAt         time.Time
+	items             []downloadStatusLine
+	cursor            int
+	downloadsDone     bool
+	done              bool
+	canceling         bool
+	err               error
+	quitOnDone        bool
+	transcriptStarted map[string]bool
+	transcriptRunning map[string]bool
 }
 
 type downloadStatusLine struct {
+	id      string
 	label   string
 	status  string
 	path    string
 	bytes   int64
+	total   int64
 	skipped bool
 	err     error
 }
@@ -64,20 +70,27 @@ type lectureDownloadDoneMsg struct {
 	err         error
 }
 
+type lectureTranscriptDoneMsg struct {
+	key    string
+	result app.LectureTranscriptResult
+}
+
 func RunLectureDownload(ctx context.Context, service *app.Service, request LectureDownloadRequest) error {
 	if service == nil {
 		return errors.New("다운로드 service가 없습니다")
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	model := lectureDownloadModel{
-		ctx:        runCtx,
-		cancel:     cancel,
-		service:    service,
-		request:    request,
-		updates:    make(chan tea.Msg, 64),
-		progress:   bubblesprogress.New(bubblesprogress.WithWidth(36), bubblesprogress.WithFillCharacters('█', '░')),
-		startedAt:  time.Now(),
-		quitOnDone: true,
+		ctx:               runCtx,
+		cancel:            cancel,
+		service:           service,
+		request:           request,
+		updates:           make(chan tea.Msg, 64),
+		items:             initialDownloadStatusLines(request.Rows),
+		startedAt:         time.Now(),
+		quitOnDone:        true,
+		transcriptStarted: make(map[string]bool),
+		transcriptRunning: make(map[string]bool),
 	}
 	finalModel, err := tea.NewProgram(model).Run()
 	cancel()
@@ -98,7 +111,7 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		m.progress.Width = maxInt(20, minInt(52, msg.Width-28))
+		m.height = msg.Height
 	case tea.KeyMsg:
 		key := msg.String()
 		if key == "ctrl+c" || keyMatches(key, "q", "ㅂ") {
@@ -106,18 +119,43 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancel()
 			return m, nil
 		}
+		if key == "up" || keyMatches(key, "k", "ㅏ") {
+			if m.cursor > 0 {
+				m.cursor--
+			}
+			return m, nil
+		}
+		if key == "down" || keyMatches(key, "j", "ㅓ") {
+			if m.cursor < len(m.items)-1 {
+				m.cursor++
+			}
+			return m, nil
+		}
 	case lectureDownloadProgressMsg:
-		m.current = msg.progress
 		m.upsertStatusLine(msg.progress)
-		return m, waitLectureDownloadProgress(m.updates)
+		cmds := []tea.Cmd{waitLectureDownloadProgress(m.updates)}
+		if cmd := m.transcriptCommandForDownload(msg.progress); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
 	case lectureTranscriptProgressMsg:
 		m.upsertTranscriptStatusLine(msg.progress)
 		return m, waitLectureDownloadProgress(m.updates)
 	case lectureDownloadDoneMsg:
-		m.done = true
+		m.downloadsDone = true
 		m.err = msg.err
 		m.applyFinalResult(msg)
-		if m.quitOnDone {
+		cmds := m.transcriptCommandsForResult(msg)
+		m.markDoneIfIdle()
+		if m.done && m.quitOnDone {
+			return m, tea.Quit
+		}
+		return m, tea.Batch(cmds...)
+	case lectureTranscriptDoneMsg:
+		delete(m.transcriptRunning, msg.key)
+		m.applyTranscriptResult(msg.result)
+		m.markDoneIfIdle()
+		if m.done && m.quitOnDone {
 			return m, tea.Quit
 		}
 		return m, nil
@@ -130,7 +168,6 @@ func (m lectureDownloadModel) View() string {
 	if width <= 0 {
 		width = 96
 	}
-	m.progress.Width = maxInt(20, minInt(52, width-28))
 
 	var b strings.Builder
 	b.WriteString(headerStyle.Render("KLAP"))
@@ -138,9 +175,7 @@ func (m lectureDownloadModel) View() string {
 	b.WriteString("\n")
 	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 96)))))
 	b.WriteString("\n\n")
-	b.WriteString(m.renderCurrent())
-	b.WriteString("\n")
-	b.WriteString(m.renderQueue(width))
+	b.WriteString(m.renderProgressList(width))
 	b.WriteString("\n")
 	if m.done {
 		b.WriteString(m.renderSummary())
@@ -148,7 +183,7 @@ func (m lectureDownloadModel) View() string {
 		b.WriteString(warnBadgeStyle.Render("CANCEL"))
 		b.WriteString(" 다운로드를 중단하는 중입니다\n")
 	} else {
-		b.WriteString(footerStyle.Render("q 종료"))
+		b.WriteString(footerStyle.Render("↑↓ 이동  |  q 종료"))
 		b.WriteString("\n")
 	}
 	return appStyle.Render(b.String())
@@ -171,37 +206,50 @@ func (m lectureDownloadModel) runDownload() tea.Cmd {
 				Concurrency:  m.request.Concurrency,
 				LectureIDs:   m.request.LectureIDs,
 			})
-			transcripts := app.LectureTranscriptResult{}
-			if err == nil && m.request.Transcribe {
-				transcripts = m.transcribeItems(result.Items)
-			}
-			return lectureDownloadDoneMsg{all: result, transcripts: transcripts, err: err}
+			return lectureDownloadDoneMsg{all: result, err: err}
 		}
 		result, err := m.service.DownloadLecture(m.ctx, m.request.Target, app.LectureDownloadOptions{
 			User:       m.request.User,
 			Dir:        m.request.Dir,
 			OnProgress: onProgress,
 		})
-		transcripts := app.LectureTranscriptResult{}
-		if err == nil && m.request.Transcribe {
-			transcripts = m.transcribeItems([]app.LectureDownloadItem{{
-				Lecture: result.Lecture,
-				Path:    result.Path,
-				Bytes:   result.Bytes,
-			}})
-		}
-		return lectureDownloadDoneMsg{single: result, transcripts: transcripts, err: err}
+		return lectureDownloadDoneMsg{single: result, err: err}
 	}
 }
 
-func (m lectureDownloadModel) transcribeItems(items []app.LectureDownloadItem) app.LectureTranscriptResult {
-	onProgress := func(progress app.LectureTranscriptProgress) {
-		select {
-		case m.updates <- lectureTranscriptProgressMsg{progress: progress}:
-		default:
-		}
+func (m lectureDownloadModel) transcriptCommandForDownload(progress app.LectureDownloadProgress) tea.Cmd {
+	if !m.request.Transcribe || progress.Stage != "done" || strings.TrimSpace(progress.Path) == "" {
+		return nil
 	}
-	return m.service.TranscribeDownloadedLectures(m.ctx, items, app.LectureTranscriptOptions{OnProgress: onProgress})
+	key := lectureDownloadKey(progress.Lecture)
+	if key == "" {
+		return nil
+	}
+	if m.transcriptStarted == nil {
+		m.transcriptStarted = make(map[string]bool)
+	}
+	if m.transcriptRunning == nil {
+		m.transcriptRunning = make(map[string]bool)
+	}
+	if m.transcriptStarted[key] {
+		return nil
+	}
+	m.transcriptStarted[key] = true
+	m.transcriptRunning[key] = true
+	return func() tea.Msg {
+		onProgress := func(transcriptProgress app.LectureTranscriptProgress) {
+			select {
+			case m.updates <- lectureTranscriptProgressMsg{progress: transcriptProgress}:
+			default:
+			}
+		}
+		result := m.service.TranscribeDownloadedLectures(m.ctx, []app.LectureDownloadItem{{
+			Lecture: progress.Lecture,
+			Path:    progress.Path,
+			Bytes:   progress.Bytes,
+		}}, app.LectureTranscriptOptions{OnProgress: onProgress})
+		return lectureTranscriptDoneMsg{key: key, result: result}
+	}
 }
 
 func waitLectureDownloadProgress(updates chan tea.Msg) tea.Cmd {
@@ -216,15 +264,22 @@ func (m *lectureDownloadModel) upsertStatusLine(progress app.LectureDownloadProg
 		return
 	}
 	line := downloadStatusLine{
+		id:      lectureDownloadKey(progress.Lecture),
 		label:   label,
 		status:  progress.Stage,
 		path:    progress.Path,
 		bytes:   progress.Bytes,
+		total:   progress.TotalBytes,
 		skipped: progress.Skipped,
 		err:     progress.Err,
 	}
 	for index := range m.items {
-		if m.items[index].label == label {
+		if m.items[index].matches(line) {
+			if preservesTranscriptStatus(m.items[index].status, line.status) {
+				m.items[index].bytes = line.bytes
+				m.items[index].total = line.total
+				return
+			}
 			m.items[index] = line
 			return
 		}
@@ -238,14 +293,17 @@ func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTr
 		label = progress.InputPath
 	}
 	line := downloadStatusLine{
+		id:     lectureDownloadKey(progress.Lecture),
 		label:  label,
 		status: progress.Stage,
 		path:   progress.OutputPath,
 		err:    progress.Err,
 	}
 	for index := range m.items {
-		if m.items[index].label == label {
-			m.items[index] = line
+		if m.items[index].matches(line) {
+			m.items[index].status = line.status
+			m.items[index].path = line.path
+			m.items[index].err = line.err
 			return
 		}
 	}
@@ -255,10 +313,11 @@ func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTr
 func (m *lectureDownloadModel) applyFinalResult(msg lectureDownloadDoneMsg) {
 	if msg.single.Path != "" {
 		m.upsertStatusLine(app.LectureDownloadProgress{
-			Lecture: msg.single.Lecture,
-			Path:    msg.single.Path,
-			Stage:   "done",
-			Bytes:   msg.single.Bytes,
+			Lecture:    msg.single.Lecture,
+			Path:       msg.single.Path,
+			Stage:      "done",
+			Bytes:      msg.single.Bytes,
+			TotalBytes: msg.single.Bytes,
 		})
 	}
 	for _, item := range msg.all.Items {
@@ -270,85 +329,123 @@ func (m *lectureDownloadModel) applyFinalResult(msg lectureDownloadDoneMsg) {
 			stage = "error"
 		}
 		m.upsertStatusLine(app.LectureDownloadProgress{
-			Lecture: item.Lecture,
-			Path:    item.Path,
-			Stage:   stage,
-			Bytes:   item.Bytes,
-			Skipped: item.Skipped,
-			Err:     item.Err,
-		})
-	}
-	for _, item := range msg.transcripts.Items {
-		stage := "transcribed"
-		if item.Err != nil {
-			stage = "transcript-error"
-		}
-		m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{
 			Lecture:    item.Lecture,
-			InputPath:  item.InputPath,
-			OutputPath: item.OutputPath,
+			Path:       item.Path,
 			Stage:      stage,
+			Bytes:      item.Bytes,
+			TotalBytes: item.Bytes,
+			Skipped:    item.Skipped,
 			Err:        item.Err,
 		})
 	}
+	for _, item := range msg.transcripts.Items {
+		m.applyTranscriptItem(item)
+	}
 }
 
-func (m lectureDownloadModel) renderCurrent() string {
-	progress := m.current
-	percent := lectureDownloadPercent(progress)
-	stage := downloadStageLabel(progress.Stage)
-	if m.done {
-		stage = "완료"
-		if m.err != nil {
-			stage = "오류"
+func (m *lectureDownloadModel) applyTranscriptResult(result app.LectureTranscriptResult) {
+	for _, item := range result.Items {
+		m.applyTranscriptItem(item)
+	}
+}
+
+func (m *lectureDownloadModel) applyTranscriptItem(item app.LectureTranscriptItem) {
+	stage := "transcribed"
+	if item.Err != nil {
+		stage = "transcript-error"
+	}
+	m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{
+		Lecture:    item.Lecture,
+		InputPath:  item.InputPath,
+		OutputPath: item.OutputPath,
+		Stage:      stage,
+		Err:        item.Err,
+	})
+}
+
+func (m *lectureDownloadModel) transcriptCommandsForResult(msg lectureDownloadDoneMsg) []tea.Cmd {
+	if !m.request.Transcribe {
+		return nil
+	}
+	cmds := make([]tea.Cmd, 0)
+	if msg.single.Path != "" {
+		cmd := m.transcriptCommandForDownload(app.LectureDownloadProgress{
+			Lecture: msg.single.Lecture,
+			Path:    msg.single.Path,
+			Stage:   "done",
+			Bytes:   msg.single.Bytes,
+		})
+		if cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 	}
-	label := lectureDownloadLabel(progress.Lecture)
-	if label == "" {
-		label = m.request.Target
+	for _, item := range msg.all.Items {
+		if item.Err != nil || item.Skipped || strings.TrimSpace(item.Path) == "" {
+			continue
+		}
+		cmd := m.transcriptCommandForDownload(app.LectureDownloadProgress{
+			Lecture: item.Lecture,
+			Path:    item.Path,
+			Stage:   "done",
+			Bytes:   item.Bytes,
+		})
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
-	count := ""
-	if progress.TotalItems > 0 {
-		count = fmt.Sprintf(" %d/%d", progress.CurrentIndex, progress.TotalItems)
-	}
-
-	var b strings.Builder
-	b.WriteString(successBadgeStyle.Render(stage))
-	b.WriteString(count)
-	b.WriteString("  ")
-	b.WriteString(truncateText(label, 48))
-	b.WriteString("\n")
-	b.WriteString(m.progress.ViewAs(percent))
-	b.WriteString("  ")
-	b.WriteString(formatDownloadProgress(progress))
-	b.WriteString("\n")
-	return b.String()
+	return cmds
 }
 
-func (m lectureDownloadModel) renderQueue(width int) string {
+func (m *lectureDownloadModel) markDoneIfIdle() {
+	if !m.downloadsDone {
+		return
+	}
+	if m.request.Transcribe && len(m.transcriptRunning) > 0 {
+		return
+	}
+	m.done = true
+}
+
+func (m lectureDownloadModel) renderProgressList(width int) string {
 	if len(m.items) == 0 {
-		return renderSection("QUEUE", []string{emptyStyle.Render("다운로드 준비 중")})
+		return emptyStyle.Render("다운로드 준비 중") + "\n"
 	}
-	lines := make([]string, 0, len(m.items))
-	for _, item := range m.items {
-		label := truncateText(item.label, maxInt(20, minInt(44, width-38)))
-		status := downloadStageLabel(item.status)
-		switch {
-		case item.err != nil:
-			status = "실패"
-		case item.skipped:
-			status = "건너뜀"
+	lines := make([]string, 0, len(m.items)*2)
+	visibleItems := m.visibleDownloadItems()
+	start := m.downloadScrollStart(visibleItems)
+	end := minInt(len(m.items), start+visibleItems)
+	for index := start; index < end; index++ {
+		item := m.items[index]
+		label := truncateText(item.label, maxInt(20, minInt(64, width-18)))
+		marker := "  "
+		if index == m.cursor {
+			marker = "› "
 		}
-		detail := formatDownloadBytes(item.bytes)
-		if item.path != "" {
-			detail = filepath.Base(item.path)
-		}
-		if item.err != nil {
-			detail = item.err.Error()
-		}
-		lines = append(lines, fmt.Sprintf("%s  %s  %s", mutedStyle.Render(status), label, truncateText(detail, 34)))
+		lines = append(lines, fmt.Sprintf("%s%s", marker, label))
+		lines = append(lines, "  "+m.renderItemProgress(item, maxInt(18, minInt(56, width-26)))+"  "+m.itemProgressText(item))
 	}
-	return renderSection("QUEUE", lines)
+	if start > 0 || end < len(m.items) {
+		lines = append(lines, mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(m.items))))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func (m lectureDownloadModel) visibleDownloadItems() int {
+	if m.height <= 0 {
+		return 8
+	}
+	return maxInt(3, (m.height-9)/2)
+}
+
+func (m lectureDownloadModel) downloadScrollStart(visibleItems int) int {
+	start := m.cursor - visibleItems/2
+	if start < 0 {
+		return 0
+	}
+	if start+visibleItems > len(m.items) {
+		return maxInt(0, len(m.items)-visibleItems)
+	}
+	return start
 }
 
 func (m lectureDownloadModel) renderSummary() string {
@@ -384,6 +481,139 @@ func lectureDownloadLabel(row app.LectureRow) string {
 		}
 	}
 	return strings.Join(filtered, " · ")
+}
+
+func initialDownloadStatusLines(rows []app.LectureRow) []downloadStatusLine {
+	lines := make([]downloadStatusLine, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		label := lectureDownloadLabel(row)
+		if label == "" {
+			continue
+		}
+		id := lectureDownloadKey(row)
+		key := id
+		if key == "" {
+			key = label
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		lines = append(lines, downloadStatusLine{id: id, label: label, status: "pending"})
+	}
+	return lines
+}
+
+func lectureDownloadKey(row app.LectureRow) string {
+	if strings.TrimSpace(row.ID) != "" {
+		return strings.TrimSpace(row.ID)
+	}
+	parts := []string{row.TermValue, row.CourseName, row.Lecture.ContentID, row.Lecture.ModuleTitle, row.Lecture.Title}
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			filtered = append(filtered, part)
+		}
+	}
+	return strings.Join(filtered, "\x00")
+}
+
+func (line downloadStatusLine) matches(other downloadStatusLine) bool {
+	if line.id != "" && other.id != "" {
+		return line.id == other.id
+	}
+	return line.label == other.label
+}
+
+func preservesTranscriptStatus(current string, next string) bool {
+	switch current {
+	case "transcribe", "transcribed", "transcript-error":
+		return next == "done"
+	default:
+		return false
+	}
+}
+
+func (m lectureDownloadModel) renderItemProgress(item downloadStatusLine, width int) string {
+	bar := bubblesprogress.New(
+		bubblesprogress.WithWidth(width),
+		bubblesprogress.WithFillCharacters('█', '░'),
+		bubblesprogress.WithoutPercentage(),
+		bubblesprogress.WithSolidFill(itemProgressColor(item)),
+	)
+	return bar.ViewAs(itemProgressPercent(item))
+}
+
+func itemProgressColor(item downloadStatusLine) string {
+	switch {
+	case item.err != nil || item.status == "error" || item.status == "transcript-error":
+		return "#CF222E"
+	case item.status == "transcribe" || item.status == "transcribed":
+		return "#9ACD32"
+	case item.status == "skip" || item.skipped:
+		return "#6E7781"
+	default:
+		return "#58A6FF"
+	}
+}
+
+func itemProgressPercent(item downloadStatusLine) float64 {
+	if item.err != nil || item.skipped {
+		return 1
+	}
+	switch item.status {
+	case "done", "skip", "error", "transcribed", "transcript-error":
+		return 1
+	case "transcribe":
+		return 0.5
+	case "download":
+		if item.total > 0 {
+			percent := float64(item.bytes) / float64(item.total)
+			if percent < 0 {
+				return 0
+			}
+			if percent > 1 {
+				return 1
+			}
+			return percent
+		}
+		if item.bytes > 0 {
+			return 0.05
+		}
+	}
+	return 0
+}
+
+func (m lectureDownloadModel) itemProgressText(item downloadStatusLine) string {
+	status := downloadStageLabel(item.status)
+	switch {
+	case item.err != nil:
+		return errorStyle.Render(truncateText(item.err.Error(), 34))
+	case item.skipped:
+		return mutedStyle.Render("건너뜀")
+	case item.status == "transcribe":
+		return taglineStyle.Render("전사중")
+	case item.status == "transcribed":
+		if strings.TrimSpace(item.path) != "" {
+			return taglineStyle.Render(truncateText(filepath.Base(item.path), 34))
+		}
+		return taglineStyle.Render("전사완료")
+	case item.status == "done":
+		if strings.TrimSpace(item.path) != "" {
+			return mutedStyle.Render(truncateText(filepath.Base(item.path), 34))
+		}
+		return mutedStyle.Render("완료")
+	case item.status == "download":
+		if item.total > 0 {
+			return mutedStyle.Render(fmt.Sprintf("%s/%s", formatDownloadBytes(item.bytes), formatDownloadBytes(item.total)))
+		}
+		if item.bytes > 0 {
+			return mutedStyle.Render(formatDownloadBytes(item.bytes))
+		}
+	}
+	return mutedStyle.Render(status)
 }
 
 func lectureDownloadPercent(progress app.LectureDownloadProgress) float64 {
