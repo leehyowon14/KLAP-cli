@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,6 +82,9 @@ const (
 	screenNotices
 	screenLectures
 	screenConfig
+	screenRoomDay
+	screenRoomPeriod
+	screenRoomResult
 	screenDownloadSelect
 	screenDownloadConfirm
 	screenDownloadLanguage
@@ -93,26 +98,30 @@ type menuItem struct {
 }
 
 type model struct {
-	ctx                context.Context
-	service            *app.Service
-	menu               []menuItem
-	cursor             int
-	active             screen
-	loading            bool
-	err                error
-	content            string
-	width              int
-	height             int
-	loadedAt           time.Time
-	configEditing      string
-	configInput        textinput.Model
-	downloadRows       []app.LectureRow
-	downloadSelected   map[string]bool
-	downloadCourse     int
-	downloadCursor     int
-	downloadTranscribe bool
-	downloadLanguage   int
-	downloadProgress   *lectureDownloadModel
+	ctx                 context.Context
+	service             *app.Service
+	menu                []menuItem
+	cursor              int
+	active              screen
+	loading             bool
+	err                 error
+	content             string
+	width               int
+	height              int
+	loadedAt            time.Time
+	configEditing       string
+	configInput         textinput.Model
+	downloadRows        []app.LectureRow
+	downloadSelected    map[string]bool
+	downloadCourse      int
+	downloadCursor      int
+	downloadTranscribe  bool
+	downloadLanguage    int
+	downloadProgress    *lectureDownloadModel
+	roomDayCursor       int
+	roomDaysSelected    map[int]bool
+	roomPeriodCursor    int
+	roomPeriodsSelected map[int]bool
 }
 
 type transcriptLanguage struct {
@@ -130,6 +139,19 @@ var transcriptLanguages = []transcriptLanguage{
 	{label: "Español", locale: "es-ES"},
 }
 
+type roomDayOption struct {
+	weekday int
+	label   string
+}
+
+var roomDayOptions = []roomDayOption{
+	{weekday: 1, label: "월요일"},
+	{weekday: 2, label: "화요일"},
+	{weekday: 3, label: "수요일"},
+	{weekday: 4, label: "목요일"},
+	{weekday: 5, label: "금요일"},
+}
+
 type loadMsg struct {
 	screen  screen
 	content string
@@ -139,6 +161,11 @@ type loadMsg struct {
 type downloadRowsMsg struct {
 	rows []app.LectureRow
 	err  error
+}
+
+type roomAvailableResultsMsg struct {
+	results []app.RoomAvailableResult
+	err     error
 }
 
 func Run(ctx context.Context, service *app.Service) error {
@@ -154,6 +181,7 @@ func Run(ctx context.Context, service *app.Service) error {
 			{title: "Assignments", help: "과제 목록", screen: screenAssignments},
 			{title: "Notices", help: "공지 목록", screen: screenNotices},
 			{title: "Lectures", help: "강의 상태", screen: screenLectures},
+			{title: "Rooms", help: "빈 강의실 조회", screen: screenRoomDay},
 			{title: "Config", help: "설정", screen: screenConfig},
 		},
 	}
@@ -183,6 +211,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.active == screenDownloadLanguage {
 			return m.updateDownloadLanguage(msg)
 		}
+		if m.active == screenRoomDay {
+			return m.updateRoomDay(msg)
+		}
+		if m.active == screenRoomPeriod {
+			return m.updateRoomPeriod(msg)
+		}
 		if m.configEditing != "" {
 			return m.updateConfigInput(msg)
 		}
@@ -195,7 +229,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case keyMatches(key, "q", "ㅂ"):
 			return m, tea.Quit
 		case key == "esc" || keyMatches(key, "b", "ㅠ"):
-			if m.active != screenHome {
+			if m.active == screenRoomResult {
+				m.active = screenRoomPeriod
+				m.err = nil
+				m.content = ""
+				m.loading = false
+			} else if m.active != screenHome {
 				m.active = screenHome
 				m.err = nil
 				m.content = ""
@@ -212,6 +251,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "enter":
 			if m.active == screenHome && len(m.menu) > 0 {
 				target := m.menu[m.cursor].screen
+				if target == screenRoomDay {
+					return m.startRoomFlow()
+				}
 				m.active = target
 				m.loading = true
 				m.err = nil
@@ -219,6 +261,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.load(target, false)
 			}
 		case keyMatches(key, "r", "ㄱ"):
+			if m.active == screenRoomResult {
+				m.loading = true
+				m.err = nil
+				m.content = ""
+				return m, m.loadRoomAvailableResults(true)
+			}
 			if m.active != screenHome {
 				m.loading = true
 				m.err = nil
@@ -262,6 +310,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.downloadSelected = make(map[string]bool, len(msg.rows))
 		m.downloadCourse = 0
 		m.downloadCursor = 0
+	case roomAvailableResultsMsg:
+		if m.active != screenRoomResult {
+			return m, nil
+		}
+		m.loading = false
+		m.err = msg.err
+		m.content = formatRoomAvailableResults(msg.results)
+		m.loadedAt = time.Now()
 	}
 	return m, nil
 }
@@ -279,6 +335,175 @@ func (m model) loadDownloadRows() tea.Cmd {
 	return func() tea.Msg {
 		rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: true})
 		return downloadRowsMsg{rows: rows, err: err}
+	}
+}
+
+func (m model) startRoomFlow() (tea.Model, tea.Cmd) {
+	m.active = screenRoomDay
+	m.loading = false
+	m.err = nil
+	m.content = ""
+	m.roomDayCursor = 0
+	m.roomPeriodCursor = 0
+	m.roomDaysSelected = map[int]bool{}
+	m.roomPeriodsSelected = map[int]bool{}
+	return m, nil
+}
+
+func (m model) updateRoomDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
+		return m, tea.Quit
+	case key == "esc" || keyMatches(key, "b", "ㅠ"):
+		m.active = screenHome
+		m.err = nil
+	case key == "up" || keyMatches(key, "k", "ㅏ"):
+		if m.roomDayCursor > 0 {
+			m.roomDayCursor--
+		}
+	case key == "down" || keyMatches(key, "j", "ㅓ"):
+		if m.roomDayCursor < len(roomDayOptions)-1 {
+			m.roomDayCursor++
+		}
+	case key == " ":
+		m.toggleRoomDayCurrent()
+	case keyMatches(key, "a", "ㅁ"):
+		m.toggleRoomAllDays()
+	case key == "enter":
+		if len(m.selectedRoomDays()) == 0 {
+			m.err = errors.New("요일을 하나 이상 선택하세요")
+			return m, nil
+		}
+		m.err = nil
+		m.active = screenRoomPeriod
+		m.roomPeriodCursor = 0
+		if m.roomPeriodsSelected == nil {
+			m.roomPeriodsSelected = map[int]bool{}
+		}
+	}
+	return m, nil
+}
+
+func (m model) updateRoomPeriod(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
+		return m, tea.Quit
+	case key == "esc" || keyMatches(key, "b", "ㅠ"):
+		m.active = screenRoomDay
+		m.err = nil
+	case key == "up" || keyMatches(key, "k", "ㅏ"):
+		if m.roomPeriodCursor > 0 {
+			m.roomPeriodCursor--
+		}
+	case key == "down" || keyMatches(key, "j", "ㅓ"):
+		if m.roomPeriodCursor < 7 {
+			m.roomPeriodCursor++
+		}
+	case key == " ":
+		m.toggleRoomPeriodCurrent()
+	case keyMatches(key, "a", "ㅁ"):
+		m.toggleRoomAllPeriods()
+	case key == "enter":
+		if len(m.selectedRoomPeriods()) == 0 {
+			m.err = errors.New("교시를 하나 이상 선택하세요")
+			return m, nil
+		}
+		m.err = nil
+		m.active = screenRoomResult
+		m.loading = true
+		m.content = ""
+		return m, m.loadRoomAvailableResults(false)
+	}
+	return m, nil
+}
+
+func (m *model) toggleRoomDayCurrent() {
+	if m.roomDaysSelected == nil {
+		m.roomDaysSelected = map[int]bool{}
+	}
+	day := roomDayOptions[m.roomDayCursor].weekday
+	m.roomDaysSelected[day] = !m.roomDaysSelected[day]
+}
+
+func (m *model) toggleRoomAllDays() {
+	if m.roomDaysSelected == nil {
+		m.roomDaysSelected = map[int]bool{}
+	}
+	allSelected := true
+	for _, day := range roomDayOptions {
+		if !m.roomDaysSelected[day.weekday] {
+			allSelected = false
+			break
+		}
+	}
+	for _, day := range roomDayOptions {
+		m.roomDaysSelected[day.weekday] = !allSelected
+	}
+}
+
+func (m *model) toggleRoomPeriodCurrent() {
+	if m.roomPeriodsSelected == nil {
+		m.roomPeriodsSelected = map[int]bool{}
+	}
+	period := m.roomPeriodCursor + 1
+	m.roomPeriodsSelected[period] = !m.roomPeriodsSelected[period]
+}
+
+func (m *model) toggleRoomAllPeriods() {
+	if m.roomPeriodsSelected == nil {
+		m.roomPeriodsSelected = map[int]bool{}
+	}
+	allSelected := true
+	for period := 1; period <= 8; period++ {
+		if !m.roomPeriodsSelected[period] {
+			allSelected = false
+			break
+		}
+	}
+	for period := 1; period <= 8; period++ {
+		m.roomPeriodsSelected[period] = !allSelected
+	}
+}
+
+func (m model) selectedRoomDays() []int {
+	days := make([]int, 0, len(roomDayOptions))
+	for _, day := range roomDayOptions {
+		if m.roomDaysSelected[day.weekday] {
+			days = append(days, day.weekday)
+		}
+	}
+	return days
+}
+
+func (m model) selectedRoomPeriods() []int {
+	periods := make([]int, 0, 8)
+	for period := 1; period <= 8; period++ {
+		if m.roomPeriodsSelected[period] {
+			periods = append(periods, period)
+		}
+	}
+	return periods
+}
+
+func (m model) loadRoomAvailableResults(refresh bool) tea.Cmd {
+	days := m.selectedRoomDays()
+	periods := m.selectedRoomPeriods()
+	return func() tea.Msg {
+		results := make([]app.RoomAvailableResult, 0, len(days))
+		for index, weekday := range days {
+			result, err := m.service.RoomAvailable(m.ctx, app.RoomAvailableOptions{
+				Refresh: refresh && index == 0,
+				Day:     app.RoomWeekdayLabel(weekday),
+				Periods: periods,
+			})
+			if err != nil {
+				return roomAvailableResultsMsg{err: err}
+			}
+			results = append(results, result)
+		}
+		return roomAvailableResultsMsg{results: results}
 	}
 }
 
@@ -702,6 +927,10 @@ func (m model) View() string {
 			return appStyle.Render(errorStyle.Render("다운로드 상태가 없습니다"))
 		}
 		return m.downloadProgress.View()
+	case screenRoomDay:
+		return appStyle.Render(m.renderRoomDayView(width))
+	case screenRoomPeriod:
+		return appStyle.Render(m.renderRoomPeriodView(width))
 	}
 	if m.active == screenHome {
 		return appStyle.Render(m.renderHomeView(width))
@@ -717,6 +946,9 @@ func (m model) View() string {
 func (m model) footerHelp() string {
 	if m.active == screenLectures {
 		return "d 다운로드  b/esc 뒤로  r 새로고침  q 종료"
+	}
+	if m.active == screenRoomResult {
+		return "b/esc 뒤로  r 새로고침  q 종료"
 	}
 	return "b/esc 뒤로  r 새로고침  q 종료"
 }
@@ -936,6 +1168,83 @@ func (m model) renderDownloadLanguageView(width int) string {
 	return b.String()
 }
 
+func (m model) renderRoomDayView(width int) string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader(width))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString("\n\n")
+	b.WriteString(sectionStyle.Render("Rooms"))
+	b.WriteString("\n")
+	b.WriteString("빈 강의실을 조회할 요일을 선택하세요.")
+	b.WriteString("\n\n")
+	if m.err != nil {
+		b.WriteString(errorStyle.Render("ERROR"))
+		b.WriteString(" ")
+		b.WriteString(m.err.Error())
+		b.WriteString("\n\n")
+	}
+	for index, option := range roomDayOptions {
+		marker := "  "
+		if index == m.roomDayCursor {
+			marker = "› "
+		}
+		check := "[ ]"
+		if m.roomDaysSelected[option.weekday] {
+			check = "[x]"
+		}
+		line := fmt.Sprintf("%s%s  %s", marker, check, option.label)
+		if index == m.roomDayCursor {
+			line = menuSelectedStyle.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(footerStyle.Render("↑↓ 이동  |  space 선택  |  a 전체  |  enter 다음  |  b 뒤로  |  q 종료"))
+	return b.String()
+}
+
+func (m model) renderRoomPeriodView(width int) string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader(width))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString("\n\n")
+	b.WriteString(sectionStyle.Render("Rooms"))
+	b.WriteString("\n")
+	b.WriteString("빈 강의실을 조회할 교시를 선택하세요.")
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render("요일 " + roomSelectedDaysLabel(m.selectedRoomDays())))
+	b.WriteString("\n\n")
+	if m.err != nil {
+		b.WriteString(errorStyle.Render("ERROR"))
+		b.WriteString(" ")
+		b.WriteString(m.err.Error())
+		b.WriteString("\n\n")
+	}
+	for period := 1; period <= 8; period++ {
+		index := period - 1
+		marker := "  "
+		if index == m.roomPeriodCursor {
+			marker = "› "
+		}
+		check := "[ ]"
+		if m.roomPeriodsSelected[period] {
+			check = "[x]"
+		}
+		line := fmt.Sprintf("%s%s  %d교시", marker, check, period)
+		if index == m.roomPeriodCursor {
+			line = menuSelectedStyle.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(footerStyle.Render("↑↓ 이동  |  space 선택  |  a 전체  |  enter 조회  |  b 뒤로  |  q 종료"))
+	return b.String()
+}
+
 func (m model) renderPanel() string {
 	var b strings.Builder
 	b.WriteString(sectionStyle.Render(screenTitle(m.active)))
@@ -1041,6 +1350,8 @@ func screenTitle(value screen) string {
 		return "Lectures"
 	case screenConfig:
 		return "Config"
+	case screenRoomDay, screenRoomPeriod, screenRoomResult:
+		return "Rooms"
 	case screenDownloadSelect:
 		return "Download"
 	case screenDownloadConfirm:
@@ -1068,6 +1379,8 @@ func screenSubtitle(value screen) string {
 		return "온라인 강의와 학습활동 상태"
 	case screenConfig:
 		return "현재 유저 설정"
+	case screenRoomResult:
+		return "선택한 요일과 교시에 비어 있는 강의실"
 	default:
 		return ""
 	}
@@ -1268,6 +1581,117 @@ func formatConfig(settings app.ConfigSettings) string {
 		fmt.Sprintf("caffeinate  %t", settings.Download.Caffeinate),
 		fmt.Sprintf("keep-partial  %t", settings.Download.KeepPartial),
 	})
+}
+
+func formatRoomAvailableResults(results []app.RoomAvailableResult) string {
+	if len(results) == 0 {
+		return emptyStyle.Render("조건에 맞는 빈 강의실이 없습니다")
+	}
+	var b strings.Builder
+	warnings := make(map[string]struct{})
+	for resultIndex, result := range results {
+		if resultIndex > 0 {
+			b.WriteString("\n")
+		}
+		status := roomAvailableStatus(result.Weekday, result.Periods)
+		b.WriteString(sectionStyle.Render(status))
+		if result.Cached {
+			b.WriteString(" ")
+			b.WriteString(mutedStyle.Render("cache"))
+		}
+		b.WriteString("\n")
+		if len(result.Rooms) == 0 {
+			b.WriteString(emptyStyle.Render("조건에 맞는 빈 강의실이 없습니다"))
+			b.WriteString("\n")
+		} else {
+			for index, room := range result.Rooms {
+				b.WriteString(fmt.Sprintf("%d. %s  %s\n", index+1, room.Room, mutedStyle.Render(status)))
+			}
+		}
+		for _, warning := range result.Warnings {
+			warnings[warning] = struct{}{}
+		}
+	}
+	if len(warnings) > 0 {
+		keys := make([]string, 0, len(warnings))
+		for warning := range warnings {
+			keys = append(keys, warning)
+		}
+		sort.Strings(keys)
+		b.WriteString("\n")
+		b.WriteString(warnBadgeStyle.Render("WARN"))
+		b.WriteString(fmt.Sprintf(" %d개 과목의 강의시간 조회 실패\n", len(keys)))
+		limit := len(keys)
+		if limit > 10 {
+			limit = 10
+		}
+		for _, warning := range keys[:limit] {
+			b.WriteString("- ")
+			b.WriteString(warning)
+			b.WriteString("\n")
+		}
+		if len(keys) > limit {
+			b.WriteString(fmt.Sprintf("- ... %d개 생략\n", len(keys)-limit))
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func roomAvailableStatus(weekday int, periods []int) string {
+	return app.RoomWeekdayLabel(weekday) + " " + roomPeriodsLabel(periods) + " 비어있음"
+}
+
+func roomPeriodsLabel(periods []int) string {
+	normalized := normalizeRoomPeriodsForView(periods)
+	if len(normalized) == 0 {
+		return "교시 미지정"
+	}
+	contiguous := true
+	for index := 1; index < len(normalized); index++ {
+		if normalized[index] != normalized[index-1]+1 {
+			contiguous = false
+			break
+		}
+	}
+	if contiguous {
+		if normalized[0] == normalized[len(normalized)-1] {
+			return fmt.Sprintf("%d교시", normalized[0])
+		}
+		return fmt.Sprintf("%d-%d교시", normalized[0], normalized[len(normalized)-1])
+	}
+	labels := make([]string, 0, len(normalized))
+	for _, period := range normalized {
+		labels = append(labels, strconv.Itoa(period))
+	}
+	return strings.Join(labels, ", ") + "교시"
+}
+
+func normalizeRoomPeriodsForView(periods []int) []int {
+	normalized := make([]int, 0, len(periods))
+	seen := make(map[int]struct{}, len(periods))
+	for _, period := range periods {
+		if period <= 0 {
+			continue
+		}
+		if _, ok := seen[period]; ok {
+			continue
+		}
+		seen[period] = struct{}{}
+		normalized = append(normalized, period)
+	}
+	sort.Ints(normalized)
+	return normalized
+}
+
+func roomSelectedDaysLabel(days []int) string {
+	if len(days) == 0 {
+		return "선택 없음"
+	}
+	labels := make([]string, 0, len(days))
+	for _, weekday := range days {
+		labels = append(labels, app.RoomWeekdayLabel(weekday))
+	}
+	return strings.Join(labels, ", ")
 }
 
 func formatTime(value *time.Time) string {

@@ -306,6 +306,61 @@ func TestDownloadRowsStartUnselected(t *testing.T) {
 	}
 }
 
+func TestRoomFlowSelectsDaysAndPeriods(t *testing.T) {
+	m := model{active: screenHome}
+	updated, _ := m.startRoomFlow()
+	got := updated.(model)
+	if got.active != screenRoomDay || len(got.roomDaysSelected) != 0 {
+		t.Fatalf("startRoomFlow() active=%v selected=%v", got.active, got.roomDaysSelected)
+	}
+
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	got = updated.(model)
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyDown})
+	got = updated.(model)
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	got = updated.(model)
+	if days := got.selectedRoomDays(); len(days) != 2 || days[0] != 1 || days[1] != 2 {
+		t.Fatalf("selectedRoomDays() = %v, want [1 2]", days)
+	}
+
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got = updated.(model)
+	if got.active != screenRoomPeriod {
+		t.Fatalf("active after day enter = %v", got.active)
+	}
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	got = updated.(model)
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyDown})
+	got = updated.(model)
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyDown})
+	got = updated.(model)
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	got = updated.(model)
+	if periods := got.selectedRoomPeriods(); len(periods) != 2 || periods[0] != 1 || periods[1] != 3 {
+		t.Fatalf("selectedRoomPeriods() = %v, want [1 3]", periods)
+	}
+}
+
+func TestFormatRoomAvailableResults(t *testing.T) {
+	view := formatRoomAvailableResults([]app.RoomAvailableResult{{
+		Weekday: 5,
+		Periods: []int{1, 3},
+		Rooms: []app.RoomAvailableRoom{
+			{Room: "새빛관102"},
+			{Room: "새빛관103"},
+		},
+	}})
+	if !strings.Contains(view, "금 1, 3교시 비어있음") || !strings.Contains(view, "새빛관102") || !strings.Contains(view, "새빛관103") {
+		t.Fatalf("formatRoomAvailableResults() = %q", view)
+	}
+
+	empty := formatRoomAvailableResults([]app.RoomAvailableResult{{Weekday: 1, Periods: []int{6, 7, 8}}})
+	if !strings.Contains(empty, "조건에 맞는 빈 강의실이 없습니다") {
+		t.Fatalf("formatRoomAvailableResults(empty) = %q", empty)
+	}
+}
+
 func TestDownloadSelectionLeftRightChangesCourse(t *testing.T) {
 	m := model{
 		active: screenDownloadSelect,

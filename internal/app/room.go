@@ -143,6 +143,7 @@ type RoomAvailableOptions struct {
 	Refresh    bool
 	Day        string
 	Duration   string
+	Periods    []int
 	Building   string
 	OnProgress func(done int, total int, label string)
 	User       UserOption
@@ -250,9 +251,13 @@ func (s *Service) RoomAvailable(ctx context.Context, opts RoomAvailableOptions) 
 	if weekday == 0 {
 		return RoomAvailableResult{}, errors.New("--day에는 월, 월요일, mon, monday 같은 요일이 필요합니다")
 	}
-	periods, err := parseRoomDuration(opts.Duration)
-	if err != nil {
-		return RoomAvailableResult{}, err
+	periods := normalizeRoomPeriods(opts.Periods)
+	if len(periods) == 0 {
+		var err error
+		periods, err = parseRoomDuration(opts.Duration)
+		if err != nil {
+			return RoomAvailableResult{}, err
+		}
 	}
 	index, hit, cached, err := s.roomIndex(ctx, RoomIndexOptions{
 		TermValue:  opts.TermValue,
@@ -566,6 +571,23 @@ func availableRooms(index RoomIndex, weekday int, periods []int, buildingFilter 
 	}
 	sort.Slice(rooms, func(i, j int) bool { return rooms[i].Room < rooms[j].Room })
 	return rooms
+}
+
+func normalizeRoomPeriods(periods []int) []int {
+	values := make([]int, 0, len(periods))
+	seen := make(map[int]struct{}, len(periods))
+	for _, period := range periods {
+		if period < 1 || period > 8 {
+			continue
+		}
+		if _, ok := seen[period]; ok {
+			continue
+		}
+		seen[period] = struct{}{}
+		values = append(values, period)
+	}
+	sort.Ints(values)
+	return values
 }
 
 func roomBusyRows(schedule RoomSchedule) []RoomBusyRow {
