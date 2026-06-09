@@ -249,12 +249,12 @@ func TestLectureDownloadTranscriptQueueRespectsConcurrency(t *testing.T) {
 		transcriptRunning: make(map[string]bool),
 	}
 
-	cmds := m.enqueueTranscriptForDownload(app.LectureDownloadProgress{Lecture: rowA, Path: "a.mp4", Stage: "done"})
+	cmds := m.enqueueTranscriptForDownloadProgress(app.LectureDownloadProgress{Lecture: rowA, Path: "a.mp4", Stage: "done"})
 	if len(cmds) != 1 || m.transcriptActive != 1 || len(m.transcriptQueue) != 0 {
 		t.Fatalf("first enqueue cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
 	}
 
-	cmds = m.enqueueTranscriptForDownload(app.LectureDownloadProgress{Lecture: rowB, Path: "b.mp4", Stage: "done"})
+	cmds = m.enqueueTranscriptForDownloadProgress(app.LectureDownloadProgress{Lecture: rowB, Path: "b.mp4", Stage: "done"})
 	if len(cmds) != 0 || m.transcriptActive != 1 || len(m.transcriptQueue) != 1 {
 		t.Fatalf("second enqueue cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
 	}
@@ -293,6 +293,9 @@ func TestLectureDownloadTranscribesSkippedVideoWhenTranscriptMissing(t *testing.
 	}}}})
 	if len(cmds) != 1 || m.transcriptActive != 1 {
 		t.Fatalf("missing transcript cmds=%d active=%d", len(cmds), m.transcriptActive)
+	}
+	if len(m.items) != 1 || m.items[0].status != "transcribe" {
+		t.Fatalf("missing transcript status = %+v", m.items)
 	}
 
 	transcriptPath := filepath.Join(root, "컴퓨터그래픽스", "transcription", "lecture.txt")

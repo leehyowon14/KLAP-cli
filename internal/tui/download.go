@@ -149,7 +149,7 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case lectureDownloadProgressMsg:
 		m.upsertStatusLine(msg.progress)
 		cmds := []tea.Cmd{waitLectureDownloadProgress(m.updates)}
-		cmds = append(cmds, m.enqueueTranscriptForDownload(msg.progress)...)
+		cmds = append(cmds, m.enqueueTranscriptForDownloadProgress(msg.progress)...)
 		return m, tea.Batch(cmds...)
 	case lectureTranscriptProgressMsg:
 		m.upsertTranscriptStatusLine(msg.progress)
@@ -234,11 +234,22 @@ func (m lectureDownloadModel) runDownload() tea.Cmd {
 	}
 }
 
-func (m *lectureDownloadModel) enqueueTranscriptForDownload(progress app.LectureDownloadProgress) []tea.Cmd {
+func (m *lectureDownloadModel) enqueueTranscriptForDownloadProgress(progress app.LectureDownloadProgress) []tea.Cmd {
 	if !m.request.Transcribe || progress.Stage != "done" || strings.TrimSpace(progress.Path) == "" {
 		return nil
 	}
-	key := lectureDownloadKey(progress.Lecture)
+	return m.enqueueTranscriptItem(app.LectureDownloadItem{
+		Lecture: progress.Lecture,
+		Path:    progress.Path,
+		Bytes:   progress.Bytes,
+	})
+}
+
+func (m *lectureDownloadModel) enqueueTranscriptItem(item app.LectureDownloadItem) []tea.Cmd {
+	if !m.request.Transcribe || !app.LectureDownloadItemNeedsTranscript(item) {
+		return nil
+	}
+	key := lectureDownloadKey(item.Lecture)
 	if key == "" {
 		return nil
 	}
@@ -252,11 +263,13 @@ func (m *lectureDownloadModel) enqueueTranscriptForDownload(progress app.Lecture
 		return nil
 	}
 	m.transcriptStarted[key] = true
-	m.transcriptQueue = append(m.transcriptQueue, app.LectureDownloadItem{
-		Lecture: progress.Lecture,
-		Path:    progress.Path,
-		Bytes:   progress.Bytes,
+	m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{
+		Lecture:    item.Lecture,
+		InputPath:  item.Path,
+		OutputPath: app.TranscriptPathForDownload(item.Path),
+		Stage:      "transcribe",
 	})
+	m.transcriptQueue = append(m.transcriptQueue, item)
 	return m.startTranscriptWorkers()
 }
 
@@ -418,23 +431,14 @@ func (m *lectureDownloadModel) enqueueTranscriptsForResult(msg lectureDownloadDo
 	}
 	cmds := make([]tea.Cmd, 0)
 	if msg.single.Path != "" {
-		cmds = append(cmds, m.enqueueTranscriptForDownload(app.LectureDownloadProgress{
+		cmds = append(cmds, m.enqueueTranscriptItem(app.LectureDownloadItem{
 			Lecture: msg.single.Lecture,
 			Path:    msg.single.Path,
-			Stage:   "done",
 			Bytes:   msg.single.Bytes,
 		})...)
 	}
 	for _, item := range msg.all.Items {
-		if !app.LectureDownloadItemNeedsTranscript(item) {
-			continue
-		}
-		cmds = append(cmds, m.enqueueTranscriptForDownload(app.LectureDownloadProgress{
-			Lecture: item.Lecture,
-			Path:    item.Path,
-			Stage:   "done",
-			Bytes:   item.Bytes,
-		})...)
+		cmds = append(cmds, m.enqueueTranscriptItem(item)...)
 	}
 	return cmds
 }

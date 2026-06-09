@@ -2693,6 +2693,10 @@ func transcriptPath(path string) string {
 	return filepath.Join(dir, strings.TrimSuffix(filepath.Base(path), ext)+".txt")
 }
 
+func TranscriptPathForDownload(path string) string {
+	return transcriptPath(path)
+}
+
 func LectureDownloadItemNeedsTranscript(item LectureDownloadItem) bool {
 	if item.Err != nil || strings.TrimSpace(item.Path) == "" {
 		return false
