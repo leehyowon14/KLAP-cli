@@ -52,6 +52,7 @@ type downloadStatusLine struct {
 	path    string
 	bytes   int64
 	total   int64
+	percent float64
 	skipped bool
 	err     error
 }
@@ -294,16 +295,18 @@ func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTr
 		label = progress.InputPath
 	}
 	line := downloadStatusLine{
-		id:     lectureDownloadKey(progress.Lecture),
-		label:  label,
-		status: progress.Stage,
-		path:   progress.OutputPath,
-		err:    progress.Err,
+		id:      lectureDownloadKey(progress.Lecture),
+		label:   label,
+		status:  progress.Stage,
+		path:    progress.OutputPath,
+		percent: progress.Progress,
+		err:     progress.Err,
 	}
 	for index := range m.items {
 		if m.items[index].matches(line) {
 			m.items[index].status = line.status
 			m.items[index].path = line.path
+			m.items[index].percent = line.percent
 			m.items[index].err = line.err
 			return
 		}
@@ -568,7 +571,10 @@ func itemProgressPercent(item downloadStatusLine) float64 {
 	case "done", "skip", "error", "transcribed", "transcript-error":
 		return 1
 	case "transcribe":
-		return 0.5
+		if item.percent > 0 {
+			return clampPercent(item.percent)
+		}
+		return 0.05
 	case "download":
 		if item.total > 0 {
 			percent := float64(item.bytes) / float64(item.total)
@@ -587,6 +593,16 @@ func itemProgressPercent(item downloadStatusLine) float64 {
 	return 0
 }
 
+func clampPercent(percent float64) float64 {
+	if percent < 0 {
+		return 0
+	}
+	if percent > 1 {
+		return 1
+	}
+	return percent
+}
+
 func (m lectureDownloadModel) itemProgressText(item downloadStatusLine) string {
 	status := downloadStageLabel(item.status)
 	switch {
@@ -595,6 +611,9 @@ func (m lectureDownloadModel) itemProgressText(item downloadStatusLine) string {
 	case item.skipped:
 		return mutedStyle.Render("건너뜀")
 	case item.status == "transcribe":
+		if item.percent > 0 {
+			return taglineStyle.Render(fmt.Sprintf("전사중 %.0f%%", clampPercent(item.percent)*100))
+		}
 		return taglineStyle.Render("전사중")
 	case item.status == "transcribed":
 		if strings.TrimSpace(item.path) != "" {

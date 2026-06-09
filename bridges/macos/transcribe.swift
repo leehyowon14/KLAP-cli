@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreMedia
 import Foundation
 import Speech
 
@@ -11,6 +12,7 @@ struct TranscribeJob: Codable {
 
 struct TranscribeRequest: Codable {
     let jobs: [TranscribeJob]
+    let progress: Bool?
 }
 
 struct TranscribeResult: Codable {
@@ -22,6 +24,23 @@ struct TranscribeResult: Codable {
 
 struct TranscribeResponse: Codable {
     let results: [TranscribeResult]
+}
+
+struct TranscribeEvent: Codable {
+    let type: String
+    let inputPath: String?
+    let outputPath: String?
+    let progress: Double?
+    let error: String?
+    let results: [TranscribeResult]?
+}
+
+func emitEvent(_ event: TranscribeEvent) {
+    guard let data = try? JSONEncoder().encode(event) else {
+        return
+    }
+    FileHandle.standardOutput.write(data)
+    FileHandle.standardOutput.write(Data("\n".utf8))
 }
 
 enum BridgeError: Error, LocalizedError {
@@ -42,7 +61,7 @@ enum BridgeError: Error, LocalizedError {
 }
 
 @available(macOS 26.0, *)
-func transcribe(job: TranscribeJob) async throws -> TranscribeResult {
+func transcribe(job: TranscribeJob, emitProgress: Bool) async throws -> TranscribeResult {
     let inputURL = URL(fileURLWithPath: job.inputPath)
     let outputURL = URL(fileURLWithPath: job.outputPath)
     let localeIdentifier = job.locale?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -65,12 +84,7 @@ func transcribe(job: TranscribeJob) async throws -> TranscribeResult {
         await AssetInventory.release(reservedLocale: reservedLocale)
     }
 
-    let transcriber = SpeechTranscriber(
-        locale: locale,
-        transcriptionOptions: [],
-        reportingOptions: [],
-        attributeOptions: []
-    )
+    let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
     let modules: [any SpeechModule] = [transcriber]
 
     let installedLocales = await SpeechTranscriber.installedLocales
@@ -87,12 +101,28 @@ func transcribe(job: TranscribeJob) async throws -> TranscribeResult {
         analysisContext.contextualStrings[.general] = contextualStrings
     }
     let audioFile = try AVAudioFile(forReading: inputURL)
+    let duration = audioFile.fileFormat.sampleRate > 0 ? Double(audioFile.length) / audioFile.fileFormat.sampleRate : 0
     try await analyzer.setContext(analysisContext)
     try await analyzer.start(inputAudioFile: audioFile, finishAfterFile: true)
 
     var transcript = AttributedString("")
     for try await result in transcriber.results {
-        transcript += result.text
+        if emitProgress {
+            let endSeconds = CMTimeGetSeconds(CMTimeRangeGetEnd(result.range))
+            if endSeconds.isFinite && duration > 0 {
+                emitEvent(TranscribeEvent(
+                    type: "progress",
+                    inputPath: job.inputPath,
+                    outputPath: job.outputPath,
+                    progress: min(max(endSeconds / duration, 0), 0.99),
+                    error: nil,
+                    results: nil
+                ))
+            }
+        }
+        if result.isFinal {
+            transcript += result.text
+        }
     }
 
     let text = String(transcript.characters)
@@ -103,6 +133,7 @@ func transcribe(job: TranscribeJob) async throws -> TranscribeResult {
 
 let input = FileHandle.standardInput.readDataToEndOfFile()
 let request = try JSONDecoder().decode(TranscribeRequest.self, from: input)
+let shouldEmitProgress = request.progress ?? false
 
 let semaphore = DispatchSemaphore(value: 0)
 var response: TranscribeResponse?
@@ -112,7 +143,7 @@ Task {
     for job in request.jobs {
         do {
             if #available(macOS 26.0, *) {
-                results.append(try await transcribe(job: job))
+                results.append(try await transcribe(job: job, emitProgress: shouldEmitProgress))
             } else {
                 throw BridgeError.unsupportedOS
             }
@@ -126,9 +157,14 @@ Task {
         }
     }
     response = TranscribeResponse(results: results)
+    if shouldEmitProgress {
+        emitEvent(TranscribeEvent(type: "response", inputPath: nil, outputPath: nil, progress: nil, error: nil, results: results))
+    }
     semaphore.signal()
 }
 
 semaphore.wait()
-let output = try JSONEncoder().encode(response ?? TranscribeResponse(results: []))
-FileHandle.standardOutput.write(output)
+if !shouldEmitProgress {
+    let output = try JSONEncoder().encode(response ?? TranscribeResponse(results: []))
+    FileHandle.standardOutput.write(output)
+}

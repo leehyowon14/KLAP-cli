@@ -463,6 +463,7 @@ type LectureTranscriptProgress struct {
 	InputPath  string
 	OutputPath string
 	Stage      string
+	Progress   float64
 	Err        error
 }
 
@@ -2555,7 +2556,20 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 	default:
 	}
 
-	response, err := transcript.NewMacOSBridge(s.transcriptBridgePath).Transcribe(transcript.Request{Jobs: jobs})
+	response, err := transcript.NewMacOSBridge(s.transcriptBridgePath).TranscribeWithProgress(transcript.Request{Jobs: jobs}, func(progress transcript.Progress) {
+		index := transcriptJobIndex(jobs, progress.InputPath, progress.OutputPath)
+		row := LectureRow{}
+		if index >= 0 && index < len(rows) {
+			row = rows[index]
+		}
+		emitLectureTranscriptProgress(opts.OnProgress, LectureTranscriptProgress{
+			Lecture:    row,
+			InputPath:  progress.InputPath,
+			OutputPath: progress.OutputPath,
+			Stage:      "transcribe",
+			Progress:   progress.Progress,
+		})
+	})
 	if err != nil {
 		result := LectureTranscriptResult{Items: make([]LectureTranscriptItem, 0, len(jobs))}
 		for index, job := range jobs {
@@ -2604,6 +2618,18 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 		})
 	}
 	return result
+}
+
+func transcriptJobIndex(jobs []transcript.Job, inputPath string, outputPath string) int {
+	for index, job := range jobs {
+		if strings.TrimSpace(inputPath) != "" && job.InputPath == inputPath {
+			return index
+		}
+		if strings.TrimSpace(outputPath) != "" && job.OutputPath == outputPath {
+			return index
+		}
+	}
+	return -1
 }
 
 func transcriptPath(path string) string {

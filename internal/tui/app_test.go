@@ -214,13 +214,16 @@ func TestLectureDownloadProgressListUsesProgressRows(t *testing.T) {
 func TestLectureDownloadTranscriptStatusPreservesDoneOverwrite(t *testing.T) {
 	row := app.LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", Title: "소개"}}
 	m := lectureDownloadModel{items: initialDownloadStatusLines([]app.LectureRow{row})}
-	m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{Lecture: row, Stage: "transcribe", OutputPath: "lecture.txt"})
+	m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{Lecture: row, Stage: "transcribe", OutputPath: "lecture.txt", Progress: 0.42})
 	m.upsertStatusLine(app.LectureDownloadProgress{Lecture: row, Stage: "done", Path: "lecture.mp4", Bytes: 10, TotalBytes: 10})
 	if got := m.items[0].status; got != "transcribe" {
 		t.Fatalf("status = %q, want transcribe", got)
 	}
+	if got := itemProgressPercent(m.items[0]); got != 0.42 {
+		t.Fatalf("transcript itemProgressPercent() = %f", got)
+	}
 	if got := itemProgressPercent(downloadStatusLine{status: "download", bytes: 5, total: 10}); got != 0.5 {
-		t.Fatalf("itemProgressPercent() = %f", got)
+		t.Fatalf("download itemProgressPercent() = %f", got)
 	}
 }
 
