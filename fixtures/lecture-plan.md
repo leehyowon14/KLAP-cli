@@ -250,6 +250,79 @@ POST /std/cps/atnlc/LectreTeam.do
 ]
 ```
 
+## Room Index Case
+
+강의실 빈 시간 조회는 강의계획서 목록 API를 전체 조회로 호출한 뒤, 각 행의 `subjectID`로 `LectreTimeInfo.do`를 호출해 학기별 room-index를 만든다.
+
+전체 개설강좌 목록 payload는 강의계획서 검색 payload와 같고, 검색 필드만 비운다.
+
+```json
+{
+  "selectSubj": "",
+  "selectYear": "2026",
+  "selecthakgi": "1",
+  "selectYearHakgi": "2026,1",
+  "selectRadio": "all",
+  "selectText": "",
+  "selectProfsr": "",
+  "cmmnGamok": "",
+  "selecthakgwa": "",
+  "selectMajor": ""
+}
+```
+
+축약 강의실명은 내부 canonical room으로 정규화한다.
+
+```text
+연102 -> 연구관102
+비502 -> 비마관502
+새빛103 -> 새빛관103
+한울B101 -> 한울관B101
+```
+
+room-index 계산용 `LectreTimeInfo.do` 응답 케이스:
+
+```json
+[
+  {
+    "dayname1": "월",
+    "timeNo1": 1,
+    "timeNo2": 2,
+    "timeNo3": null,
+    "timeNo4": null,
+    "locHname": "연102",
+    "locCode": "600102",
+    "locHname2": null,
+    "locCode2": null,
+    "code": "1         "
+  },
+  {
+    "dayname1": "화",
+    "timeNo1": 3,
+    "timeNo2": null,
+    "timeNo3": null,
+    "timeNo4": null,
+    "locHname": "비502",
+    "locCode": "200502",
+    "locHname2": null,
+    "locCode2": null,
+    "code": "2         "
+  },
+  {
+    "dayname1": "수",
+    "timeNo1": 4,
+    "timeNo2": null,
+    "timeNo3": null,
+    "timeNo4": null,
+    "locHname": "한울B101",
+    "locCode": "700B101",
+    "locHname2": null,
+    "locCode2": null,
+    "code": "3         "
+  }
+]
+```
+
 컴퓨터그래픽스 기준 빈 배열로 확인된 endpoint:
 
 ```text

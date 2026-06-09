@@ -1417,14 +1417,37 @@ func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, name string
 	return response, nil
 }
 
+func (c *Client) SyllabusTimeInfo(ctx context.Context, subjectID string) ([]SyllabusTime, error) {
+	response, err := c.syllabusTimeInfoRaw(ctx, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	return syllabusTimes(response), nil
+}
+
+func (c *Client) syllabusTimeInfoRaw(ctx context.Context, subjectID string) ([]syllabusTimeItem, error) {
+	subjectID = strings.TrimSpace(subjectID)
+	if subjectID == "" {
+		return nil, errors.New("강의계획서 과목 ID가 없습니다")
+	}
+	body, err := c.do(ctx, http.MethodPost, "/std/cps/atnlc/LectreTimeInfo.do", map[string]any{"selectSubj": subjectID})
+	if err != nil {
+		return nil, err
+	}
+	var response []syllabusTimeItem
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("강의계획서 시간표 응답 파싱 실패: %w", err)
+	}
+	return response, nil
+}
+
 func (c *Client) SyllabusBySubjectID(ctx context.Context, subjectID string) (Syllabus, error) {
 	subjectID = strings.TrimSpace(subjectID)
 	if subjectID == "" {
 		return Syllabus{}, errors.New("강의계획서 과목 ID가 없습니다")
 	}
 
-	payload := map[string]any{"selectSubj": subjectID}
-	body, err := c.do(ctx, http.MethodPost, "/std/cps/atnlc/LectrePlanData.do", payload)
+	body, err := c.do(ctx, http.MethodPost, "/std/cps/atnlc/LectrePlanData.do", map[string]any{"selectSubj": subjectID})
 	if err != nil {
 		return Syllabus{}, err
 	}
@@ -1437,13 +1460,9 @@ func (c *Client) SyllabusBySubjectID(ctx context.Context, subjectID string) (Syl
 		return Syllabus{}, errors.New("강의계획서 상세 응답이 비어 있습니다")
 	}
 
-	timeBody, err := c.do(ctx, http.MethodPost, "/std/cps/atnlc/LectreTimeInfo.do", payload)
+	timeResponse, err := c.syllabusTimeInfoRaw(ctx, subjectID)
 	if err != nil {
 		return Syllabus{}, err
-	}
-	var timeResponse []syllabusTimeItem
-	if err := json.Unmarshal(timeBody, &timeResponse); err != nil {
-		return Syllabus{}, fmt.Errorf("강의계획서 시간표 응답 파싱 실패: %w", err)
 	}
 
 	return buildSyllabus(subjectID, response[0], timeResponse), nil

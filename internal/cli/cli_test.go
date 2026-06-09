@@ -144,6 +144,32 @@ func TestSubjectSearchOptions(t *testing.T) {
 	}
 }
 
+func TestRoomQueryOptions(t *testing.T) {
+	opts, err := roomQueryOptions([]string{"연", "102", "--term", "2026-1", "--building", "연구", "--refresh", "--user", "20260000"})
+	if err != nil {
+		t.Fatalf("roomQueryOptions() error = %v", err)
+	}
+	if opts.Room != "연 102" || opts.TermValue != "2026-1" || opts.Building != "연구" || !opts.Refresh || opts.User.StudentID != "20260000" {
+		t.Fatalf("roomQueryOptions() = %+v", opts)
+	}
+	if _, err := roomQueryOptions([]string{"--term", "2026-1"}); err == nil {
+		t.Fatal("roomQueryOptions() expected missing room error")
+	}
+}
+
+func TestRoomIndexOptions(t *testing.T) {
+	opts, err := roomIndexOptions([]string{"--term", "2026-1", "--building", "비마", "--user", "20260000"})
+	if err != nil {
+		t.Fatalf("roomIndexOptions() error = %v", err)
+	}
+	if opts.TermValue != "2026-1" || opts.Building != "비마" || opts.User.StudentID != "20260000" {
+		t.Fatalf("roomIndexOptions() = %+v", opts)
+	}
+	if _, err := roomIndexOptions([]string{"비마관"}); err == nil {
+		t.Fatal("roomIndexOptions() expected unknown positional error")
+	}
+}
+
 func TestRenderProgressBar(t *testing.T) {
 	got := renderProgressBar(25, 12)
 	if got == "" || !strings.Contains(got, "25%") {
