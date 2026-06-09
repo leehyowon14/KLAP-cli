@@ -203,7 +203,7 @@ func (s *Store) Remove(ctx context.Context, studentID string) error {
 	}
 	if registry.CurrentStudentID == studentID {
 		registry.CurrentStudentID = ""
-		if len(filtered) == 1 {
+		if len(filtered) > 0 {
 			registry.CurrentStudentID = filtered[0].StudentID
 		}
 	}
