@@ -666,7 +666,25 @@ func (m model) updateDownloadProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.downloadProgress.cancel()
 			return m, tea.Quit
 		}
+		if keyMatches(key.String(), "h", "ㅗ") {
+			if !m.downloadProgress.done {
+				m.downloadProgress.cancel()
+			}
+			m.active = screenHome
+			m.loading = false
+			m.err = nil
+			m.content = ""
+			m.downloadProgress = nil
+			return m, nil
+		}
 		if m.downloadProgress.done && (key.String() == "esc" || keyMatches(key.String(), "b", "ㅠ")) {
+			m.active = screenLectures
+			m.loading = true
+			m.downloadProgress = nil
+			return m, m.load(screenLectures, true)
+		}
+		if key.String() == "esc" && !m.downloadProgress.done {
+			m.downloadProgress.cancelAndCleanup()
 			m.active = screenLectures
 			m.loading = true
 			m.downloadProgress = nil
@@ -1196,7 +1214,7 @@ func (m model) renderDownloadLanguageView(width int) string {
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("Transcript Language"))
 	b.WriteString("\n")
-	b.WriteString("전사 주 언어를 선택하세요. 실제 강의에는 language switching(code switching)이 포함될 수 있습니다.")
+	b.WriteString("전사 주 언어를 선택하세요.")
 	b.WriteString("\n\n")
 	for index, language := range transcriptLanguages {
 		marker := "  "

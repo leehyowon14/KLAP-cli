@@ -237,6 +237,41 @@ func TestLectureDownloadTranscribedTextOmitsPath(t *testing.T) {
 	}
 }
 
+func TestLectureDownloadCancelCleanupRemovesArtifacts(t *testing.T) {
+	root := t.TempDir()
+	videoPath := filepath.Join(root, "컴퓨터그래픽스", "video", "lecture.mp4")
+	transcriptPath := filepath.Join(root, "컴퓨터그래픽스", "transcription", "lecture.txt")
+	for _, path := range []string{videoPath, videoPath + ".part", transcriptPath, transcriptPath + ".part"} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", path, err)
+		}
+		if err := os.WriteFile(path, []byte("data"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	m := lectureDownloadModel{
+		ctx:    ctx,
+		cancel: cancel,
+		items: []downloadStatusLine{{
+			status:         "transcribe",
+			path:           transcriptPath,
+			downloadPath:   videoPath,
+			transcriptPath: transcriptPath,
+		}},
+	}
+	m.cancelAndCleanup()
+	if !m.canceling {
+		t.Fatal("cancelAndCleanup() did not mark canceling")
+	}
+	for _, path := range []string{videoPath, videoPath + ".part", transcriptPath, transcriptPath + ".part"} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("artifact %s still exists or stat failed: %v", path, err)
+		}
+	}
+}
+
 func TestLectureDownloadTranscriptQueueRespectsConcurrency(t *testing.T) {
 	rowA := app.LectureRow{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a", Title: "A"}}
 	rowB := app.LectureRow{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b", Title: "B"}}
@@ -526,13 +561,13 @@ func TestDownloadSelectCursorWraps(t *testing.T) {
 	}
 }
 
-func TestTranscriptLanguageDefaultsToKoreanAndMentionsCodeSwitching(t *testing.T) {
+func TestTranscriptLanguageDefaultsToKoreanWithoutWarning(t *testing.T) {
 	m := model{downloadLanguage: 0}
 	if got := m.selectedTranscriptLocale(); got != "ko-KR" {
 		t.Fatalf("selectedTranscriptLocale() = %q", got)
 	}
 	view := m.renderDownloadLanguageView(96)
-	if !strings.Contains(view, "ko-KR") || !strings.Contains(view, "language switching(code switching)") {
+	if !strings.Contains(view, "ko-KR") || !strings.Contains(view, "전사 주 언어를 선택하세요.") || strings.Contains(view, "language switching(code switching)") {
 		t.Fatalf("renderDownloadLanguageView() = %q", view)
 	}
 }

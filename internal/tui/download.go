@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -49,15 +50,17 @@ type lectureDownloadModel struct {
 }
 
 type downloadStatusLine struct {
-	id      string
-	label   string
-	status  string
-	path    string
-	bytes   int64
-	total   int64
-	percent float64
-	skipped bool
-	err     error
+	id             string
+	label          string
+	status         string
+	path           string
+	downloadPath   string
+	transcriptPath string
+	bytes          int64
+	total          int64
+	percent        float64
+	skipped        bool
+	err            error
 }
 
 type lectureTranscriptProgressMsg struct {
@@ -196,11 +199,15 @@ func (m lectureDownloadModel) View() string {
 	b.WriteString("\n")
 	if m.done {
 		b.WriteString(m.renderSummary())
+		b.WriteString(footerStyle.Render("↑↓ 이동  |  esc 뒤로  |  h 홈  |  q 종료"))
+		b.WriteString("\n")
 	} else if m.canceling {
 		b.WriteString(warnBadgeStyle.Render("CANCEL"))
 		b.WriteString(" 다운로드를 중단하는 중입니다\n")
+		b.WriteString(footerStyle.Render("esc 삭제/뒤로  |  h 홈  |  q 종료"))
+		b.WriteString("\n")
 	} else {
-		b.WriteString(footerStyle.Render("↑↓ 이동  |  q 종료"))
+		b.WriteString(footerStyle.Render("↑↓ 이동  |  esc 삭제/뒤로  |  h 홈  |  q 종료"))
 		b.WriteString("\n")
 	}
 	return appStyle.Render(b.String())
@@ -333,12 +340,24 @@ func (m *lectureDownloadModel) upsertStatusLine(progress app.LectureDownloadProg
 		skipped: progress.Skipped,
 		err:     progress.Err,
 	}
+	if strings.TrimSpace(progress.Path) != "" {
+		line.downloadPath = progress.Path
+	}
 	for index := range m.items {
 		if m.items[index].matches(line) {
 			if preservesTranscriptStatus(m.items[index].status, line.status) {
 				m.items[index].bytes = line.bytes
 				m.items[index].total = line.total
+				if strings.TrimSpace(line.downloadPath) != "" {
+					m.items[index].downloadPath = line.downloadPath
+				}
 				return
+			}
+			if strings.TrimSpace(line.downloadPath) == "" {
+				line.downloadPath = m.items[index].downloadPath
+			}
+			if strings.TrimSpace(line.transcriptPath) == "" {
+				line.transcriptPath = m.items[index].transcriptPath
 			}
 			m.items[index] = line
 			return
@@ -360,10 +379,16 @@ func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTr
 		percent: progress.Progress,
 		err:     progress.Err,
 	}
+	if strings.TrimSpace(progress.OutputPath) != "" {
+		line.transcriptPath = progress.OutputPath
+	}
 	for index := range m.items {
 		if m.items[index].matches(line) {
 			m.items[index].status = line.status
 			m.items[index].path = line.path
+			if strings.TrimSpace(line.transcriptPath) != "" {
+				m.items[index].transcriptPath = line.transcriptPath
+			}
 			m.items[index].percent = line.percent
 			m.items[index].err = line.err
 			m.items[index].skipped = false
@@ -452,6 +477,51 @@ func (m *lectureDownloadModel) markDoneIfIdle() {
 		return
 	}
 	m.done = true
+}
+
+func (m *lectureDownloadModel) cancelAndCleanup() {
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.canceling = true
+	m.cleanupArtifacts()
+}
+
+func (m lectureDownloadModel) cleanupArtifacts() {
+	seen := make(map[string]struct{})
+	for _, item := range m.items {
+		for _, path := range item.cleanupPaths() {
+			path = strings.TrimSpace(path)
+			if path == "" {
+				continue
+			}
+			if _, ok := seen[path]; ok {
+				continue
+			}
+			seen[path] = struct{}{}
+			_ = os.Remove(path)
+		}
+	}
+}
+
+func (line downloadStatusLine) cleanupPaths() []string {
+	paths := []string{}
+	addPath := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		paths = append(paths, path, path+".part")
+	}
+	addPath(line.downloadPath)
+	addPath(line.transcriptPath)
+	if strings.TrimSpace(line.path) != "" {
+		addPath(line.path)
+		if strings.Contains(line.path, string(filepath.Separator)+"video"+string(filepath.Separator)) {
+			addPath(app.TranscriptPathForDownload(line.path))
+		}
+	}
+	return paths
 }
 
 func (m lectureDownloadModel) renderProgressList(width int) string {
