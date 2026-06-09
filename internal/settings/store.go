@@ -10,11 +10,14 @@ import (
 
 const DefaultReminderListName = "Kwangwoon Univ."
 const DefaultDownloadConcurrency = 3
+const DefaultTranscriptConcurrency = 1
+const MaxTranscriptConcurrency = 3
 
 type Settings struct {
-	Reminder Reminder `json:"reminder"`
-	Term     Term     `json:"term"`
-	Download Download `json:"download"`
+	Reminder   Reminder   `json:"reminder"`
+	Term       Term       `json:"term"`
+	Download   Download   `json:"download"`
+	Transcript Transcript `json:"transcript"`
 }
 
 type Reminder struct {
@@ -32,6 +35,10 @@ type Download struct {
 	Concurrency int    `json:"concurrency"`
 	Caffeinate  *bool  `json:"caffeinate"`
 	KeepPartial bool   `json:"keepPartial"`
+}
+
+type Transcript struct {
+	Concurrency int `json:"concurrency"`
 }
 
 type Store struct {
@@ -89,6 +96,9 @@ func Default() Settings {
 			Concurrency: DefaultDownloadConcurrency,
 			Caffeinate:  boolPtr(true),
 		},
+		Transcript: Transcript{
+			Concurrency: DefaultTranscriptConcurrency,
+		},
 	}
 }
 
@@ -100,6 +110,7 @@ func (s *Settings) Normalize() {
 		s.Reminder.AlarmBeforeMin = 24 * 60
 	}
 	s.Download.Normalize()
+	s.Transcript.Normalize()
 }
 
 func DefaultDownloadDir() string {
@@ -124,6 +135,15 @@ func (d *Download) Normalize() {
 	}
 	if d.Caffeinate == nil {
 		d.Caffeinate = boolPtr(true)
+	}
+}
+
+func (t *Transcript) Normalize() {
+	if t.Concurrency <= 0 {
+		t.Concurrency = DefaultTranscriptConcurrency
+	}
+	if t.Concurrency > MaxTranscriptConcurrency {
+		t.Concurrency = MaxTranscriptConcurrency
 	}
 }
 

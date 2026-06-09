@@ -163,6 +163,9 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	if _, err := service.SetConfigValue("download.keep-partial", "true"); err != nil {
 		t.Fatalf("SetConfigValue(download.keep-partial) error = %v", err)
 	}
+	if _, err := service.SetConfigValue("transcript.concurrency", "3"); err != nil {
+		t.Fatalf("SetConfigValue(transcript.concurrency) error = %v", err)
+	}
 
 	got, err := service.ResetConfigSettings()
 	if err != nil {
@@ -180,8 +183,23 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	if got.Download.KeepPartial {
 		t.Fatal("Download.KeepPartial should reset to false")
 	}
+	if got.Transcript.Concurrency != settings.DefaultTranscriptConcurrency {
+		t.Fatalf("Transcript.Concurrency = %d", got.Transcript.Concurrency)
+	}
 	if got.Term.Value != "" {
 		t.Fatalf("Term.Value = %q", got.Term.Value)
+	}
+}
+
+func TestSetConfigValueRejectsInvalidTranscriptConcurrency(t *testing.T) {
+	t.Setenv("KLAP_CONFIG_DIR", t.TempDir())
+	settingsStore, err := settings.NewStore()
+	if err != nil {
+		t.Fatalf("settings.NewStore() error = %v", err)
+	}
+	service := &Service{settingsStore: settingsStore}
+	if _, err := service.SetConfigValue("transcript.concurrency", "4"); err == nil {
+		t.Fatal("SetConfigValue(transcript.concurrency) expected error")
 	}
 }
 

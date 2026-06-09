@@ -401,10 +401,15 @@ type DownloadSettings struct {
 	KeepPartial bool
 }
 
+type TranscriptSettings struct {
+	Concurrency int
+}
+
 type ConfigSettings struct {
-	Reminder ReminderSettings
-	Download DownloadSettings
-	Term     TermSettings
+	Reminder   ReminderSettings
+	Download   DownloadSettings
+	Transcript TranscriptSettings
+	Term       TermSettings
 }
 
 type DownloadStatusResult struct {
@@ -616,6 +621,14 @@ func (s *Service) DownloadSettings() (DownloadSettings, error) {
 	return downloadSettingsFrom(current), nil
 }
 
+func (s *Service) TranscriptSettings() (TranscriptSettings, error) {
+	current, err := s.loadSettings()
+	if err != nil {
+		return TranscriptSettings{}, err
+	}
+	return transcriptSettingsFrom(current), nil
+}
+
 func downloadSettingsFrom(current settings.Settings) DownloadSettings {
 	return DownloadSettings{
 		Dir:         current.Download.Dir,
@@ -623,6 +636,10 @@ func downloadSettingsFrom(current settings.Settings) DownloadSettings {
 		Caffeinate:  settings.DownloadCaffeinateEnabled(current.Download),
 		KeepPartial: current.Download.KeepPartial,
 	}
+}
+
+func transcriptSettingsFrom(current settings.Settings) TranscriptSettings {
+	return TranscriptSettings{Concurrency: current.Transcript.Concurrency}
 }
 
 func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
@@ -664,6 +681,21 @@ func (s *Service) SetDownloadConfig(dir string, concurrency int, caffeinate *boo
 	return downloadSettingsFrom(current), nil
 }
 
+func (s *Service) SetTranscriptConfig(concurrency int) (TranscriptSettings, error) {
+	if concurrency < 1 || concurrency > settings.MaxTranscriptConcurrency {
+		return TranscriptSettings{}, fmt.Errorf("transcript.concurrency에는 1~%d 사이의 정수가 필요합니다", settings.MaxTranscriptConcurrency)
+	}
+	current, err := s.loadSettings()
+	if err != nil {
+		return TranscriptSettings{}, err
+	}
+	current.Transcript.Concurrency = concurrency
+	if err := s.saveSettings(current); err != nil {
+		return TranscriptSettings{}, err
+	}
+	return transcriptSettingsFrom(current), nil
+}
+
 func (s *Service) ConfigSettings() (ConfigSettings, error) {
 	current, err := s.loadSettings()
 	if err != nil {
@@ -675,8 +707,9 @@ func (s *Service) ConfigSettings() (ConfigSettings, error) {
 			UseExistingList: current.Reminder.UseExistingList,
 			AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 		},
-		Download: downloadSettingsFrom(current),
-		Term:     TermSettings{Value: current.Term.Value, Label: termLabel(current.Term.Value)},
+		Download:   downloadSettingsFrom(current),
+		Transcript: transcriptSettingsFrom(current),
+		Term:       TermSettings{Value: current.Term.Value, Label: termLabel(current.Term.Value)},
 	}, nil
 }
 
@@ -732,6 +765,12 @@ func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, erro
 			return ConfigSettings{}, err
 		}
 		current.Download.KeepPartial = parsed
+	case "transcript.concurrency", "transcript.workers":
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > settings.MaxTranscriptConcurrency {
+			return ConfigSettings{}, fmt.Errorf("transcript.concurrency에는 1~%d 사이의 정수가 필요합니다", settings.MaxTranscriptConcurrency)
+		}
+		current.Transcript.Concurrency = parsed
 	case "term", "term.value":
 		normalized, err := normalizeTermValue(value)
 		if err != nil {

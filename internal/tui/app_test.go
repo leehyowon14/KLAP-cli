@@ -235,6 +235,36 @@ func TestLectureDownloadTranscribedTextOmitsPath(t *testing.T) {
 	}
 }
 
+func TestLectureDownloadTranscriptQueueRespectsConcurrency(t *testing.T) {
+	rowA := app.LectureRow{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a", Title: "A"}}
+	rowB := app.LectureRow{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b", Title: "B"}}
+	m := lectureDownloadModel{
+		request: LectureDownloadRequest{
+			Transcribe:            true,
+			TranscriptConcurrency: 1,
+		},
+		transcriptStarted: make(map[string]bool),
+		transcriptRunning: make(map[string]bool),
+	}
+
+	cmds := m.enqueueTranscriptForDownload(app.LectureDownloadProgress{Lecture: rowA, Path: "a.mp4", Stage: "done"})
+	if len(cmds) != 1 || m.transcriptActive != 1 || len(m.transcriptQueue) != 0 {
+		t.Fatalf("first enqueue cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
+	}
+
+	cmds = m.enqueueTranscriptForDownload(app.LectureDownloadProgress{Lecture: rowB, Path: "b.mp4", Stage: "done"})
+	if len(cmds) != 0 || m.transcriptActive != 1 || len(m.transcriptQueue) != 1 {
+		t.Fatalf("second enqueue cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
+	}
+
+	delete(m.transcriptRunning, rowA.ID)
+	m.transcriptActive--
+	cmds = m.startTranscriptWorkers()
+	if len(cmds) != 1 || m.transcriptActive != 1 || len(m.transcriptQueue) != 0 {
+		t.Fatalf("next worker cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
+	}
+}
+
 func TestConfirmAcceptsKoreanKeyboardKeys(t *testing.T) {
 	m := confirmModel{value: false}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅛ")})
@@ -406,7 +436,8 @@ func TestTranscriptLanguageDefaultsToKoreanAndMentionsCodeSwitching(t *testing.T
 
 func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	view := formatConfig(app.ConfigSettings{
-		Download: app.DownloadSettings{Dir: "downloads", Concurrency: 7, Caffeinate: true, KeepPartial: false},
+		Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 7, Caffeinate: true, KeepPartial: false},
+		Transcript: app.TranscriptSettings{Concurrency: 2},
 	})
 	if !strings.Contains(view, "concurrency  7") {
 		t.Fatalf("formatConfig() missing concurrency: %q", view)
@@ -416,5 +447,8 @@ func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	}
 	if !strings.Contains(view, "keep-partial  false") {
 		t.Fatalf("formatConfig() missing keep-partial: %q", view)
+	}
+	if !strings.Contains(view, "Transcript") || !strings.Contains(view, "concurrency  2") {
+		t.Fatalf("formatConfig() missing transcript concurrency: %q", view)
 	}
 }

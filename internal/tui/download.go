@@ -14,15 +14,16 @@ import (
 )
 
 type LectureDownloadRequest struct {
-	Target           string
-	User             app.UserOption
-	Dir              string
-	All              bool
-	Rows             []app.LectureRow
-	LectureIDs       []string
-	Concurrency      int
-	Transcribe       bool
-	TranscriptLocale string
+	Target                string
+	User                  app.UserOption
+	Dir                   string
+	All                   bool
+	Rows                  []app.LectureRow
+	LectureIDs            []string
+	Concurrency           int
+	Transcribe            bool
+	TranscriptLocale      string
+	TranscriptConcurrency int
 }
 
 type lectureDownloadModel struct {
@@ -43,6 +44,8 @@ type lectureDownloadModel struct {
 	quitOnDone        bool
 	transcriptStarted map[string]bool
 	transcriptRunning map[string]bool
+	transcriptQueue   []app.LectureDownloadItem
+	transcriptActive  int
 }
 
 type downloadStatusLine struct {
@@ -136,9 +139,7 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case lectureDownloadProgressMsg:
 		m.upsertStatusLine(msg.progress)
 		cmds := []tea.Cmd{waitLectureDownloadProgress(m.updates)}
-		if cmd := m.transcriptCommandForDownload(msg.progress); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+		cmds = append(cmds, m.enqueueTranscriptForDownload(msg.progress)...)
 		return m, tea.Batch(cmds...)
 	case lectureTranscriptProgressMsg:
 		m.upsertTranscriptStatusLine(msg.progress)
@@ -147,7 +148,7 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.downloadsDone = true
 		m.err = msg.err
 		m.applyFinalResult(msg)
-		cmds := m.transcriptCommandsForResult(msg)
+		cmds := m.enqueueTranscriptsForResult(msg)
 		m.markDoneIfIdle()
 		if m.done && m.quitOnDone {
 			return m, tea.Quit
@@ -155,12 +156,16 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	case lectureTranscriptDoneMsg:
 		delete(m.transcriptRunning, msg.key)
+		if m.transcriptActive > 0 {
+			m.transcriptActive--
+		}
 		m.applyTranscriptResult(msg.result)
+		cmds := m.startTranscriptWorkers()
 		m.markDoneIfIdle()
 		if m.done && m.quitOnDone {
 			return m, tea.Quit
 		}
-		return m, nil
+		return m, tea.Batch(cmds...)
 	}
 	return m, nil
 }
@@ -219,7 +224,7 @@ func (m lectureDownloadModel) runDownload() tea.Cmd {
 	}
 }
 
-func (m lectureDownloadModel) transcriptCommandForDownload(progress app.LectureDownloadProgress) tea.Cmd {
+func (m *lectureDownloadModel) enqueueTranscriptForDownload(progress app.LectureDownloadProgress) []tea.Cmd {
 	if !m.request.Transcribe || progress.Stage != "done" || strings.TrimSpace(progress.Path) == "" {
 		return nil
 	}
@@ -237,7 +242,41 @@ func (m lectureDownloadModel) transcriptCommandForDownload(progress app.LectureD
 		return nil
 	}
 	m.transcriptStarted[key] = true
-	m.transcriptRunning[key] = true
+	m.transcriptQueue = append(m.transcriptQueue, app.LectureDownloadItem{
+		Lecture: progress.Lecture,
+		Path:    progress.Path,
+		Bytes:   progress.Bytes,
+	})
+	return m.startTranscriptWorkers()
+}
+
+func (m *lectureDownloadModel) startTranscriptWorkers() []tea.Cmd {
+	if !m.request.Transcribe {
+		return nil
+	}
+	if m.transcriptRunning == nil {
+		m.transcriptRunning = make(map[string]bool)
+	}
+	limit := m.request.TranscriptConcurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	cmds := make([]tea.Cmd, 0)
+	for m.transcriptActive < limit && len(m.transcriptQueue) > 0 {
+		item := m.transcriptQueue[0]
+		m.transcriptQueue = m.transcriptQueue[1:]
+		key := lectureDownloadKey(item.Lecture)
+		if key == "" {
+			continue
+		}
+		m.transcriptRunning[key] = true
+		m.transcriptActive++
+		cmds = append(cmds, m.transcriptCommandForItem(key, item))
+	}
+	return cmds
+}
+
+func (m lectureDownloadModel) transcriptCommandForItem(key string, item app.LectureDownloadItem) tea.Cmd {
 	return func() tea.Msg {
 		onProgress := func(transcriptProgress app.LectureTranscriptProgress) {
 			select {
@@ -245,11 +284,7 @@ func (m lectureDownloadModel) transcriptCommandForDownload(progress app.LectureD
 			default:
 			}
 		}
-		result := m.service.TranscribeDownloadedLectures(m.ctx, []app.LectureDownloadItem{{
-			Lecture: progress.Lecture,
-			Path:    progress.Path,
-			Bytes:   progress.Bytes,
-		}}, app.LectureTranscriptOptions{Locale: m.request.TranscriptLocale, OnProgress: onProgress})
+		result := m.service.TranscribeDownloadedLectures(m.ctx, []app.LectureDownloadItem{item}, app.LectureTranscriptOptions{Locale: m.request.TranscriptLocale, OnProgress: onProgress})
 		return lectureTranscriptDoneMsg{key: key, result: result}
 	}
 }
@@ -367,35 +402,29 @@ func (m *lectureDownloadModel) applyTranscriptItem(item app.LectureTranscriptIte
 	})
 }
 
-func (m *lectureDownloadModel) transcriptCommandsForResult(msg lectureDownloadDoneMsg) []tea.Cmd {
+func (m *lectureDownloadModel) enqueueTranscriptsForResult(msg lectureDownloadDoneMsg) []tea.Cmd {
 	if !m.request.Transcribe {
 		return nil
 	}
 	cmds := make([]tea.Cmd, 0)
 	if msg.single.Path != "" {
-		cmd := m.transcriptCommandForDownload(app.LectureDownloadProgress{
+		cmds = append(cmds, m.enqueueTranscriptForDownload(app.LectureDownloadProgress{
 			Lecture: msg.single.Lecture,
 			Path:    msg.single.Path,
 			Stage:   "done",
 			Bytes:   msg.single.Bytes,
-		})
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+		})...)
 	}
 	for _, item := range msg.all.Items {
 		if item.Err != nil || item.Skipped || strings.TrimSpace(item.Path) == "" {
 			continue
 		}
-		cmd := m.transcriptCommandForDownload(app.LectureDownloadProgress{
+		cmds = append(cmds, m.enqueueTranscriptForDownload(app.LectureDownloadProgress{
 			Lecture: item.Lecture,
 			Path:    item.Path,
 			Stage:   "done",
 			Bytes:   item.Bytes,
-		})
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+		})...)
 	}
 	return cmds
 }
@@ -404,7 +433,7 @@ func (m *lectureDownloadModel) markDoneIfIdle() {
 	if !m.downloadsDone {
 		return
 	}
-	if m.request.Transcribe && len(m.transcriptRunning) > 0 {
+	if m.request.Transcribe && (len(m.transcriptRunning) > 0 || len(m.transcriptQueue) > 0 || m.transcriptActive > 0) {
 		return
 	}
 	m.done = true

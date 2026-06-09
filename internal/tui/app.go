@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kw-klap/klap-cli/internal/app"
 	"github.com/kw-klap/klap-cli/internal/klas"
+	settingspkg "github.com/kw-klap/klap-cli/internal/settings"
 )
 
 const menuNumberWidth = 3
@@ -279,6 +280,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.adjustDownloadConcurrency(1)
 		case m.active == screenConfig && key == "-":
 			return m.adjustDownloadConcurrency(-1)
+		case m.active == screenConfig && key == "]":
+			return m.adjustTranscriptConcurrency(1)
+		case m.active == screenConfig && key == "[":
+			return m.adjustTranscriptConcurrency(-1)
 		case m.active == screenConfig && keyMatches(key, "c", "ㅊ"):
 			return m.toggleDownloadCaffeinate()
 		case m.active == screenConfig && keyMatches(key, "p", "ㅔ"):
@@ -605,6 +610,11 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 		m.err = err
 		return m, nil
 	}
+	transcriptSettings, err := m.service.TranscriptSettings()
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
 	selectedRows := m.selectedDownloadRows()
 	runCtx, cancel := context.WithCancel(m.ctx)
 	progress := lectureDownloadModel{
@@ -612,12 +622,13 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 		cancel:  cancel,
 		service: m.service,
 		request: LectureDownloadRequest{
-			All:              true,
-			Rows:             selectedRows,
-			LectureIDs:       m.selectedDownloadIDs(),
-			Concurrency:      settings.Concurrency,
-			Transcribe:       m.downloadTranscribe,
-			TranscriptLocale: m.selectedTranscriptLocale(),
+			All:                   true,
+			Rows:                  selectedRows,
+			LectureIDs:            m.selectedDownloadIDs(),
+			Concurrency:           settings.Concurrency,
+			Transcribe:            m.downloadTranscribe,
+			TranscriptLocale:      m.selectedTranscriptLocale(),
+			TranscriptConcurrency: transcriptSettings.Concurrency,
 		},
 		updates:           make(chan tea.Msg, 64),
 		items:             initialDownloadStatusLines(selectedRows),
@@ -850,6 +861,28 @@ func (m model) adjustDownloadConcurrency(delta int) (tea.Model, tea.Cmd) {
 		next = 1
 	}
 	if _, err := m.service.SetDownloadConfig("", next, nil, nil); err != nil {
+		m.err = err
+		return m, nil
+	}
+	m.err = nil
+	m.refreshConfigContent()
+	return m, nil
+}
+
+func (m model) adjustTranscriptConcurrency(delta int) (tea.Model, tea.Cmd) {
+	settings, err := m.service.TranscriptSettings()
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	next := settings.Concurrency + delta
+	if next < 1 {
+		next = 1
+	}
+	if next > settingspkg.MaxTranscriptConcurrency {
+		next = settingspkg.MaxTranscriptConcurrency
+	}
+	if _, err := m.service.SetTranscriptConfig(next); err != nil {
 		m.err = err
 		return m, nil
 	}
@@ -1279,7 +1312,7 @@ func (m model) renderPanel() string {
 			b.WriteString("\n")
 			b.WriteString(footerStyle.Render("enter 저장  esc 취소"))
 		} else {
-			b.WriteString(footerStyle.Render("d download.dir 편집  +/- 동시 다운로드  c 절전 방지  p 부분 파일  x 초기화"))
+			b.WriteString(footerStyle.Render("d download.dir  +/- 다운로드  [] 전사 worker  c 절전  p 부분파일  x 초기화"))
 		}
 		b.WriteString("\n")
 	}
@@ -1580,6 +1613,8 @@ func formatConfig(settings app.ConfigSettings) string {
 		fmt.Sprintf("concurrency  %d", settings.Download.Concurrency),
 		fmt.Sprintf("caffeinate  %t", settings.Download.Caffeinate),
 		fmt.Sprintf("keep-partial  %t", settings.Download.KeepPartial),
+	}) + "\n" + renderSection("Transcript", []string{
+		fmt.Sprintf("concurrency  %d", settings.Transcript.Concurrency),
 	})
 }
 

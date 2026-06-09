@@ -1736,6 +1736,7 @@ func printConfigSettings(settings app.ConfigSettings) {
 	fmt.Printf("download.concurrency: %d\n", settings.Download.Concurrency)
 	fmt.Printf("download.caffeinate: %s\n", yesNo(settings.Download.Caffeinate))
 	fmt.Printf("download.keep-partial: %s\n", yesNo(settings.Download.KeepPartial))
+	fmt.Printf("transcript.concurrency: %d\n", settings.Transcript.Concurrency)
 }
 
 func printDashboard(result app.DashboardResult) {

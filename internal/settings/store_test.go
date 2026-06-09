@@ -28,6 +28,9 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if got.Download.KeepPartial {
 		t.Fatal("Download.KeepPartial should default to false")
 	}
+	if got.Transcript.Concurrency != DefaultTranscriptConcurrency {
+		t.Fatalf("Transcript.Concurrency = %d", got.Transcript.Concurrency)
+	}
 }
 
 func TestNormalizeReminderSettings(t *testing.T) {
@@ -50,6 +53,17 @@ func TestNormalizeReminderSettings(t *testing.T) {
 	}
 	if settings.Download.KeepPartial {
 		t.Fatal("Download.KeepPartial should normalize to false")
+	}
+	if settings.Transcript.Concurrency != DefaultTranscriptConcurrency {
+		t.Fatalf("Transcript.Concurrency = %d", settings.Transcript.Concurrency)
+	}
+}
+
+func TestNormalizeCapsTranscriptConcurrency(t *testing.T) {
+	settings := Settings{Transcript: Transcript{Concurrency: MaxTranscriptConcurrency + 10}}
+	settings.Normalize()
+	if settings.Transcript.Concurrency != MaxTranscriptConcurrency {
+		t.Fatalf("Transcript.Concurrency = %d", settings.Transcript.Concurrency)
 	}
 }
 
