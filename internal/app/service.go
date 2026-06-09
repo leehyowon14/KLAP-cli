@@ -2178,6 +2178,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		CourseName: course.Name,
 		Lecture:    *matched,
 	}
+	weekOrder := lectureWeekOrder(lectures, *matched)
 	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 		Lecture:      row,
 		Stage:        "resolve",
@@ -2199,7 +2200,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
 
-	path := lectureVideoPath(dir, course.Name, *matched, mediaURL)
+	path := lectureVideoPath(dir, course.Name, *matched, mediaURL, weekOrder)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
@@ -2297,10 +2298,11 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	}
 
 	type downloadTask struct {
-		Index  int
-		Total  int
-		Course klas.Course
-		Row    LectureRow
+		Index     int
+		Total     int
+		Course    klas.Course
+		Row       LectureRow
+		WeekOrder int
 	}
 	tasks := make([]downloadTask, 0)
 	for _, selectedCourse := range courses {
@@ -2319,19 +2321,27 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 			return LectureDownloadAllResult{}, err
 		}
 
+		rows := make([]LectureRow, 0, len(lectures))
 		for _, lecture := range lectures {
-			row := LectureRow{
+			rows = append(rows, LectureRow{
 				ID:         LectureID(selectedCourse.Index, lecture.ContentID),
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				Lecture:    lecture,
-			}
+			})
+		}
+		weekOrders := lectureRowWeekOrders(rows)
+		for _, row := range rows {
 			if len(selectedIDs) > 0 {
 				if _, ok := selectedIDs[row.ID]; !ok {
 					continue
 				}
 			}
-			tasks = append(tasks, downloadTask{Course: selectedCourse.Course, Row: row})
+			tasks = append(tasks, downloadTask{
+				Course:    selectedCourse.Course,
+				Row:       row,
+				WeekOrder: weekOrders[row.ID],
+			})
 		}
 	}
 	for index := range tasks {
@@ -2355,7 +2365,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	worker := func() {
 		defer wg.Done()
 		for task := range jobs {
-			results <- downloadTaskResult{Index: task.Index - 1, Item: downloadLectureTask(ctx, client, dir, currentSettings.Download.KeepPartial, task.Index, task.Total, task.Course, task.Row, opts.OnProgress)}
+			results <- downloadTaskResult{Index: task.Index - 1, Item: downloadLectureTask(ctx, client, dir, currentSettings.Download.KeepPartial, task.Index, task.Total, task.Course, task.Row, task.WeekOrder, opts.OnProgress)}
 		}
 	}
 	wg.Add(concurrency)
@@ -2387,7 +2397,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	return result, nil
 }
 
-func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, keepPartial bool, index int, total int, course klas.Course, row LectureRow, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
+func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, keepPartial bool, index int, total int, course klas.Course, row LectureRow, weekOrder int, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
 	item := LectureDownloadItem{Lecture: row}
 	if strings.TrimSpace(row.Lecture.ContentID) == "" {
 		item.Skipped = true
@@ -2422,7 +2432,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		return item
 	}
 
-	item.Path = lectureVideoPath(dir, course.Name, row.Lecture, mediaURL)
+	item.Path = lectureVideoPath(dir, course.Name, row.Lecture, mediaURL, weekOrder)
 	if err := os.MkdirAll(filepath.Dir(item.Path), 0o755); err != nil {
 		item.Err = err
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
@@ -3730,8 +3740,10 @@ func (s *Service) effectiveDownloadConcurrency(concurrency int) (int, error) {
 	return current.Download.Concurrency, nil
 }
 
-func lectureVideoPath(root string, courseName string, lecture klas.Lecture, mediaURL string) string {
-	return filepath.Join(root, lectureCourseDirName(courseName), "video", lectureFilename(lecture, mediaURL))
+var lectureWeekPattern = regexp.MustCompile(`([0-9]{1,2})\s*주차`)
+
+func lectureVideoPath(root string, courseName string, lecture klas.Lecture, mediaURL string, weekOrder int) string {
+	return filepath.Join(root, lectureCourseDirName(courseName), "video", lectureFilename(lecture, mediaURL, weekOrder))
 }
 
 func lectureCourseDirName(courseName string) string {
@@ -3742,7 +3754,19 @@ func lectureCourseDirName(courseName string) string {
 	return courseDir
 }
 
-func lectureFilename(lecture klas.Lecture, mediaURL string) string {
+func lectureFilename(lecture klas.Lecture, mediaURL string, weekOrder int) string {
+	extension := ".mp4"
+	if parsed, err := url.Parse(mediaURL); err == nil {
+		if ext := filepath.Ext(parsed.Path); ext != "" {
+			extension = ext
+		}
+	}
+
+	if week := lectureWeekNumber(lecture); week > 0 && weekOrder > 0 {
+		title := sanitizePathComponent(firstNonEmpty(lecture.Title, lecture.ModuleTitle, lecture.ContentID, lecture.LearningSeq, "lecture"))
+		return fmt.Sprintf("%d-%d. %s%s", week, weekOrder, title, extension)
+	}
+
 	parts := []string{
 		sanitizePathComponent(lecture.ModuleTitle),
 		sanitizePathComponent(lecture.Title),
@@ -3757,14 +3781,83 @@ func lectureFilename(lecture klas.Lecture, mediaURL string) string {
 	if len(filtered) == 0 {
 		filtered = append(filtered, "lecture")
 	}
+	return strings.Join(filtered, "_") + extension
+}
 
-	extension := ".mp4"
-	if parsed, err := url.Parse(mediaURL); err == nil {
-		if ext := filepath.Ext(parsed.Path); ext != "" {
-			extension = ext
+func lectureWeekNumber(lecture klas.Lecture) int {
+	if week := parsePositiveInt(lecture.WeekNo); week > 0 {
+		return week
+	}
+	match := lectureWeekPattern.FindStringSubmatch(lecture.ModuleTitle)
+	if len(match) >= 2 {
+		return parsePositiveInt(match[1])
+	}
+	return 0
+}
+
+func lectureWeekOrder(lectures []klas.Lecture, target klas.Lecture) int {
+	if order := parsePositiveInt(target.WeeklySeq); order > 0 {
+		return order
+	}
+
+	week := lectureWeekNumber(target)
+	if week <= 0 {
+		return 0
+	}
+
+	order := 0
+	for _, lecture := range lectures {
+		if lectureWeekNumber(lecture) != week {
+			continue
+		}
+		order++
+		if sameLectureForFilename(lecture, target) {
+			return order
 		}
 	}
-	return strings.Join(filtered, "_") + extension
+	return 0
+}
+
+func lectureRowWeekOrders(rows []LectureRow) map[string]int {
+	counts := make(map[int]int)
+	orders := make(map[string]int, len(rows))
+	for _, row := range rows {
+		if order := parsePositiveInt(row.Lecture.WeeklySeq); order > 0 {
+			orders[row.ID] = order
+			week := lectureWeekNumber(row.Lecture)
+			if week > 0 && counts[week] < order {
+				counts[week] = order
+			}
+			continue
+		}
+
+		week := lectureWeekNumber(row.Lecture)
+		if week <= 0 {
+			continue
+		}
+		counts[week]++
+		orders[row.ID] = counts[week]
+	}
+	return orders
+}
+
+func sameLectureForFilename(left klas.Lecture, right klas.Lecture) bool {
+	if strings.TrimSpace(left.ContentID) != "" && strings.TrimSpace(left.ContentID) == strings.TrimSpace(right.ContentID) {
+		return true
+	}
+	if strings.TrimSpace(left.LearningSeq) != "" && strings.TrimSpace(left.LearningSeq) == strings.TrimSpace(right.LearningSeq) {
+		return true
+	}
+	return strings.TrimSpace(left.ModuleTitle) == strings.TrimSpace(right.ModuleTitle) &&
+		strings.TrimSpace(left.Title) == strings.TrimSpace(right.Title)
+}
+
+func parsePositiveInt(value string) int {
+	number, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || number <= 0 {
+		return 0
+	}
+	return number
 }
 
 func sanitizePathComponent(value string) string {

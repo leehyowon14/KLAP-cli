@@ -280,6 +280,8 @@ type Lecture struct {
 	PlayURL      string
 	LearningSeq  string
 	FileID       string
+	WeekNo       string
+	WeeklySeq    string
 	ModuleTitle  string
 	Title        string
 	Progress     string
@@ -1508,6 +1510,8 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 			PlayURL:      normalizeKWCommonsPlayURL(firstNonEmpty(item.MVPLink, item.Starting), contentID),
 			LearningSeq:  item.LearningSeq.String(),
 			FileID:       item.FileID.String(),
+			WeekNo:       item.WeekNo.String(),
+			WeeklySeq:    item.WeeklySeq.String(),
 			ModuleTitle:  strings.TrimSpace(item.ModuleTitle),
 			Title:        title,
 			Progress:     item.Progress.String(),
