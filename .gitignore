@@ -8,3 +8,7 @@ downloads/
 *.mp4
 *.m4v
 *.mov
+.DS_Store
+.gocache/
+.tmp/
+Documents/
