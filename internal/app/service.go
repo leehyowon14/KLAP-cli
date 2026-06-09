@@ -659,6 +659,13 @@ func (s *Service) ConfigSettings() (ConfigSettings, error) {
 	}, nil
 }
 
+func (s *Service) ResetConfigSettings() (ConfigSettings, error) {
+	if err := s.saveSettings(settings.Default()); err != nil {
+		return ConfigSettings{}, err
+	}
+	return s.ConfigSettings()
+}
+
 func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, error) {
 	key = strings.ToLower(strings.TrimSpace(key))
 	value = strings.TrimSpace(value)

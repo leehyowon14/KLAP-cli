@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/kw-klap/klap-cli/internal/settings"
 )
 
 var errDashboardTest = errors.New("dashboard test error")
@@ -139,6 +140,35 @@ func TestCopyWithProgressReportsOffsetAndTotal(t *testing.T) {
 	}
 	if len(events) == 0 || events[len(events)-1] != 10 {
 		t.Fatalf("progress events = %v, want final 10", events)
+	}
+}
+
+func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
+	t.Setenv("KLAP_CONFIG_DIR", t.TempDir())
+	settingsStore, err := settings.NewStore()
+	if err != nil {
+		t.Fatalf("settings.NewStore() error = %v", err)
+	}
+	service := &Service{settingsStore: settingsStore}
+	if _, err := service.SetConfigValue("reminder.name", "To-do"); err != nil {
+		t.Fatalf("SetConfigValue(reminder.name) error = %v", err)
+	}
+	if _, err := service.SetConfigValue("download.concurrency", "9"); err != nil {
+		t.Fatalf("SetConfigValue(download.concurrency) error = %v", err)
+	}
+
+	got, err := service.ResetConfigSettings()
+	if err != nil {
+		t.Fatalf("ResetConfigSettings() error = %v", err)
+	}
+	if got.Reminder.ListName != settings.DefaultReminderListName {
+		t.Fatalf("Reminder.ListName = %q", got.Reminder.ListName)
+	}
+	if got.Download.Dir != settings.DefaultDownloadDir() || got.Download.Concurrency != settings.DefaultDownloadConcurrency {
+		t.Fatalf("Download = %+v", got.Download)
+	}
+	if got.Term.Value != "" {
+		t.Fatalf("Term.Value = %q", got.Term.Value)
 	}
 }
 

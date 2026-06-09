@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -166,6 +167,13 @@ func TestParseReminderConfigArgs(t *testing.T) {
 	}
 	if !ok || name != "To-do" || !useExistingList {
 		t.Fatalf("parseReminderConfigArgs() = %q, %v, %v", name, useExistingList, ok)
+	}
+}
+
+func TestConfigResetRejectsExtraArgs(t *testing.T) {
+	err := runConfig(context.Background(), nil, []string{"reset", "download"})
+	if err == nil || !strings.Contains(err.Error(), "klap config reset") {
+		t.Fatalf("runConfig(reset extra) error = %v", err)
 	}
 }
 

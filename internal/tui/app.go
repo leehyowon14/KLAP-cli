@@ -211,6 +211,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.adjustDownloadConcurrency(1)
 		case m.active == screenConfig && key == "-":
 			return m.adjustDownloadConcurrency(-1)
+		case m.active == screenConfig && keyMatches(key, "x", "ㅌ"):
+			return m.resetConfigSettings()
 		case m.active == screenLectures && keyMatches(key, "d", "ㅇ"):
 			m.active = screenDownloadSelect
 			m.loading = true
@@ -572,6 +574,16 @@ func (m model) adjustDownloadConcurrency(delta int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) resetConfigSettings() (tea.Model, tea.Cmd) {
+	if _, err := m.service.ResetConfigSettings(); err != nil {
+		m.err = err
+		return m, nil
+	}
+	m.err = nil
+	m.refreshConfigContent()
+	return m, nil
+}
+
 func (m *model) refreshConfigContent() {
 	settings, err := m.service.ConfigSettings()
 	if err != nil {
@@ -838,7 +850,7 @@ func (m model) renderPanel() string {
 			b.WriteString("\n")
 			b.WriteString(footerStyle.Render("enter 저장  esc 취소"))
 		} else {
-			b.WriteString(footerStyle.Render("d download.dir 편집  +/- 동시 다운로드"))
+			b.WriteString(footerStyle.Render("d download.dir 편집  +/- 동시 다운로드  x 초기화"))
 		}
 		b.WriteString("\n")
 	}

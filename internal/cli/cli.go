@@ -113,6 +113,16 @@ func runConfig(ctx context.Context, service *app.Service, args []string) error {
 		}
 		printConfigSettings(settings)
 		return nil
+	case "reset":
+		if len(args) != 1 {
+			return errors.New("usage: klap config reset")
+		}
+		settings, err := service.ResetConfigSettings()
+		if err != nil {
+			return err
+		}
+		printConfigSettings(settings)
+		return nil
 	case "reminder":
 		return runConfigReminder(ctx, service, args[1:])
 	case "download":
@@ -1314,6 +1324,7 @@ Usage:
   klap attend <all|과목명|과목번호> 온라인 강의와 학습활동 자동 수강
   klap config list      전체 설정 출력
   klap config set <key> <value> 설정 변경
+  klap config reset     설정 기본값 복원
   klap config reminder  reminder 설정 확인/변경
   klap config download  다운로드 폴더/동시성 설정 확인/변경`)
 }
