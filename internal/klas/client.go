@@ -12,6 +12,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -2185,21 +2186,77 @@ func ExtractKWCommonsContentID(values ...string) string {
 		if value == "" {
 			continue
 		}
-		index := strings.Index(value, "em/")
-		if index < 0 {
-			continue
-		}
-		id := value[index+len("em/"):]
-		for _, delimiter := range []string{"&", "?", "#"} {
-			if delimiterIndex := strings.Index(id, delimiter); delimiterIndex >= 0 {
-				id = id[:delimiterIndex]
-			}
-		}
-		if id = strings.TrimSpace(id); id != "" {
+		if id := extractKWCommonsContentIDFromURL(value); id != "" {
 			return id
 		}
 	}
 	return ""
+}
+
+func extractKWCommonsContentIDFromURL(value string) string {
+	value = strings.TrimSpace(html.UnescapeString(value))
+	if value == "" {
+		return ""
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
+		if id := extractKWCommonsContentIDFromPath(parsed.EscapedPath()); id != "" {
+			return id
+		}
+		for _, key := range []string{"content_id", "contentId", "contentID", "contents"} {
+			if id := normalizeKWCommonsContentID(parsed.Query().Get(key)); id != "" {
+				return id
+			}
+		}
+	}
+	if id := extractKWCommonsContentIDAfterMarker(value, "em/"); id != "" {
+		return id
+	}
+	for _, marker := range []string{"content_id=", "contentId=", "contentID=", "contents="} {
+		if id := extractKWCommonsContentIDAfterMarker(value, marker); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+func extractKWCommonsContentIDFromPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	parts := strings.Split(path, "/")
+	for index, part := range parts {
+		if part == "em" && index+1 < len(parts) {
+			if id := normalizeKWCommonsContentID(parts[index+1]); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+func extractKWCommonsContentIDAfterMarker(value string, marker string) string {
+	index := strings.Index(value, marker)
+	if index < 0 {
+		return ""
+	}
+	return normalizeKWCommonsContentID(value[index+len(marker):])
+}
+
+func normalizeKWCommonsContentID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	for _, delimiter := range []string{"&", "?", "#", "/", "'", "\"", ")", " "} {
+		if delimiterIndex := strings.Index(value, delimiter); delimiterIndex >= 0 {
+			value = value[:delimiterIndex]
+		}
+	}
+	if decoded, err := url.QueryUnescape(value); err == nil {
+		value = decoded
+	}
+	return strings.TrimSpace(value)
 }
 
 func ExtractMediaURL(body []byte) (string, error) {

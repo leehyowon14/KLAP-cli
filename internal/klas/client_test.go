@@ -339,6 +339,19 @@ func TestExtractKWCommonsContentID(t *testing.T) {
 	if got != "fallback-456" {
 		t.Fatalf("ExtractKWCommonsContentID() fallback = %q", got)
 	}
+
+	cases := map[string]string{
+		"https://kwcommons.kw.ac.kr/viewer/ssplayer/uniplayer_support/content.php?content_id=viewer-789": "viewer-789",
+		"https://kwcommons.kw.ac.kr/em/path-123/?contents=ignored":                                       "path-123",
+		"https://kwcommons.kw.ac.kr/em/html-123&amp;contents=abc":                                        "html-123",
+		"javascript:openPlayer('https://kwcommons.kw.ac.kr/em/script-123?contents=abc')":                 "script-123",
+		"https://kwcommons.kw.ac.kr/player?contents=query-123":                                           "query-123",
+	}
+	for value, want := range cases {
+		if got := ExtractKWCommonsContentID(value); got != want {
+			t.Fatalf("ExtractKWCommonsContentID(%q) = %q, want %q", value, got, want)
+		}
+	}
 }
 
 func TestExtractMediaURLDesktop(t *testing.T) {
