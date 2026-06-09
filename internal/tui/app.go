@@ -235,11 +235,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.downloadRows = msg.rows
 		m.downloadSelected = make(map[string]bool, len(msg.rows))
-		for _, row := range msg.rows {
-			if lectureDownloadable(row) {
-				m.downloadSelected[row.ID] = true
-			}
-		}
 		m.downloadCourse = 0
 		m.downloadCursor = 0
 	}
@@ -414,9 +409,24 @@ func (m *model) toggleDownloadCourse() {
 }
 
 func (m *model) toggleDownloadAll() {
+	allSelected := true
+	hasDownloadable := false
+	for _, row := range m.downloadRows {
+		if !lectureDownloadable(row) {
+			continue
+		}
+		hasDownloadable = true
+		if !m.downloadSelected[row.ID] {
+			allSelected = false
+			break
+		}
+	}
+	if !hasDownloadable {
+		return
+	}
 	for _, row := range m.downloadRows {
 		if lectureDownloadable(row) {
-			m.downloadSelected[row.ID] = true
+			m.downloadSelected[row.ID] = !allSelected
 		}
 	}
 }

@@ -258,8 +258,19 @@ func TestDownloadSelectionGroupsByCourse(t *testing.T) {
 		t.Fatalf("global toggle should include every course: %+v", m.downloadSelected)
 	}
 	m.toggleDownloadAll()
-	if !m.downloadSelected["1:a"] || !m.downloadSelected["1:b"] || !m.downloadSelected["2:c"] {
-		t.Fatalf("global select should keep every course selected: %+v", m.downloadSelected)
+	if m.downloadSelected["1:a"] || m.downloadSelected["1:b"] || m.downloadSelected["2:c"] {
+		t.Fatalf("global toggle should clear every course: %+v", m.downloadSelected)
+	}
+}
+
+func TestDownloadRowsStartUnselected(t *testing.T) {
+	m := model{active: screenDownloadSelect}
+	updated, _ := m.Update(downloadRowsMsg{rows: []app.LectureRow{
+		{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
+	}})
+	got := updated.(model)
+	if len(got.downloadSelected) != 0 {
+		t.Fatalf("downloadSelected default = %+v, want empty", got.downloadSelected)
 	}
 }
 
