@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "KLAPMacOSBridges",
     platforms: [
-        .macOS(.v15)
+        .macOS("26")
     ],
     products: [
         .executable(name: "TranscriptBridge", targets: ["TranscriptBridge"])
