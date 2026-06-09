@@ -366,6 +366,7 @@ func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTr
 			m.items[index].path = line.path
 			m.items[index].percent = line.percent
 			m.items[index].err = line.err
+			m.items[index].skipped = false
 			return
 		}
 	}
@@ -607,7 +608,7 @@ func itemProgressColor(item downloadStatusLine) string {
 }
 
 func itemProgressPercent(item downloadStatusLine) float64 {
-	if item.err != nil || item.skipped {
+	if item.err != nil {
 		return 1
 	}
 	switch item.status {
@@ -633,6 +634,9 @@ func itemProgressPercent(item downloadStatusLine) float64 {
 			return 0.05
 		}
 	}
+	if item.skipped {
+		return 1
+	}
 	return 0
 }
 
@@ -651,8 +655,6 @@ func (m lectureDownloadModel) itemProgressText(item downloadStatusLine) string {
 	switch {
 	case item.err != nil:
 		return errorStyle.Render(truncateText(item.err.Error(), 34))
-	case item.skipped:
-		return mutedStyle.Render("건너뜀")
 	case item.status == "transcribe":
 		if item.percent > 0 {
 			return taglineStyle.Render(fmt.Sprintf("전사중 %.0f%%", clampPercent(item.percent)*100))
@@ -660,6 +662,8 @@ func (m lectureDownloadModel) itemProgressText(item downloadStatusLine) string {
 		return taglineStyle.Render("전사중")
 	case item.status == "transcribed":
 		return taglineStyle.Render("전사완료")
+	case item.skipped:
+		return mutedStyle.Render("건너뜀")
 	case item.status == "done":
 		if strings.TrimSpace(item.path) != "" {
 			return mutedStyle.Render(truncateText(filepath.Base(item.path), 34))

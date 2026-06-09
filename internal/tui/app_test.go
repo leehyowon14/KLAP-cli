@@ -294,8 +294,14 @@ func TestLectureDownloadTranscribesSkippedVideoWhenTranscriptMissing(t *testing.
 	if len(cmds) != 1 || m.transcriptActive != 1 {
 		t.Fatalf("missing transcript cmds=%d active=%d", len(cmds), m.transcriptActive)
 	}
-	if len(m.items) != 1 || m.items[0].status != "transcribe" {
+	if len(m.items) != 1 || m.items[0].status != "transcribe" || m.items[0].skipped {
 		t.Fatalf("missing transcript status = %+v", m.items)
+	}
+	if got := m.itemProgressText(m.items[0]); !strings.Contains(got, "전사중") || strings.Contains(got, "건너뜀") {
+		t.Fatalf("transcribing skipped item text = %q", got)
+	}
+	if got := itemProgressPercent(m.items[0]); got >= 1 {
+		t.Fatalf("transcribing skipped item progress = %f, want in-progress", got)
 	}
 
 	transcriptPath := filepath.Join(root, "컴퓨터그래픽스", "transcription", "lecture.txt")
