@@ -329,9 +329,12 @@ func TestDownloadSelectionLeftRightChangesCourse(t *testing.T) {
 
 func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	view := formatConfig(app.ConfigSettings{
-		Download: app.DownloadSettings{Dir: "downloads", Concurrency: 7},
+		Download: app.DownloadSettings{Dir: "downloads", Concurrency: 7, Caffeinate: true},
 	})
 	if !strings.Contains(view, "concurrency  7") {
 		t.Fatalf("formatConfig() missing concurrency: %q", view)
+	}
+	if !strings.Contains(view, "caffeinate  true") {
+		t.Fatalf("formatConfig() missing caffeinate: %q", view)
 	}
 }

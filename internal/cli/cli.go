@@ -176,9 +176,9 @@ func runConfigDownload(ctx context.Context, service *app.Service, args []string)
 		return err
 	}
 	if !ok {
-		return errors.New(`usage: klap config download [--dir <다운로드 폴더>] [--concurrency <동시 다운로드 수>]`)
+		return errors.New(`usage: klap config download [--dir <다운로드 폴더>] [--concurrency <동시 다운로드 수>] [--caffeinate|--no-caffeinate]`)
 	}
-	settings, err := service.SetDownloadConfig(opts.Dir, opts.Concurrency)
+	settings, err := service.SetDownloadConfig(opts.Dir, opts.Concurrency, opts.Caffeinate)
 	if err != nil {
 		return err
 	}
@@ -189,6 +189,7 @@ func runConfigDownload(ctx context.Context, service *app.Service, args []string)
 type downloadConfigArgs struct {
 	Dir         string
 	Concurrency int
+	Caffeinate  *bool
 }
 
 func parseDownloadConfigArgs(args []string) (downloadConfigArgs, bool, error) {
@@ -211,11 +212,17 @@ func parseDownloadConfigArgs(args []string) (downloadConfigArgs, bool, error) {
 			}
 			opts.Concurrency = concurrency
 			i++
+		case "--caffeinate":
+			value := true
+			opts.Caffeinate = &value
+		case "--no-caffeinate":
+			value := false
+			opts.Caffeinate = &value
 		default:
 			return downloadConfigArgs{}, false, fmt.Errorf("unknown download config option: %s", args[i])
 		}
 	}
-	if strings.TrimSpace(opts.Dir) == "" && opts.Concurrency <= 0 {
+	if strings.TrimSpace(opts.Dir) == "" && opts.Concurrency <= 0 && opts.Caffeinate == nil {
 		return downloadConfigArgs{}, false, nil
 	}
 	return opts, true, nil
@@ -1326,7 +1333,7 @@ Usage:
   klap config set <key> <value> 설정 변경
   klap config reset     설정 기본값 복원
   klap config reminder  reminder 설정 확인/변경
-  klap config download  다운로드 폴더/동시성 설정 확인/변경`)
+  klap config download  다운로드 폴더/동시성/절전 방지 설정 확인/변경`)
 }
 
 func printReminderSettings(settings app.ReminderSettings) {
@@ -1338,6 +1345,7 @@ func printReminderSettings(settings app.ReminderSettings) {
 func printDownloadSettings(settings app.DownloadSettings) {
 	fmt.Printf("다운로드 폴더: %s\n", settings.Dir)
 	fmt.Printf("동시 다운로드: %d\n", settings.Concurrency)
+	fmt.Printf("절전 방지: %s\n", yesNo(settings.Caffeinate))
 }
 
 func printConfigSettings(settings app.ConfigSettings) {
@@ -1348,6 +1356,7 @@ func printConfigSettings(settings app.ConfigSettings) {
 	fmt.Printf("reminder.alarm-before-min: %d\n", settings.Reminder.AlarmBeforeMin)
 	fmt.Printf("download.dir: %s\n", settings.Download.Dir)
 	fmt.Printf("download.concurrency: %d\n", settings.Download.Concurrency)
+	fmt.Printf("download.caffeinate: %s\n", yesNo(settings.Download.Caffeinate))
 }
 
 func printDashboard(result app.DashboardResult) {

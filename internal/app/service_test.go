@@ -156,6 +156,9 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	if _, err := service.SetConfigValue("download.concurrency", "9"); err != nil {
 		t.Fatalf("SetConfigValue(download.concurrency) error = %v", err)
 	}
+	if _, err := service.SetConfigValue("download.caffeinate", "false"); err != nil {
+		t.Fatalf("SetConfigValue(download.caffeinate) error = %v", err)
+	}
 
 	got, err := service.ResetConfigSettings()
 	if err != nil {
@@ -166,6 +169,9 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	}
 	if got.Download.Dir != settings.DefaultDownloadDir() || got.Download.Concurrency != settings.DefaultDownloadConcurrency {
 		t.Fatalf("Download = %+v", got.Download)
+	}
+	if !got.Download.Caffeinate {
+		t.Fatal("Download.Caffeinate should reset to true")
 	}
 	if got.Term.Value != "" {
 		t.Fatalf("Term.Value = %q", got.Term.Value)

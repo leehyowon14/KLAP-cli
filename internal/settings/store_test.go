@@ -22,6 +22,9 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if got.Download.Concurrency != DefaultDownloadConcurrency {
 		t.Fatalf("Download.Concurrency = %d", got.Download.Concurrency)
 	}
+	if !DownloadCaffeinateEnabled(got.Download) {
+		t.Fatal("Download.Caffeinate should default to true")
+	}
 }
 
 func TestNormalizeReminderSettings(t *testing.T) {
@@ -39,6 +42,9 @@ func TestNormalizeReminderSettings(t *testing.T) {
 	if settings.Download.Concurrency != DefaultDownloadConcurrency {
 		t.Fatalf("Download.Concurrency = %d", settings.Download.Concurrency)
 	}
+	if !DownloadCaffeinateEnabled(settings.Download) {
+		t.Fatal("Download.Caffeinate should normalize to true")
+	}
 }
 
 func TestNormalizeMigratesLegacyDownloadDefault(t *testing.T) {
@@ -46,5 +52,14 @@ func TestNormalizeMigratesLegacyDownloadDefault(t *testing.T) {
 	settings.Normalize()
 	if settings.Download.Dir != DefaultDownloadDir() {
 		t.Fatalf("Download.Dir = %q", settings.Download.Dir)
+	}
+}
+
+func TestNormalizePreservesExplicitCaffeinateFalse(t *testing.T) {
+	disabled := false
+	settings := Settings{Download: Download{Caffeinate: &disabled}}
+	settings.Normalize()
+	if DownloadCaffeinateEnabled(settings.Download) {
+		t.Fatal("Download.Caffeinate explicit false should be preserved")
 	}
 }

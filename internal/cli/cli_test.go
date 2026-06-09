@@ -100,11 +100,11 @@ func TestDueOptions(t *testing.T) {
 }
 
 func TestParseDownloadConfigArgs(t *testing.T) {
-	opts, ok, err := parseDownloadConfigArgs([]string{"--dir", "downloads/course", "--concurrency", "12"})
+	opts, ok, err := parseDownloadConfigArgs([]string{"--dir", "downloads/course", "--concurrency", "12", "--no-caffeinate"})
 	if err != nil {
 		t.Fatalf("parseDownloadConfigArgs() error = %v", err)
 	}
-	if !ok || opts.Dir != "downloads/course" || opts.Concurrency != 12 {
+	if !ok || opts.Dir != "downloads/course" || opts.Concurrency != 12 || opts.Caffeinate == nil || *opts.Caffeinate {
 		t.Fatalf("parseDownloadConfigArgs() = %+v, %v", opts, ok)
 	}
 	if _, _, err := parseDownloadConfigArgs([]string{"--concurrency", "0"}); err == nil {

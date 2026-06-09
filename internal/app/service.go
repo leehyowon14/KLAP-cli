@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -396,6 +397,7 @@ type LectureDownloadResult struct {
 type DownloadSettings struct {
 	Dir         string
 	Concurrency int
+	Caffeinate  bool
 }
 
 type ConfigSettings struct {
@@ -607,7 +609,15 @@ func (s *Service) DownloadSettings() (DownloadSettings, error) {
 	if err != nil {
 		return DownloadSettings{}, err
 	}
-	return DownloadSettings{Dir: current.Download.Dir, Concurrency: current.Download.Concurrency}, nil
+	return downloadSettingsFrom(current), nil
+}
+
+func downloadSettingsFrom(current settings.Settings) DownloadSettings {
+	return DownloadSettings{
+		Dir:         current.Download.Dir,
+		Concurrency: current.Download.Concurrency,
+		Caffeinate:  settings.DownloadCaffeinateEnabled(current.Download),
+	}
 }
 
 func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
@@ -623,10 +633,10 @@ func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
 	if err := s.saveSettings(current); err != nil {
 		return DownloadSettings{}, err
 	}
-	return DownloadSettings{Dir: current.Download.Dir, Concurrency: current.Download.Concurrency}, nil
+	return downloadSettingsFrom(current), nil
 }
 
-func (s *Service) SetDownloadConfig(dir string, concurrency int) (DownloadSettings, error) {
+func (s *Service) SetDownloadConfig(dir string, concurrency int, caffeinate *bool) (DownloadSettings, error) {
 	current, err := s.loadSettings()
 	if err != nil {
 		return DownloadSettings{}, err
@@ -637,10 +647,13 @@ func (s *Service) SetDownloadConfig(dir string, concurrency int) (DownloadSettin
 	if concurrency > 0 {
 		current.Download.Concurrency = concurrency
 	}
+	if caffeinate != nil {
+		current.Download.Caffeinate = caffeinate
+	}
 	if err := s.saveSettings(current); err != nil {
 		return DownloadSettings{}, err
 	}
-	return DownloadSettings{Dir: current.Download.Dir, Concurrency: current.Download.Concurrency}, nil
+	return downloadSettingsFrom(current), nil
 }
 
 func (s *Service) ConfigSettings() (ConfigSettings, error) {
@@ -654,7 +667,7 @@ func (s *Service) ConfigSettings() (ConfigSettings, error) {
 			UseExistingList: current.Reminder.UseExistingList,
 			AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 		},
-		Download: DownloadSettings{Dir: current.Download.Dir, Concurrency: current.Download.Concurrency},
+		Download: downloadSettingsFrom(current),
 		Term:     TermSettings{Value: current.Term.Value, Label: termLabel(current.Term.Value)},
 	}, nil
 }
@@ -699,6 +712,12 @@ func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, erro
 			return ConfigSettings{}, errors.New("download.concurrency에는 1 이상의 정수가 필요합니다")
 		}
 		current.Download.Concurrency = parsed
+	case "download.caffeinate", "download.prevent-sleep", "download.keep-awake":
+		parsed, err := parseConfigBool(value)
+		if err != nil {
+			return ConfigSettings{}, err
+		}
+		current.Download.Caffeinate = &parsed
 	case "term", "term.value":
 		normalized, err := normalizeTermValue(value)
 		if err != nil {
@@ -2085,6 +2104,8 @@ func (s *Service) LectureOpenURL(ctx context.Context, id string, user UserOption
 }
 
 func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDownloadOptions) (LectureDownloadResult, error) {
+	defer s.startCaffeinate(ctx)()
+
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
 		return LectureDownloadResult{}, err
@@ -2207,6 +2228,8 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 }
 
 func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadAllOptions) (LectureDownloadAllResult, error) {
+	defer s.startCaffeinate(ctx)()
+
 	if strings.TrimSpace(opts.CourseFilter) == "" && len(opts.LectureIDs) == 0 {
 		return LectureDownloadAllResult{}, errors.New("전체 다운로드에는 과목명 또는 course list 번호가 필요합니다")
 	}
@@ -2454,6 +2477,8 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, i
 }
 
 func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []LectureDownloadItem, opts LectureTranscriptOptions) LectureTranscriptResult {
+	defer s.startCaffeinate(ctx)()
+
 	jobs := make([]transcript.Job, 0, len(items))
 	rows := make([]LectureRow, 0, len(items))
 	for _, item := range items {
@@ -2746,6 +2771,29 @@ func (s *Service) saveSettings(value settings.Settings) error {
 		return errors.New("settings store가 초기화되지 않았습니다")
 	}
 	return s.settingsStore.Save(value)
+}
+
+func (s *Service) startCaffeinate(ctx context.Context) func() {
+	if runtime.GOOS != "darwin" {
+		return func() {}
+	}
+	current, err := s.loadSettings()
+	if err != nil || !settings.DownloadCaffeinateEnabled(current.Download) {
+		return func() {}
+	}
+
+	cmd := exec.CommandContext(ctx, "caffeinate", "-dims")
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		return func() {}
+	}
+	return func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}
 }
 
 func assignmentDetailURL(yearHakgi string, course klas.Course, ordSeq string) string {

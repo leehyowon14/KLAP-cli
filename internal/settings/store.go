@@ -30,6 +30,7 @@ type Term struct {
 type Download struct {
 	Dir         string `json:"dir"`
 	Concurrency int    `json:"concurrency"`
+	Caffeinate  *bool  `json:"caffeinate"`
 }
 
 type Store struct {
@@ -85,6 +86,7 @@ func Default() Settings {
 		Download: Download{
 			Dir:         DefaultDownloadDir(),
 			Concurrency: DefaultDownloadConcurrency,
+			Caffeinate:  boolPtr(true),
 		},
 	}
 }
@@ -96,12 +98,7 @@ func (s *Settings) Normalize() {
 	if s.Reminder.AlarmBeforeMin <= 0 {
 		s.Reminder.AlarmBeforeMin = 24 * 60
 	}
-	if s.Download.Dir == "" || s.Download.Dir == "downloads" {
-		s.Download.Dir = DefaultDownloadDir()
-	}
-	if s.Download.Concurrency <= 0 {
-		s.Download.Concurrency = DefaultDownloadConcurrency
-	}
+	s.Download.Normalize()
 }
 
 func DefaultDownloadDir() string {
@@ -110,6 +107,27 @@ func DefaultDownloadDir() string {
 		return filepath.Join("Documents", "KLAP")
 	}
 	return filepath.Join(home, "Documents", "KLAP")
+}
+
+func DownloadCaffeinateEnabled(download Download) bool {
+	download.Normalize()
+	return download.Caffeinate != nil && *download.Caffeinate
+}
+
+func (d *Download) Normalize() {
+	if d.Dir == "" || d.Dir == "downloads" {
+		d.Dir = DefaultDownloadDir()
+	}
+	if d.Concurrency <= 0 {
+		d.Concurrency = DefaultDownloadConcurrency
+	}
+	if d.Caffeinate == nil {
+		d.Caffeinate = boolPtr(true)
+	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func configDir() (string, error) {
