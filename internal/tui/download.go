@@ -14,14 +14,15 @@ import (
 )
 
 type LectureDownloadRequest struct {
-	Target      string
-	User        app.UserOption
-	Dir         string
-	All         bool
-	Rows        []app.LectureRow
-	LectureIDs  []string
-	Concurrency int
-	Transcribe  bool
+	Target           string
+	User             app.UserOption
+	Dir              string
+	All              bool
+	Rows             []app.LectureRow
+	LectureIDs       []string
+	Concurrency      int
+	Transcribe       bool
+	TranscriptLocale string
 }
 
 type lectureDownloadModel struct {
@@ -247,7 +248,7 @@ func (m lectureDownloadModel) transcriptCommandForDownload(progress app.LectureD
 			Lecture: progress.Lecture,
 			Path:    progress.Path,
 			Bytes:   progress.Bytes,
-		}}, app.LectureTranscriptOptions{OnProgress: onProgress})
+		}}, app.LectureTranscriptOptions{Locale: m.request.TranscriptLocale, OnProgress: onProgress})
 		return lectureTranscriptDoneMsg{key: key, result: result}
 	}
 }

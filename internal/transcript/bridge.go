@@ -10,9 +10,10 @@ import (
 )
 
 type Job struct {
-	InputPath  string `json:"inputPath"`
-	OutputPath string `json:"outputPath"`
-	Locale     string `json:"locale,omitempty"`
+	InputPath         string   `json:"inputPath"`
+	OutputPath        string   `json:"outputPath"`
+	Locale            string   `json:"locale,omitempty"`
+	ContextualStrings []string `json:"contextualStrings,omitempty"`
 }
 
 type Request struct {

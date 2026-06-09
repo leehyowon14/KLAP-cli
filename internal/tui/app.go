@@ -82,6 +82,7 @@ const (
 	screenConfig
 	screenDownloadSelect
 	screenDownloadConfirm
+	screenDownloadLanguage
 	screenDownloadProgress
 )
 
@@ -110,7 +111,23 @@ type model struct {
 	downloadCourse     int
 	downloadCursor     int
 	downloadTranscribe bool
+	downloadLanguage   int
 	downloadProgress   *lectureDownloadModel
+}
+
+type transcriptLanguage struct {
+	label  string
+	locale string
+}
+
+var transcriptLanguages = []transcriptLanguage{
+	{label: "한국어", locale: "ko-KR"},
+	{label: "English", locale: "en-US"},
+	{label: "日本語", locale: "ja-JP"},
+	{label: "中文", locale: "zh-CN"},
+	{label: "Deutsch", locale: "de-DE"},
+	{label: "Français", locale: "fr-FR"},
+	{label: "Español", locale: "es-ES"},
 }
 
 type loadMsg struct {
@@ -162,6 +179,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.active == screenDownloadConfirm {
 			return m.updateDownloadConfirm(msg)
+		}
+		if m.active == screenDownloadLanguage {
+			return m.updateDownloadLanguage(msg)
 		}
 		if m.configEditing != "" {
 			return m.updateConfigInput(msg)
@@ -313,12 +333,39 @@ func (m model) updateDownloadConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.active = screenDownloadSelect
 	case keyMatches(key, "y", "ㅛ"):
 		m.downloadTranscribe = true
-		return m.startDownloadProgress()
+		m.active = screenDownloadLanguage
+		m.downloadLanguage = 0
 	case keyMatches(key, "n", "ㅜ"):
 		m.downloadTranscribe = false
 		return m.startDownloadProgress()
 	case key == "left" || key == "right" || key == "tab":
 		m.downloadTranscribe = !m.downloadTranscribe
+	case key == "enter":
+		if m.downloadTranscribe {
+			m.active = screenDownloadLanguage
+			m.downloadLanguage = 0
+			return m, nil
+		}
+		return m.startDownloadProgress()
+	}
+	return m, nil
+}
+
+func (m model) updateDownloadLanguage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
+		return m, tea.Quit
+	case key == "esc" || keyMatches(key, "b", "ㅠ"):
+		m.active = screenDownloadConfirm
+	case key == "up" || keyMatches(key, "k", "ㅏ"):
+		if m.downloadLanguage > 0 {
+			m.downloadLanguage--
+		}
+	case key == "down" || keyMatches(key, "j", "ㅓ"):
+		if m.downloadLanguage < len(transcriptLanguages)-1 {
+			m.downloadLanguage++
+		}
 	case key == "enter":
 		return m.startDownloadProgress()
 	}
@@ -338,11 +385,12 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 		cancel:  cancel,
 		service: m.service,
 		request: LectureDownloadRequest{
-			All:         true,
-			Rows:        selectedRows,
-			LectureIDs:  m.selectedDownloadIDs(),
-			Concurrency: settings.Concurrency,
-			Transcribe:  m.downloadTranscribe,
+			All:              true,
+			Rows:             selectedRows,
+			LectureIDs:       m.selectedDownloadIDs(),
+			Concurrency:      settings.Concurrency,
+			Transcribe:       m.downloadTranscribe,
+			TranscriptLocale: m.selectedTranscriptLocale(),
 		},
 		updates:           make(chan tea.Msg, 64),
 		items:             initialDownloadStatusLines(selectedRows),
@@ -456,6 +504,13 @@ func (m model) selectedDownloadRows() []app.LectureRow {
 		}
 	}
 	return rows
+}
+
+func (m model) selectedTranscriptLocale() string {
+	if m.downloadLanguage < 0 || m.downloadLanguage >= len(transcriptLanguages) {
+		return transcriptLanguages[0].locale
+	}
+	return transcriptLanguages[m.downloadLanguage].locale
 }
 
 type downloadCourseGroup struct {
@@ -622,6 +677,8 @@ func (m model) View() string {
 		return appStyle.Render(m.renderDownloadSelectView(width))
 	case screenDownloadConfirm:
 		return appStyle.Render(m.renderDownloadConfirmView(width))
+	case screenDownloadLanguage:
+		return appStyle.Render(m.renderDownloadLanguageView(width))
 	case screenDownloadProgress:
 		if m.downloadProgress == nil {
 			return appStyle.Render(errorStyle.Render("다운로드 상태가 없습니다"))
@@ -834,6 +891,33 @@ func (m model) renderDownloadConfirmView(width int) string {
 	return b.String()
 }
 
+func (m model) renderDownloadLanguageView(width int) string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader(width))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString("\n\n")
+	b.WriteString(sectionStyle.Render("Transcript Language"))
+	b.WriteString("\n")
+	b.WriteString("전사 주 언어를 선택하세요. 실제 강의에는 language switching(code switching)이 포함될 수 있습니다.")
+	b.WriteString("\n\n")
+	for index, language := range transcriptLanguages {
+		marker := "  "
+		if index == m.downloadLanguage {
+			marker = "› "
+		}
+		line := fmt.Sprintf("%s%s  %s", marker, language.label, mutedStyle.Render(language.locale))
+		if index == m.downloadLanguage {
+			line = menuSelectedStyle.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(footerStyle.Render("↑↓ 선택  |  enter 다운로드  |  b 뒤로  |  q 종료"))
+	return b.String()
+}
+
 func (m model) renderPanel() string {
 	var b strings.Builder
 	b.WriteString(sectionStyle.Render(screenTitle(m.active)))
@@ -942,6 +1026,8 @@ func screenTitle(value screen) string {
 	case screenDownloadSelect:
 		return "Download"
 	case screenDownloadConfirm:
+		return "Transcript"
+	case screenDownloadLanguage:
 		return "Transcript"
 	case screenDownloadProgress:
 		return "Download"

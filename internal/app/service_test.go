@@ -187,6 +187,30 @@ func TestTranscriptPath(t *testing.T) {
 	}
 }
 
+func TestLectureTranscriptContextIncludesCourseAndCodeSwitching(t *testing.T) {
+	got := lectureTranscriptContext(LectureRow{
+		CourseName: "컴퓨터그래픽스",
+		Lecture: klas.Lecture{
+			ModuleTitle: "14주차",
+			Title:       "렌더링 파이프라인",
+		},
+	})
+	for _, want := range []string{"광운대학교", "컴퓨터그래픽스", "14주차", "렌더링 파이프라인", "code switching"} {
+		if !containsString(got, want) {
+			t.Fatalf("lectureTranscriptContext() missing %q: %v", want, got)
+		}
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestParseAssignmentID(t *testing.T) {
 	courseIndex, ordSeq, err := ParseAssignmentID("3:7")
 	if err != nil {

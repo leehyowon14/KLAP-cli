@@ -2498,9 +2498,10 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 		}
 		rows = append(rows, item.Lecture)
 		jobs = append(jobs, transcript.Job{
-			InputPath:  item.Path,
-			OutputPath: outputPath,
-			Locale:     opts.Locale,
+			InputPath:         item.Path,
+			OutputPath:        outputPath,
+			Locale:            opts.Locale,
+			ContextualStrings: lectureTranscriptContext(item.Lecture),
 		})
 		emitLectureTranscriptProgress(opts.OnProgress, LectureTranscriptProgress{
 			Lecture:    item.Lecture,
@@ -2589,6 +2590,34 @@ func transcriptPath(path string) string {
 		return filepath.Join(dir, filepath.Base(path)+".txt")
 	}
 	return filepath.Join(dir, strings.TrimSuffix(filepath.Base(path), ext)+".txt")
+}
+
+func lectureTranscriptContext(row LectureRow) []string {
+	values := []string{
+		"광운대학교",
+		"Kwangwoon University",
+		"KLAS",
+		"이 강의는 한국어와 영어 등 language switching code switching이 포함될 수 있습니다",
+		"language switching",
+		"code switching",
+		row.CourseName,
+		row.Lecture.ModuleTitle,
+		row.Lecture.Title,
+	}
+	seen := make(map[string]struct{}, len(values))
+	context := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		context = append(context, value)
+	}
+	return context
 }
 
 func emitLectureTranscriptProgress(onProgress func(LectureTranscriptProgress), progress LectureTranscriptProgress) {

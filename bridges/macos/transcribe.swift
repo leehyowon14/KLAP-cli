@@ -6,6 +6,7 @@ struct TranscribeJob: Codable {
     let inputPath: String
     let outputPath: String
     let locale: String?
+    let contextualStrings: [String]?
 }
 
 struct TranscribeRequest: Codable {
@@ -44,7 +45,8 @@ enum BridgeError: Error, LocalizedError {
 func transcribe(job: TranscribeJob) async throws -> TranscribeResult {
     let inputURL = URL(fileURLWithPath: job.inputPath)
     let outputURL = URL(fileURLWithPath: job.outputPath)
-    let locale = Locale(identifier: job.locale?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? job.locale! : Locale.current.identifier)
+    let localeIdentifier = job.locale?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let locale = Locale(identifier: localeIdentifier?.isEmpty == false ? localeIdentifier! : "ko-KR")
 
     guard FileManager.default.fileExists(atPath: inputURL.path) else {
         throw CocoaError(.fileNoSuchFile)
@@ -53,9 +55,10 @@ func transcribe(job: TranscribeJob) async throws -> TranscribeResult {
         throw BridgeError.transcriberUnavailable
     }
 
+    let requestedLocale = locale.identifier(.bcp47)
     let supportedLocales = await SpeechTranscriber.supportedLocales
-    guard supportedLocales.contains(where: { $0.identifier == locale.identifier || $0.identifier(.bcp47) == locale.identifier(.bcp47) }) else {
-        throw BridgeError.unsupportedLocale(locale.identifier)
+    guard supportedLocales.contains(where: { $0.identifier(.bcp47) == requestedLocale }) else {
+        throw BridgeError.unsupportedLocale(requestedLocale)
     }
 
     for reservedLocale in await AssetInventory.reservedLocales {
@@ -71,14 +74,20 @@ func transcribe(job: TranscribeJob) async throws -> TranscribeResult {
     let modules: [any SpeechModule] = [transcriber]
 
     let installedLocales = await SpeechTranscriber.installedLocales
-    if !installedLocales.contains(where: { $0.identifier == locale.identifier || $0.identifier(.bcp47) == locale.identifier(.bcp47) }) {
+    if !installedLocales.contains(where: { $0.identifier(.bcp47) == requestedLocale }) {
         if let request = try await AssetInventory.assetInstallationRequest(supporting: modules) {
             try await request.downloadAndInstall()
         }
     }
 
     let analyzer = SpeechAnalyzer(modules: modules)
+    let analysisContext = AnalysisContext()
+    let contextualStrings = Array(Set((job.contextualStrings ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }))
+    if !contextualStrings.isEmpty {
+        analysisContext.contextualStrings[.general] = contextualStrings
+    }
     let audioFile = try AVAudioFile(forReading: inputURL)
+    try await analyzer.setContext(analysisContext)
     try await analyzer.start(inputAudioFile: audioFile, finishAfterFile: true)
 
     var transcript = AttributedString("")

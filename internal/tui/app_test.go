@@ -327,6 +327,17 @@ func TestDownloadSelectionLeftRightChangesCourse(t *testing.T) {
 	}
 }
 
+func TestTranscriptLanguageDefaultsToKoreanAndMentionsCodeSwitching(t *testing.T) {
+	m := model{downloadLanguage: 0}
+	if got := m.selectedTranscriptLocale(); got != "ko-KR" {
+		t.Fatalf("selectedTranscriptLocale() = %q", got)
+	}
+	view := m.renderDownloadLanguageView(96)
+	if !strings.Contains(view, "ko-KR") || !strings.Contains(view, "language switching(code switching)") {
+		t.Fatalf("renderDownloadLanguageView() = %q", view)
+	}
+}
+
 func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	view := formatConfig(app.ConfigSettings{
 		Download: app.DownloadSettings{Dir: "downloads", Concurrency: 7, Caffeinate: true},
