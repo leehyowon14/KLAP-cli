@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,9 +59,12 @@ func NewMacOSBridge(bridgePath string) MacOSBridge {
 	return MacOSBridge{bridgePath: bridgePath}
 }
 
-func (b MacOSBridge) Transcribe(request Request) (Response, error) {
+func (b MacOSBridge) Transcribe(ctx context.Context, request Request) (Response, error) {
 	if runtime.GOOS != "darwin" {
 		return Response{}, errors.New("강의 전사는 현재 macOS에서만 지원합니다")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	payload, err := json.Marshal(request)
@@ -69,10 +73,13 @@ func (b MacOSBridge) Transcribe(request Request) (Response, error) {
 	}
 
 	commandName, commandArgs := b.commandSpec()
-	command := exec.Command(commandName, commandArgs...)
+	command := exec.CommandContext(ctx, commandName, commandArgs...)
 	command.Stdin = bytes.NewReader(payload)
 	output, err := command.CombinedOutput()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return Response{}, ctxErr
+		}
 		return Response{}, fmt.Errorf("Swift transcript bridge 실패: %w\n%s", err, string(output))
 	}
 
@@ -83,9 +90,12 @@ func (b MacOSBridge) Transcribe(request Request) (Response, error) {
 	return response, nil
 }
 
-func (b MacOSBridge) TranscribeWithProgress(request Request, onProgress func(Progress)) (Response, error) {
+func (b MacOSBridge) TranscribeWithProgress(ctx context.Context, request Request, onProgress func(Progress)) (Response, error) {
 	if runtime.GOOS != "darwin" {
 		return Response{}, errors.New("강의 전사는 현재 macOS에서만 지원합니다")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	request.Progress = true
@@ -95,7 +105,7 @@ func (b MacOSBridge) TranscribeWithProgress(request Request, onProgress func(Pro
 	}
 
 	commandName, commandArgs := b.commandSpec()
-	command := exec.Command(commandName, commandArgs...)
+	command := exec.CommandContext(ctx, commandName, commandArgs...)
 	command.Stdin = bytes.NewReader(payload)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
@@ -117,6 +127,9 @@ func (b MacOSBridge) TranscribeWithProgress(request Request, onProgress func(Pro
 				break
 			}
 			_ = command.Wait()
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return Response{}, ctxErr
+			}
 			return Response{}, fmt.Errorf("Swift transcript bridge 이벤트 파싱 실패: %w\n%s", err, stderr.String())
 		}
 		switch item.Type {
@@ -135,6 +148,9 @@ func (b MacOSBridge) TranscribeWithProgress(request Request, onProgress func(Pro
 		}
 	}
 	if err := command.Wait(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return Response{}, ctxErr
+		}
 		return Response{}, fmt.Errorf("Swift transcript bridge 실패: %w\n%s", err, stderr.String())
 	}
 	if !responseSeen {
