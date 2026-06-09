@@ -19,6 +19,9 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if got.Download.Dir != "downloads" {
 		t.Fatalf("Download.Dir = %q", got.Download.Dir)
 	}
+	if got.Download.Concurrency != DefaultDownloadConcurrency {
+		t.Fatalf("Download.Concurrency = %d", got.Download.Concurrency)
+	}
 }
 
 func TestNormalizeReminderSettings(t *testing.T) {
@@ -32,5 +35,8 @@ func TestNormalizeReminderSettings(t *testing.T) {
 	}
 	if settings.Download.Dir != "downloads" {
 		t.Fatalf("Download.Dir = %q", settings.Download.Dir)
+	}
+	if settings.Download.Concurrency != DefaultDownloadConcurrency {
+		t.Fatalf("Download.Concurrency = %d", settings.Download.Concurrency)
 	}
 }

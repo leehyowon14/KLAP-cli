@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kw-klap/klap-cli/internal/app"
@@ -88,17 +89,19 @@ type menuItem struct {
 }
 
 type model struct {
-	ctx      context.Context
-	service  *app.Service
-	menu     []menuItem
-	cursor   int
-	active   screen
-	loading  bool
-	err      error
-	content  string
-	width    int
-	height   int
-	loadedAt time.Time
+	ctx           context.Context
+	service       *app.Service
+	menu          []menuItem
+	cursor        int
+	active        screen
+	loading       bool
+	err           error
+	content       string
+	width         int
+	height        int
+	loadedAt      time.Time
+	configEditing string
+	configInput   textinput.Model
 }
 
 type loadMsg struct {
@@ -137,6 +140,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tea.KeyMsg:
+		if m.configEditing != "" {
+			return m.updateConfigInput(msg)
+		}
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -176,6 +182,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.content = ""
 				return m, m.load(m.active, true)
 			}
+		case m.active == screenConfig && keyMatches(key, "d", "ㅇ"):
+			return m.startDownloadDirEdit()
+		case m.active == screenConfig && (key == "+" || key == "="):
+			return m.adjustDownloadConcurrency(1)
+		case m.active == screenConfig && key == "-":
+			return m.adjustDownloadConcurrency(-1)
 		}
 	case loadMsg:
 		if msg.screen != m.active {
@@ -196,6 +208,76 @@ func keyMatches(value string, keys ...string) bool {
 		}
 	}
 	return false
+}
+
+func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.configEditing = ""
+		return m, nil
+	case "enter":
+		value := strings.TrimSpace(m.configInput.Value())
+		if m.configEditing == "download.dir" {
+			if _, err := m.service.SetDownloadConfig(value, 0); err != nil {
+				m.err = err
+			} else {
+				m.err = nil
+				m.configEditing = ""
+				m.refreshConfigContent()
+			}
+		}
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.configInput, cmd = m.configInput.Update(msg)
+	return m, cmd
+}
+
+func (m model) startDownloadDirEdit() (tea.Model, tea.Cmd) {
+	settings, err := m.service.DownloadSettings()
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	input := textinput.New()
+	input.SetValue(settings.Dir)
+	input.Placeholder = "다운로드 폴더"
+	input.Prompt = "download.dir "
+	input.Focus()
+	m.configEditing = "download.dir"
+	m.configInput = input
+	return m, nil
+}
+
+func (m model) adjustDownloadConcurrency(delta int) (tea.Model, tea.Cmd) {
+	settings, err := m.service.DownloadSettings()
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	next := settings.Concurrency + delta
+	if next < 1 {
+		next = 1
+	}
+	if _, err := m.service.SetDownloadConfig("", next); err != nil {
+		m.err = err
+		return m, nil
+	}
+	m.err = nil
+	m.refreshConfigContent()
+	return m, nil
+}
+
+func (m *model) refreshConfigContent() {
+	settings, err := m.service.ConfigSettings()
+	if err != nil {
+		m.err = err
+		return
+	}
+	m.content = formatConfig(settings)
+	m.loadedAt = time.Now()
 }
 
 func (m model) View() string {
@@ -306,6 +388,17 @@ func (m model) renderPanel() string {
 	}
 	b.WriteString(m.content)
 	if !strings.HasSuffix(m.content, "\n") {
+		b.WriteString("\n")
+	}
+	if m.active == screenConfig {
+		b.WriteString("\n")
+		if m.configEditing != "" {
+			b.WriteString(m.configInput.View())
+			b.WriteString("\n")
+			b.WriteString(footerStyle.Render("enter 저장  esc 취소"))
+		} else {
+			b.WriteString(footerStyle.Render("d download.dir 편집  +/- 동시 다운로드"))
+		}
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -590,6 +683,7 @@ func formatConfig(settings app.ConfigSettings) string {
 		fmt.Sprintf("alarm-before-min  %d", settings.Reminder.AlarmBeforeMin),
 	}) + "\n" + renderSection("Download", []string{
 		"dir  " + settings.Download.Dir,
+		fmt.Sprintf("concurrency  %d", settings.Download.Concurrency),
 	})
 }
 

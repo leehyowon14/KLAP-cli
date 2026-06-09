@@ -168,3 +168,52 @@ func TestDashboardFormatUsesScanSections(t *testing.T) {
 		t.Fatalf("formatDashboard() metric spacing failed: %q", view)
 	}
 }
+
+func TestLectureDownloadFormatting(t *testing.T) {
+	row := app.LectureRow{
+		CourseName: "오픈소스소프트웨어실습",
+		Lecture: klas.Lecture{
+			ModuleTitle: "14주차",
+			Title:       "기말 보강 영상",
+		},
+	}
+	if got := lectureDownloadLabel(row); got != "오픈소스소프트웨어실습 · 14주차 · 기말 보강 영상" {
+		t.Fatalf("lectureDownloadLabel() = %q", got)
+	}
+	progress := app.LectureDownloadProgress{Bytes: 512, TotalBytes: 1024}
+	if got := lectureDownloadPercent(progress); got != 0.5 {
+		t.Fatalf("lectureDownloadPercent() = %f", got)
+	}
+	if got := formatDownloadBytes(1536); got != "1.5 KB" {
+		t.Fatalf("formatDownloadBytes() = %q", got)
+	}
+}
+
+func TestLectureSelectionToggleAll(t *testing.T) {
+	rows := []app.LectureRow{
+		{ID: "1:a", Lecture: klas.Lecture{ContentID: "a"}},
+		{ID: "1:b", Lecture: klas.Lecture{ContentID: "b"}},
+		{ID: "1:empty"},
+	}
+	model := lectureSelectionModel{
+		rows:     rows,
+		selected: map[string]bool{"1:a": true, "1:b": true},
+	}
+	model.toggleAll()
+	if model.selected["1:a"] || model.selected["1:b"] {
+		t.Fatalf("toggleAll() expected selected rows off: %+v", model.selected)
+	}
+	model.toggleAll()
+	if !model.selected["1:a"] || !model.selected["1:b"] || model.selected["1:empty"] {
+		t.Fatalf("toggleAll() expected downloadable rows on only: %+v", model.selected)
+	}
+}
+
+func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
+	view := formatConfig(app.ConfigSettings{
+		Download: app.DownloadSettings{Dir: "downloads", Concurrency: 7},
+	})
+	if !strings.Contains(view, "concurrency  7") {
+		t.Fatalf("formatConfig() missing concurrency: %q", view)
+	}
+}

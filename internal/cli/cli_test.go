@@ -99,12 +99,15 @@ func TestDueOptions(t *testing.T) {
 }
 
 func TestParseDownloadConfigArgs(t *testing.T) {
-	dir, ok, err := parseDownloadConfigArgs([]string{"--dir", "downloads/course"})
+	opts, ok, err := parseDownloadConfigArgs([]string{"--dir", "downloads/course", "--concurrency", "12"})
 	if err != nil {
 		t.Fatalf("parseDownloadConfigArgs() error = %v", err)
 	}
-	if !ok || dir != "downloads/course" {
-		t.Fatalf("parseDownloadConfigArgs() = %q, %v", dir, ok)
+	if !ok || opts.Dir != "downloads/course" || opts.Concurrency != 12 {
+		t.Fatalf("parseDownloadConfigArgs() = %+v, %v", opts, ok)
+	}
+	if _, _, err := parseDownloadConfigArgs([]string{"--concurrency", "0"}); err == nil {
+		t.Fatal("parseDownloadConfigArgs() expected concurrency error")
 	}
 	if _, _, err := parseDownloadConfigArgs([]string{"--bad"}); err == nil {
 		t.Fatal("parseDownloadConfigArgs() expected error")

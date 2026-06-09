@@ -77,6 +77,7 @@ klap config set reminder.name "광운대학교"
 klap config set reminder.use-existing-list true
 klap config download
 klap config download --dir ~/Downloads/KLAP
+klap config download --concurrency 8
 ```
 
 `klap auth`는 학번과 비밀번호를 입력받은 뒤 KLAS 로그인 API로 즉시 검증한다.
@@ -97,14 +98,16 @@ klap config download --dir ~/Downloads/KLAP
 `klap due`는 과제, 미완료 온라인 강의/학습활동, 학사일정을 마감순으로 합쳐 보여준다.
 기본 범위는 14일이며 `--week` 또는 `--days 30`으로 조정할 수 있다.
 
-`klap lecture download`는 `--dir`이 없으면 `klap config download --dir <경로>`로 저장한 기본 다운로드 폴더를 사용한다.
+`klap lecture download <과목명|과목번호>`는 Space로 받을 강의를 선택한 뒤 다운로드한다.
+다운로드는 같은 위치에서 progress bar를 갱신하며, 동시 다운로드 수는 `klap config download --concurrency <수>`로 바꾼다.
+`--dir`이 없으면 `klap config download --dir <경로>`로 저장한 기본 다운로드 폴더를 사용한다.
 `klap lecture download status`와 `klap lecture download open`으로 받은 파일을 확인할 수 있다.
 
 Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림을 생성한다.
 `--use-existing-list`를 쓰면 지정한 기존 목록만 사용하며, 없을 때 새로 만들지 않는다.
 
 `klap config list`는 현재 설정을 한 번에 보여준다.
-`klap config set <key> <value>`는 `term`, `reminder.name`, `reminder.use-existing-list`, `download.dir`를 지원한다.
+`klap config set <key> <value>`는 `term`, `reminder.name`, `reminder.use-existing-list`, `download.dir`, `download.concurrency`를 지원한다.
 
 ## 개발 실행
 

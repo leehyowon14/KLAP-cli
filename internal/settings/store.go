@@ -9,6 +9,7 @@ import (
 )
 
 const DefaultReminderListName = "Kwangwoon Univ."
+const DefaultDownloadConcurrency = 3
 
 type Settings struct {
 	Reminder Reminder `json:"reminder"`
@@ -27,7 +28,8 @@ type Term struct {
 }
 
 type Download struct {
-	Dir string `json:"dir"`
+	Dir         string `json:"dir"`
+	Concurrency int    `json:"concurrency"`
 }
 
 type Store struct {
@@ -81,7 +83,8 @@ func Default() Settings {
 			AlarmBeforeMin: 24 * 60,
 		},
 		Download: Download{
-			Dir: "downloads",
+			Dir:         "downloads",
+			Concurrency: DefaultDownloadConcurrency,
 		},
 	}
 }
@@ -95,6 +98,9 @@ func (s *Settings) Normalize() {
 	}
 	if s.Download.Dir == "" {
 		s.Download.Dir = "downloads"
+	}
+	if s.Download.Concurrency <= 0 {
+		s.Download.Concurrency = DefaultDownloadConcurrency
 	}
 }
 

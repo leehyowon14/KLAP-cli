@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kw-klap/klap-cli/internal/account"
@@ -135,14 +136,18 @@ type LectureListOptions struct {
 }
 
 type LectureDownloadOptions struct {
-	User UserOption
-	Dir  string
+	User       UserOption
+	Dir        string
+	OnProgress func(LectureDownloadProgress)
 }
 
 type LectureDownloadAllOptions struct {
 	User         UserOption
 	CourseFilter string
 	Dir          string
+	OnProgress   func(LectureDownloadProgress)
+	Concurrency  int
+	LectureIDs   []string
 }
 
 type LectureAttendOptions struct {
@@ -382,7 +387,8 @@ type LectureDownloadResult struct {
 }
 
 type DownloadSettings struct {
-	Dir string
+	Dir         string
+	Concurrency int
 }
 
 type ConfigSettings struct {
@@ -414,6 +420,18 @@ type LectureDownloadItem struct {
 
 type LectureDownloadAllResult struct {
 	Items []LectureDownloadItem
+}
+
+type LectureDownloadProgress struct {
+	Lecture      LectureRow
+	Path         string
+	Stage        string
+	CurrentIndex int
+	TotalItems   int
+	Bytes        int64
+	TotalBytes   int64
+	Skipped      bool
+	Err          error
 }
 
 type LectureAttendResult struct {
@@ -561,7 +579,7 @@ func (s *Service) DownloadSettings() (DownloadSettings, error) {
 	if err != nil {
 		return DownloadSettings{}, err
 	}
-	return DownloadSettings{Dir: current.Download.Dir}, nil
+	return DownloadSettings{Dir: current.Download.Dir, Concurrency: current.Download.Concurrency}, nil
 }
 
 func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
@@ -577,7 +595,24 @@ func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
 	if err := s.saveSettings(current); err != nil {
 		return DownloadSettings{}, err
 	}
-	return DownloadSettings{Dir: current.Download.Dir}, nil
+	return DownloadSettings{Dir: current.Download.Dir, Concurrency: current.Download.Concurrency}, nil
+}
+
+func (s *Service) SetDownloadConfig(dir string, concurrency int) (DownloadSettings, error) {
+	current, err := s.loadSettings()
+	if err != nil {
+		return DownloadSettings{}, err
+	}
+	if strings.TrimSpace(dir) != "" {
+		current.Download.Dir = strings.TrimSpace(dir)
+	}
+	if concurrency > 0 {
+		current.Download.Concurrency = concurrency
+	}
+	if err := s.saveSettings(current); err != nil {
+		return DownloadSettings{}, err
+	}
+	return DownloadSettings{Dir: current.Download.Dir, Concurrency: current.Download.Concurrency}, nil
 }
 
 func (s *Service) ConfigSettings() (ConfigSettings, error) {
@@ -591,7 +626,7 @@ func (s *Service) ConfigSettings() (ConfigSettings, error) {
 			UseExistingList: current.Reminder.UseExistingList,
 			AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 		},
-		Download: DownloadSettings{Dir: current.Download.Dir},
+		Download: DownloadSettings{Dir: current.Download.Dir, Concurrency: current.Download.Concurrency},
 		Term:     TermSettings{Value: current.Term.Value, Label: termLabel(current.Term.Value)},
 	}, nil
 }
@@ -623,6 +658,12 @@ func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, erro
 			return ConfigSettings{}, errors.New("다운로드 폴더 경로가 필요합니다")
 		}
 		current.Download.Dir = value
+	case "download.concurrency", "download.workers":
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed <= 0 {
+			return ConfigSettings{}, errors.New("download.concurrency에는 1 이상의 정수가 필요합니다")
+		}
+		current.Download.Concurrency = parsed
 	case "term", "term.value":
 		normalized, err := normalizeTermValue(value)
 		if err != nil {
@@ -2049,6 +2090,18 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 	if matched == nil {
 		return LectureDownloadResult{}, fmt.Errorf("강의를 찾을 수 없습니다: %s", id)
 	}
+	row := LectureRow{
+		ID:         id,
+		TermValue:  term.Value,
+		CourseName: course.Name,
+		Lecture:    *matched,
+	}
+	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
+		Lecture:      row,
+		Stage:        "resolve",
+		CurrentIndex: 1,
+		TotalItems:   1,
+	})
 
 	mediaURL, err := client.ResolveLectureMediaURL(ctx, contentID)
 	if err != nil {
@@ -2065,17 +2118,45 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 	}
 
 	path := filepath.Join(dir, lectureFilename(course.Name, *matched, mediaURL))
-	bytesWritten, err := downloadFile(ctx, mediaURL, path)
+	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
+		Lecture:      row,
+		Path:         path,
+		Stage:        "download",
+		CurrentIndex: 1,
+		TotalItems:   1,
+	})
+	bytesWritten, err := downloadFile(ctx, mediaURL, path, func(bytesWritten int64, totalBytes int64) {
+		emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Path:         path,
+			Stage:        "download",
+			CurrentIndex: 1,
+			TotalItems:   1,
+			Bytes:        bytesWritten,
+			TotalBytes:   totalBytes,
+		})
+	})
 	if err != nil {
+		emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Path:         path,
+			Stage:        "error",
+			CurrentIndex: 1,
+			TotalItems:   1,
+			Bytes:        bytesWritten,
+			Err:          err,
+		})
 		return LectureDownloadResult{}, err
 	}
-
-	row := LectureRow{
-		ID:         id,
-		TermValue:  term.Value,
-		CourseName: course.Name,
-		Lecture:    *matched,
-	}
+	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
+		Lecture:      row,
+		Path:         path,
+		Stage:        "done",
+		CurrentIndex: 1,
+		TotalItems:   1,
+		Bytes:        bytesWritten,
+		TotalBytes:   bytesWritten,
+	})
 	return LectureDownloadResult{
 		Path:     path,
 		Bytes:    bytesWritten,
@@ -2112,7 +2193,25 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 		return LectureDownloadAllResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
 
-	result := LectureDownloadAllResult{}
+	concurrency, err := s.effectiveDownloadConcurrency(opts.Concurrency)
+	if err != nil {
+		return LectureDownloadAllResult{}, err
+	}
+	selectedIDs := make(map[string]struct{}, len(opts.LectureIDs))
+	for _, id := range opts.LectureIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			selectedIDs[id] = struct{}{}
+		}
+	}
+
+	type downloadTask struct {
+		Index  int
+		Total  int
+		Course klas.Course
+		Row    LectureRow
+	}
+	tasks := make([]downloadTask, 0)
 	for _, selectedCourse := range courses {
 		lectures, err := client.Lectures(ctx, term.Value, selectedCourse.Course)
 		if err != nil {
@@ -2136,42 +2235,169 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 				CourseName: selectedCourse.Course.Name,
 				Lecture:    lecture,
 			}
-			item := LectureDownloadItem{Lecture: row}
-			if strings.TrimSpace(lecture.ContentID) == "" {
-				item.Skipped = true
-				item.Err = errors.New("KWCommons 콘텐츠 ID가 없습니다")
-				result.Items = append(result.Items, item)
-				continue
+			if len(selectedIDs) > 0 {
+				if _, ok := selectedIDs[row.ID]; !ok {
+					continue
+				}
 			}
-
-			mediaURL, err := client.ResolveLectureMediaURL(ctx, lecture.ContentID)
-			if err != nil {
-				item.Err = err
-				result.Items = append(result.Items, item)
-				continue
-			}
-
-			item.Path = filepath.Join(dir, lectureFilename(selectedCourse.Course.Name, lecture, mediaURL))
-			if _, err := os.Stat(item.Path); err == nil {
-				item.Skipped = true
-				result.Items = append(result.Items, item)
-				continue
-			} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-				item.Err = err
-				result.Items = append(result.Items, item)
-				continue
-			}
-
-			bytesWritten, err := downloadFile(ctx, mediaURL, item.Path)
-			item.Bytes = bytesWritten
-			if err != nil {
-				item.Err = err
-			}
-			result.Items = append(result.Items, item)
+			tasks = append(tasks, downloadTask{Course: selectedCourse.Course, Row: row})
 		}
 	}
+	for index := range tasks {
+		tasks[index].Index = index + 1
+		tasks[index].Total = len(tasks)
+	}
+	if len(tasks) == 0 {
+		return LectureDownloadAllResult{}, nil
+	}
+	if concurrency > len(tasks) {
+		concurrency = len(tasks)
+	}
 
+	type downloadTaskResult struct {
+		Index int
+		Item  LectureDownloadItem
+	}
+	jobs := make(chan downloadTask)
+	results := make(chan downloadTaskResult, len(tasks))
+	var wg sync.WaitGroup
+	worker := func() {
+		defer wg.Done()
+		for task := range jobs {
+			results <- downloadTaskResult{Index: task.Index - 1, Item: downloadLectureTask(ctx, client, dir, task.Index, task.Total, task.Course, task.Row, opts.OnProgress)}
+		}
+	}
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		go worker()
+	}
+	go func() {
+		defer close(jobs)
+		for _, task := range tasks {
+			select {
+			case <-ctx.Done():
+				return
+			case jobs <- task:
+			}
+		}
+	}()
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	result := LectureDownloadAllResult{Items: make([]LectureDownloadItem, len(tasks))}
+	for item := range results {
+		result.Items[item.Index] = item.Item
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
 	return result, nil
+}
+
+func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, index int, total int, course klas.Course, row LectureRow, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
+	item := LectureDownloadItem{Lecture: row}
+	if strings.TrimSpace(row.Lecture.ContentID) == "" {
+		item.Skipped = true
+		item.Err = errors.New("KWCommons 콘텐츠 ID가 없습니다")
+		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Stage:        "skip",
+			CurrentIndex: index,
+			TotalItems:   total,
+			Skipped:      true,
+			Err:          item.Err,
+		})
+		return item
+	}
+
+	emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+		Lecture:      row,
+		Stage:        "resolve",
+		CurrentIndex: index,
+		TotalItems:   total,
+	})
+	mediaURL, err := client.ResolveLectureMediaURL(ctx, row.Lecture.ContentID)
+	if err != nil {
+		item.Err = err
+		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Stage:        "error",
+			CurrentIndex: index,
+			TotalItems:   total,
+			Err:          err,
+		})
+		return item
+	}
+
+	item.Path = filepath.Join(dir, lectureFilename(course.Name, row.Lecture, mediaURL))
+	if _, err := os.Stat(item.Path); err == nil {
+		item.Skipped = true
+		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Path:         item.Path,
+			Stage:        "skip",
+			CurrentIndex: index,
+			TotalItems:   total,
+			Skipped:      true,
+		})
+		return item
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		item.Err = err
+		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Path:         item.Path,
+			Stage:        "error",
+			CurrentIndex: index,
+			TotalItems:   total,
+			Err:          err,
+		})
+		return item
+	}
+
+	emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+		Lecture:      row,
+		Path:         item.Path,
+		Stage:        "download",
+		CurrentIndex: index,
+		TotalItems:   total,
+	})
+	bytesWritten, err := downloadFile(ctx, mediaURL, item.Path, func(bytesWritten int64, totalBytes int64) {
+		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Path:         item.Path,
+			Stage:        "download",
+			CurrentIndex: index,
+			TotalItems:   total,
+			Bytes:        bytesWritten,
+			TotalBytes:   totalBytes,
+		})
+	})
+	item.Bytes = bytesWritten
+	if err != nil {
+		item.Err = err
+		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+			Lecture:      row,
+			Path:         item.Path,
+			Stage:        "error",
+			CurrentIndex: index,
+			TotalItems:   total,
+			Bytes:        bytesWritten,
+			Err:          err,
+		})
+		return item
+	}
+	emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
+		Lecture:      row,
+		Path:         item.Path,
+		Stage:        "done",
+		CurrentIndex: index,
+		TotalItems:   total,
+		Bytes:        bytesWritten,
+		TotalBytes:   bytesWritten,
+	})
+	return item
 }
 
 func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAttendOptions) (LectureAttendResult, error) {
@@ -3189,6 +3415,20 @@ func (s *Service) effectiveDownloadDir(dir string) (string, error) {
 	return current.Download.Dir, nil
 }
 
+func (s *Service) effectiveDownloadConcurrency(concurrency int) (int, error) {
+	if concurrency > 0 {
+		return concurrency, nil
+	}
+	current, err := s.loadSettings()
+	if err != nil {
+		return 0, err
+	}
+	if current.Download.Concurrency <= 0 {
+		return settings.DefaultDownloadConcurrency, nil
+	}
+	return current.Download.Concurrency, nil
+}
+
 func lectureFilename(courseName string, lecture klas.Lecture, mediaURL string) string {
 	parts := []string{
 		sanitizePathComponent(courseName),
@@ -3243,7 +3483,13 @@ func sanitizePathComponent(value string) string {
 	return strings.Trim(value, ". ")
 }
 
-func downloadFile(ctx context.Context, sourceURL string, path string) (int64, error) {
+func emitLectureDownloadProgress(onProgress func(LectureDownloadProgress), progress LectureDownloadProgress) {
+	if onProgress != nil {
+		onProgress(progress)
+	}
+}
+
+func downloadFile(ctx context.Context, sourceURL string, path string, onProgress func(bytesWritten int64, totalBytes int64)) (int64, error) {
 	if _, err := os.Stat(path); err == nil {
 		return 0, fmt.Errorf("이미 파일이 있습니다: %s", path)
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -3282,12 +3528,19 @@ func downloadFile(ctx context.Context, sourceURL string, path string) (int64, er
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return 0, fmt.Errorf("동영상 다운로드 HTTP 오류: %s", response.Status)
 	}
+	totalBytes := response.ContentLength
+	if totalBytes > 0 {
+		totalBytes += offset
+	}
+	if onProgress != nil {
+		onProgress(offset, totalBytes)
+	}
 
 	file, err := os.OpenFile(partPath, flag, 0o644)
 	if err != nil {
 		return 0, fmt.Errorf("임시 파일 열기 실패: %w", err)
 	}
-	written, copyErr := io.Copy(file, response.Body)
+	written, copyErr := copyWithProgress(file, response.Body, offset, totalBytes, onProgress)
 	closeErr := file.Close()
 	if copyErr != nil {
 		return offset + written, fmt.Errorf("동영상 다운로드 실패: %w", copyErr)
@@ -3300,6 +3553,35 @@ func downloadFile(ctx context.Context, sourceURL string, path string) (int64, er
 		return offset + written, fmt.Errorf("다운로드 파일 저장 실패: %w", err)
 	}
 	return offset + written, nil
+}
+
+func copyWithProgress(dst io.Writer, src io.Reader, offset int64, totalBytes int64, onProgress func(bytesWritten int64, totalBytes int64)) (int64, error) {
+	buffer := make([]byte, 32*1024)
+	var written int64
+	for {
+		nr, readErr := src.Read(buffer)
+		if nr > 0 {
+			nw, writeErr := dst.Write(buffer[:nr])
+			if nw > 0 {
+				written += int64(nw)
+				if onProgress != nil {
+					onProgress(offset+written, totalBytes)
+				}
+			}
+			if writeErr != nil {
+				return written, writeErr
+			}
+			if nr != nw {
+				return written, io.ErrShortWrite
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return written, nil
+			}
+			return written, readErr
+		}
+	}
 }
 
 func attendLecture(ctx context.Context, client *klas.Client, row LectureRow, interval time.Duration, onProgress func(LectureRow, klas.LectureProgress)) (klas.LectureProgress, error) {

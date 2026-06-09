@@ -161,14 +161,14 @@ func runConfigDownload(ctx context.Context, service *app.Service, args []string)
 		return nil
 	}
 
-	dir, ok, err := parseDownloadConfigArgs(args)
+	opts, ok, err := parseDownloadConfigArgs(args)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return errors.New(`usage: klap config download [--dir <다운로드 폴더>]`)
+		return errors.New(`usage: klap config download [--dir <다운로드 폴더>] [--concurrency <동시 다운로드 수>]`)
 	}
-	settings, err := service.SetDownloadDir(dir)
+	settings, err := service.SetDownloadConfig(opts.Dir, opts.Concurrency)
 	if err != nil {
 		return err
 	}
@@ -176,23 +176,39 @@ func runConfigDownload(ctx context.Context, service *app.Service, args []string)
 	return nil
 }
 
-func parseDownloadConfigArgs(args []string) (dir string, ok bool, err error) {
+type downloadConfigArgs struct {
+	Dir         string
+	Concurrency int
+}
+
+func parseDownloadConfigArgs(args []string) (downloadConfigArgs, bool, error) {
+	var opts downloadConfigArgs
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--dir":
 			if i+1 >= len(args) {
-				return "", false, errors.New("--dir에는 다운로드 폴더 경로가 필요합니다")
+				return downloadConfigArgs{}, false, errors.New("--dir에는 다운로드 폴더 경로가 필요합니다")
 			}
-			dir = args[i+1]
+			opts.Dir = args[i+1]
+			i++
+		case "--concurrency":
+			if i+1 >= len(args) {
+				return downloadConfigArgs{}, false, errors.New("--concurrency에는 1 이상의 정수가 필요합니다")
+			}
+			concurrency, err := strconv.Atoi(args[i+1])
+			if err != nil || concurrency <= 0 {
+				return downloadConfigArgs{}, false, errors.New("--concurrency에는 1 이상의 정수가 필요합니다")
+			}
+			opts.Concurrency = concurrency
 			i++
 		default:
-			return "", false, fmt.Errorf("unknown download config option: %s", args[i])
+			return downloadConfigArgs{}, false, fmt.Errorf("unknown download config option: %s", args[i])
 		}
 	}
-	if strings.TrimSpace(dir) == "" {
-		return "", false, nil
+	if strings.TrimSpace(opts.Dir) == "" && opts.Concurrency <= 0 {
+		return downloadConfigArgs{}, false, nil
 	}
-	return dir, true, nil
+	return opts, true, nil
 }
 
 func parseReminderConfigArgs(args []string) (name string, useExistingList bool, ok bool, err error) {
@@ -722,26 +738,40 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 			return err
 		}
 		if !looksLikeLectureID(args[1]) {
-			result, err := service.DownloadAllLectures(ctx, app.LectureDownloadAllOptions{
-				User:         app.UserOption{StudentID: userFlag(args[2:])},
+			user := app.UserOption{StudentID: userFlag(args[2:])}
+			rows, err := service.LectureList(ctx, app.LectureListOptions{
+				User:         user,
 				CourseFilter: args[1],
-				Dir:          dir,
+				Refresh:      true,
 			})
 			if err != nil {
 				return err
 			}
-			printLectureDownloadAllResult(result)
-			return nil
+			lectureIDs, err := tui.RunLectureSelection(ctx, rows)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil
+				}
+				return err
+			}
+			settings, err := service.DownloadSettings()
+			if err != nil {
+				return err
+			}
+			return tui.RunLectureDownload(ctx, service, tui.LectureDownloadRequest{
+				Target:      args[1],
+				User:        user,
+				Dir:         dir,
+				All:         true,
+				LectureIDs:  lectureIDs,
+				Concurrency: settings.Concurrency,
+			})
 		}
-		result, err := service.DownloadLecture(ctx, args[1], app.LectureDownloadOptions{
-			User: app.UserOption{StudentID: userFlag(args[2:])},
-			Dir:  dir,
+		return tui.RunLectureDownload(ctx, service, tui.LectureDownloadRequest{
+			Target: args[1],
+			User:   app.UserOption{StudentID: userFlag(args[2:])},
+			Dir:    dir,
 		})
-		if err != nil {
-			return err
-		}
-		fmt.Printf("다운로드 완료: %s (%s)\n", result.Path, formatBytes(result.Bytes))
-		return nil
 	case "attend":
 		return runLectureAttend(ctx, service, args[1:])
 	case "open":
@@ -1290,7 +1320,7 @@ Usage:
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
   klap lecture status    온라인 강의 수강 상태 출력
-  klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
+  klap lecture download <과목명|과목번호|강의ID> 온라인 강의 선택/다운로드
   klap lecture download status 다운로드 폴더 상태 출력
   klap lecture download open 다운로드 폴더 열기
   klap lecture attend <강의ID> 특정 온라인 강의 자동 수강
@@ -1299,7 +1329,7 @@ Usage:
   klap config list      전체 설정 출력
   klap config set <key> <value> 설정 변경
   klap config reminder  reminder 설정 확인/변경
-  klap config download  다운로드 설정 확인/변경`)
+  klap config download  다운로드 폴더/동시성 설정 확인/변경`)
 }
 
 func printReminderSettings(settings app.ReminderSettings) {
@@ -1310,6 +1340,7 @@ func printReminderSettings(settings app.ReminderSettings) {
 
 func printDownloadSettings(settings app.DownloadSettings) {
 	fmt.Printf("다운로드 폴더: %s\n", settings.Dir)
+	fmt.Printf("동시 다운로드: %d\n", settings.Concurrency)
 }
 
 func printConfigSettings(settings app.ConfigSettings) {
@@ -1319,6 +1350,7 @@ func printConfigSettings(settings app.ConfigSettings) {
 	fmt.Printf("reminder.use-existing-list: %s\n", yesNo(settings.Reminder.UseExistingList))
 	fmt.Printf("reminder.alarm-before-min: %d\n", settings.Reminder.AlarmBeforeMin)
 	fmt.Printf("download.dir: %s\n", settings.Download.Dir)
+	fmt.Printf("download.concurrency: %d\n", settings.Download.Concurrency)
 }
 
 func printDashboard(result app.DashboardResult) {
