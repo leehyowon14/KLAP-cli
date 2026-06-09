@@ -141,6 +141,15 @@ func TestCopyWithProgressReportsOffsetAndTotal(t *testing.T) {
 	}
 }
 
+func TestTranscriptPath(t *testing.T) {
+	if got := transcriptPath("downloads/lecture.mp4"); got != "downloads/lecture.txt" {
+		t.Fatalf("transcriptPath() = %q", got)
+	}
+	if got := transcriptPath("downloads/lecture"); got != "downloads/lecture.txt" {
+		t.Fatalf("transcriptPath() without extension = %q", got)
+	}
+}
+
 func TestParseAssignmentID(t *testing.T) {
 	courseIndex, ordSeq, err := ParseAssignmentID("3:7")
 	if err != nil {

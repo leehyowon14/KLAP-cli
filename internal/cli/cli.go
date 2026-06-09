@@ -754,6 +754,13 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 				}
 				return err
 			}
+			transcribe, err := tui.RunConfirm(ctx, "TRANSCRIPT", "다운로드 완료 후 선택한 강의를 전사할까요?", false)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil
+				}
+				return err
+			}
 			settings, err := service.DownloadSettings()
 			if err != nil {
 				return err
@@ -765,12 +772,21 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 				All:         true,
 				LectureIDs:  lectureIDs,
 				Concurrency: settings.Concurrency,
+				Transcribe:  transcribe,
 			})
 		}
+		transcribe, err := tui.RunConfirm(ctx, "TRANSCRIPT", "다운로드 완료 후 이 강의를 전사할까요?", false)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
+			return err
+		}
 		return tui.RunLectureDownload(ctx, service, tui.LectureDownloadRequest{
-			Target: args[1],
-			User:   app.UserOption{StudentID: userFlag(args[2:])},
-			Dir:    dir,
+			Target:     args[1],
+			User:       app.UserOption{StudentID: userFlag(args[2:])},
+			Dir:        dir,
+			Transcribe: transcribe,
 		})
 	case "attend":
 		return runLectureAttend(ctx, service, args[1:])

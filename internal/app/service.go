@@ -22,13 +22,15 @@ import (
 	"github.com/kw-klap/klap-cli/internal/klas"
 	"github.com/kw-klap/klap-cli/internal/reminder"
 	"github.com/kw-klap/klap-cli/internal/settings"
+	"github.com/kw-klap/klap-cli/internal/transcript"
 )
 
 type Service struct {
-	store              *account.Store
-	settingsStore      *settings.Store
-	cacheStore         *cache.Store
-	reminderBridgePath string
+	store                *account.Store
+	settingsStore        *settings.Store
+	cacheStore           *cache.Store
+	reminderBridgePath   string
+	transcriptBridgePath string
 }
 
 type UserOption struct {
@@ -148,6 +150,11 @@ type LectureDownloadAllOptions struct {
 	OnProgress   func(LectureDownloadProgress)
 	Concurrency  int
 	LectureIDs   []string
+}
+
+type LectureTranscriptOptions struct {
+	Locale     string
+	OnProgress func(LectureTranscriptProgress)
 }
 
 type LectureAttendOptions struct {
@@ -422,6 +429,18 @@ type LectureDownloadAllResult struct {
 	Items []LectureDownloadItem
 }
 
+type LectureTranscriptItem struct {
+	Lecture    LectureRow
+	InputPath  string
+	OutputPath string
+	Text       string
+	Err        error
+}
+
+type LectureTranscriptResult struct {
+	Items []LectureTranscriptItem
+}
+
 type LectureDownloadProgress struct {
 	Lecture      LectureRow
 	Path         string
@@ -432,6 +451,14 @@ type LectureDownloadProgress struct {
 	TotalBytes   int64
 	Skipped      bool
 	Err          error
+}
+
+type LectureTranscriptProgress struct {
+	Lecture    LectureRow
+	InputPath  string
+	OutputPath string
+	Stage      string
+	Err        error
 }
 
 type LectureAttendResult struct {
@@ -484,10 +511,11 @@ func NewService(store *account.Store) *Service {
 	settingsStore, _ := settings.NewStore()
 	cacheStore, _ := cache.NewStore()
 	return &Service{
-		store:              store,
-		settingsStore:      settingsStore,
-		cacheStore:         cacheStore,
-		reminderBridgePath: defaultReminderBridgePath(),
+		store:                store,
+		settingsStore:        settingsStore,
+		cacheStore:           cacheStore,
+		reminderBridgePath:   defaultReminderBridgePath(),
+		transcriptBridgePath: defaultTranscriptBridgePath(),
 	}
 }
 
@@ -2400,6 +2428,111 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, i
 	return item
 }
 
+func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []LectureDownloadItem, opts LectureTranscriptOptions) LectureTranscriptResult {
+	jobs := make([]transcript.Job, 0, len(items))
+	rows := make([]LectureRow, 0, len(items))
+	for _, item := range items {
+		if item.Err != nil || item.Skipped || strings.TrimSpace(item.Path) == "" {
+			continue
+		}
+		outputPath := transcriptPath(item.Path)
+		rows = append(rows, item.Lecture)
+		jobs = append(jobs, transcript.Job{
+			InputPath:  item.Path,
+			OutputPath: outputPath,
+			Locale:     opts.Locale,
+		})
+		emitLectureTranscriptProgress(opts.OnProgress, LectureTranscriptProgress{
+			Lecture:    item.Lecture,
+			InputPath:  item.Path,
+			OutputPath: outputPath,
+			Stage:      "transcribe",
+		})
+	}
+	if len(jobs) == 0 {
+		return LectureTranscriptResult{}
+	}
+
+	select {
+	case <-ctx.Done():
+		result := LectureTranscriptResult{Items: make([]LectureTranscriptItem, 0, len(jobs))}
+		for index, job := range jobs {
+			result.Items = append(result.Items, LectureTranscriptItem{
+				Lecture:    rows[index],
+				InputPath:  job.InputPath,
+				OutputPath: job.OutputPath,
+				Err:        ctx.Err(),
+			})
+		}
+		return result
+	default:
+	}
+
+	response, err := transcript.NewMacOSBridge(s.transcriptBridgePath).Transcribe(transcript.Request{Jobs: jobs})
+	if err != nil {
+		result := LectureTranscriptResult{Items: make([]LectureTranscriptItem, 0, len(jobs))}
+		for index, job := range jobs {
+			item := LectureTranscriptItem{
+				Lecture:    rows[index],
+				InputPath:  job.InputPath,
+				OutputPath: job.OutputPath,
+				Err:        err,
+			}
+			result.Items = append(result.Items, item)
+			emitLectureTranscriptProgress(opts.OnProgress, LectureTranscriptProgress{
+				Lecture:    item.Lecture,
+				InputPath:  item.InputPath,
+				OutputPath: item.OutputPath,
+				Stage:      "transcript-error",
+				Err:        err,
+			})
+		}
+		return result
+	}
+
+	result := LectureTranscriptResult{Items: make([]LectureTranscriptItem, 0, len(response.Results))}
+	for index, bridgeResult := range response.Results {
+		row := LectureRow{}
+		if index < len(rows) {
+			row = rows[index]
+		}
+		item := LectureTranscriptItem{
+			Lecture:    row,
+			InputPath:  bridgeResult.InputPath,
+			OutputPath: bridgeResult.OutputPath,
+			Text:       bridgeResult.Text,
+		}
+		stage := "transcribed"
+		if strings.TrimSpace(bridgeResult.Err) != "" {
+			item.Err = errors.New(bridgeResult.Err)
+			stage = "transcript-error"
+		}
+		result.Items = append(result.Items, item)
+		emitLectureTranscriptProgress(opts.OnProgress, LectureTranscriptProgress{
+			Lecture:    item.Lecture,
+			InputPath:  item.InputPath,
+			OutputPath: item.OutputPath,
+			Stage:      stage,
+			Err:        item.Err,
+		})
+	}
+	return result
+}
+
+func transcriptPath(path string) string {
+	ext := filepath.Ext(path)
+	if ext == "" {
+		return path + ".txt"
+	}
+	return strings.TrimSuffix(path, ext) + ".txt"
+}
+
+func emitLectureTranscriptProgress(onProgress func(LectureTranscriptProgress), progress LectureTranscriptProgress) {
+	if onProgress != nil {
+		onProgress(progress)
+	}
+}
+
 func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAttendOptions) (LectureAttendResult, error) {
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
@@ -3711,6 +3844,30 @@ func defaultReminderBridgePath() string {
 	}
 	if executable, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "reminder.swift"))
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
+func defaultTranscriptBridgePath() string {
+	if override := os.Getenv("KLAP_TRANSCRIPT_BRIDGE"); override != "" {
+		return override
+	}
+
+	candidates := []string{
+		filepath.Join("bridges", "macos", "transcribe.swift"),
+	}
+	if _, currentFile, _, ok := runtime.Caller(0); ok {
+		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "transcribe.swift"))
+	}
+	if executable, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "transcribe.swift"))
 	}
 
 	for _, candidate := range candidates {

@@ -98,9 +98,10 @@ klap config download --concurrency 8
 `klap due`는 과제, 미완료 온라인 강의/학습활동, 학사일정을 마감순으로 합쳐 보여준다.
 기본 범위는 14일이며 `--week` 또는 `--days 30`으로 조정할 수 있다.
 
-`klap lecture download <과목명|과목번호>`는 Space로 받을 강의를 선택한 뒤 다운로드한다.
+`klap lecture download <과목명|과목번호>`는 Space로 받을 강의를 선택하고, 이어서 전사 여부를 선택한 뒤 다운로드한다.
 다운로드는 같은 위치에서 progress bar를 갱신하며, 동시 다운로드 수는 `klap config download --concurrency <수>`로 바꾼다.
 `--dir`이 없으면 `klap config download --dir <경로>`로 저장한 기본 다운로드 폴더를 사용한다.
+전사는 macOS 26 이상의 Apple Speech.framework를 사용하며, 결과는 다운로드 파일 옆의 `.txt` 파일로 저장한다.
 `klap lecture download status`와 `klap lecture download open`으로 받은 파일을 확인할 수 있다.
 
 Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림을 생성한다.

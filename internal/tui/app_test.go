@@ -187,6 +187,18 @@ func TestLectureDownloadFormatting(t *testing.T) {
 	if got := formatDownloadBytes(1536); got != "1.5 KB" {
 		t.Fatalf("formatDownloadBytes() = %q", got)
 	}
+	if got := downloadStageLabel("transcribe"); got != "전사중" {
+		t.Fatalf("downloadStageLabel(transcribe) = %q", got)
+	}
+}
+
+func TestConfirmAcceptsKoreanKeyboardKeys(t *testing.T) {
+	m := confirmModel{value: false}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅛ")})
+	got := updated.(confirmModel)
+	if !got.value || cmd == nil {
+		t.Fatalf("confirm korean yes value=%t cmd nil=%t", got.value, cmd == nil)
+	}
 }
 
 func TestLectureSelectionToggleAll(t *testing.T) {

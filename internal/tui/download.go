@@ -20,6 +20,7 @@ type LectureDownloadRequest struct {
 	All         bool
 	LectureIDs  []string
 	Concurrency int
+	Transcribe  bool
 }
 
 type lectureDownloadModel struct {
@@ -47,14 +48,19 @@ type downloadStatusLine struct {
 	err     error
 }
 
+type lectureTranscriptProgressMsg struct {
+	progress app.LectureTranscriptProgress
+}
+
 type lectureDownloadProgressMsg struct {
 	progress app.LectureDownloadProgress
 }
 
 type lectureDownloadDoneMsg struct {
-	single app.LectureDownloadResult
-	all    app.LectureDownloadAllResult
-	err    error
+	single      app.LectureDownloadResult
+	all         app.LectureDownloadAllResult
+	transcripts app.LectureTranscriptResult
+	err         error
 }
 
 func RunLectureDownload(ctx context.Context, service *app.Service, request LectureDownloadRequest) error {
@@ -101,6 +107,9 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case lectureDownloadProgressMsg:
 		m.current = msg.progress
 		m.upsertStatusLine(msg.progress)
+		return m, waitLectureDownloadProgress(m.updates)
+	case lectureTranscriptProgressMsg:
+		m.upsertTranscriptStatusLine(msg.progress)
 		return m, waitLectureDownloadProgress(m.updates)
 	case lectureDownloadDoneMsg:
 		m.done = true
@@ -157,15 +166,37 @@ func (m lectureDownloadModel) runDownload() tea.Cmd {
 				Concurrency:  m.request.Concurrency,
 				LectureIDs:   m.request.LectureIDs,
 			})
-			return lectureDownloadDoneMsg{all: result, err: err}
+			transcripts := app.LectureTranscriptResult{}
+			if err == nil && m.request.Transcribe {
+				transcripts = m.transcribeItems(result.Items)
+			}
+			return lectureDownloadDoneMsg{all: result, transcripts: transcripts, err: err}
 		}
 		result, err := m.service.DownloadLecture(m.ctx, m.request.Target, app.LectureDownloadOptions{
 			User:       m.request.User,
 			Dir:        m.request.Dir,
 			OnProgress: onProgress,
 		})
-		return lectureDownloadDoneMsg{single: result, err: err}
+		transcripts := app.LectureTranscriptResult{}
+		if err == nil && m.request.Transcribe {
+			transcripts = m.transcribeItems([]app.LectureDownloadItem{{
+				Lecture: result.Lecture,
+				Path:    result.Path,
+				Bytes:   result.Bytes,
+			}})
+		}
+		return lectureDownloadDoneMsg{single: result, transcripts: transcripts, err: err}
 	}
+}
+
+func (m lectureDownloadModel) transcribeItems(items []app.LectureDownloadItem) app.LectureTranscriptResult {
+	onProgress := func(progress app.LectureTranscriptProgress) {
+		select {
+		case m.updates <- lectureTranscriptProgressMsg{progress: progress}:
+		default:
+		}
+	}
+	return m.service.TranscribeDownloadedLectures(m.ctx, items, app.LectureTranscriptOptions{OnProgress: onProgress})
 }
 
 func waitLectureDownloadProgress(updates chan tea.Msg) tea.Cmd {
@@ -186,6 +217,26 @@ func (m *lectureDownloadModel) upsertStatusLine(progress app.LectureDownloadProg
 		bytes:   progress.Bytes,
 		skipped: progress.Skipped,
 		err:     progress.Err,
+	}
+	for index := range m.items {
+		if m.items[index].label == label {
+			m.items[index] = line
+			return
+		}
+	}
+	m.items = append(m.items, line)
+}
+
+func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTranscriptProgress) {
+	label := lectureDownloadLabel(progress.Lecture)
+	if label == "" {
+		label = progress.InputPath
+	}
+	line := downloadStatusLine{
+		label:  label,
+		status: progress.Stage,
+		path:   progress.OutputPath,
+		err:    progress.Err,
 	}
 	for index := range m.items {
 		if m.items[index].label == label {
@@ -220,6 +271,19 @@ func (m *lectureDownloadModel) applyFinalResult(msg lectureDownloadDoneMsg) {
 			Bytes:   item.Bytes,
 			Skipped: item.Skipped,
 			Err:     item.Err,
+		})
+	}
+	for _, item := range msg.transcripts.Items {
+		stage := "transcribed"
+		if item.Err != nil {
+			stage = "transcript-error"
+		}
+		m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{
+			Lecture:    item.Lecture,
+			InputPath:  item.InputPath,
+			OutputPath: item.OutputPath,
+			Stage:      stage,
+			Err:        item.Err,
 		})
 	}
 }
@@ -290,7 +354,7 @@ func (m lectureDownloadModel) renderSummary() string {
 			failed++
 		case item.skipped:
 			skipped++
-		case item.status == "done":
+		case item.status == "done" || item.status == "transcribed":
 			done++
 		}
 	}
@@ -350,6 +414,12 @@ func downloadStageLabel(stage string) string {
 		return "건너뜀"
 	case "error":
 		return "실패"
+	case "transcribe":
+		return "전사중"
+	case "transcribed":
+		return "전사완료"
+	case "transcript-error":
+		return "전사실패"
 	default:
 		return "대기"
 	}
