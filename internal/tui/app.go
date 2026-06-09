@@ -233,6 +233,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.adjustDownloadConcurrency(-1)
 		case m.active == screenConfig && keyMatches(key, "c", "ㅊ"):
 			return m.toggleDownloadCaffeinate()
+		case m.active == screenConfig && keyMatches(key, "p", "ㅔ"):
+			return m.toggleDownloadKeepPartial()
 		case m.active == screenConfig && keyMatches(key, "x", "ㅌ"):
 			return m.resetConfigSettings()
 		case m.active == screenLectures && keyMatches(key, "d", "ㅇ"):
@@ -581,7 +583,7 @@ func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		value := strings.TrimSpace(m.configInput.Value())
 		if m.configEditing == "download.dir" {
-			if _, err := m.service.SetDownloadConfig(value, 0, nil); err != nil {
+			if _, err := m.service.SetDownloadConfig(value, 0, nil, nil); err != nil {
 				m.err = err
 			} else {
 				m.err = nil
@@ -622,7 +624,7 @@ func (m model) adjustDownloadConcurrency(delta int) (tea.Model, tea.Cmd) {
 	if next < 1 {
 		next = 1
 	}
-	if _, err := m.service.SetDownloadConfig("", next, nil); err != nil {
+	if _, err := m.service.SetDownloadConfig("", next, nil, nil); err != nil {
 		m.err = err
 		return m, nil
 	}
@@ -638,7 +640,23 @@ func (m model) toggleDownloadCaffeinate() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	next := !settings.Caffeinate
-	if _, err := m.service.SetDownloadConfig("", 0, &next); err != nil {
+	if _, err := m.service.SetDownloadConfig("", 0, &next, nil); err != nil {
+		m.err = err
+		return m, nil
+	}
+	m.err = nil
+	m.refreshConfigContent()
+	return m, nil
+}
+
+func (m model) toggleDownloadKeepPartial() (tea.Model, tea.Cmd) {
+	settings, err := m.service.DownloadSettings()
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	next := !settings.KeepPartial
+	if _, err := m.service.SetDownloadConfig("", 0, nil, &next); err != nil {
 		m.err = err
 		return m, nil
 	}
@@ -952,7 +970,7 @@ func (m model) renderPanel() string {
 			b.WriteString("\n")
 			b.WriteString(footerStyle.Render("enter 저장  esc 취소"))
 		} else {
-			b.WriteString(footerStyle.Render("d download.dir 편집  +/- 동시 다운로드  c 절전 방지  x 초기화"))
+			b.WriteString(footerStyle.Render("d download.dir 편집  +/- 동시 다운로드  c 절전 방지  p 부분 파일  x 초기화"))
 		}
 		b.WriteString("\n")
 	}
@@ -1248,6 +1266,7 @@ func formatConfig(settings app.ConfigSettings) string {
 		"dir  " + settings.Download.Dir,
 		fmt.Sprintf("concurrency  %d", settings.Download.Concurrency),
 		fmt.Sprintf("caffeinate  %t", settings.Download.Caffeinate),
+		fmt.Sprintf("keep-partial  %t", settings.Download.KeepPartial),
 	})
 }
 

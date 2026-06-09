@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -159,6 +160,9 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	if _, err := service.SetConfigValue("download.caffeinate", "false"); err != nil {
 		t.Fatalf("SetConfigValue(download.caffeinate) error = %v", err)
 	}
+	if _, err := service.SetConfigValue("download.keep-partial", "true"); err != nil {
+		t.Fatalf("SetConfigValue(download.keep-partial) error = %v", err)
+	}
 
 	got, err := service.ResetConfigSettings()
 	if err != nil {
@@ -172,6 +176,9 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	}
 	if !got.Download.Caffeinate {
 		t.Fatal("Download.Caffeinate should reset to true")
+	}
+	if got.Download.KeepPartial {
+		t.Fatal("Download.KeepPartial should reset to false")
 	}
 	if got.Term.Value != "" {
 		t.Fatalf("Term.Value = %q", got.Term.Value)
@@ -199,6 +206,45 @@ func TestLectureTranscriptContextIncludesCourseAndCodeSwitching(t *testing.T) {
 		if !containsString(got, want) {
 			t.Fatalf("lectureTranscriptContext() missing %q: %v", want, got)
 		}
+	}
+}
+
+func TestCleanupPartialDownloadRespectsKeepPartial(t *testing.T) {
+	dir := t.TempDir()
+	removePath := filepath.Join(dir, "remove.part")
+	keepPath := filepath.Join(dir, "keep.part")
+	if err := os.WriteFile(removePath, []byte("partial"), 0o644); err != nil {
+		t.Fatalf("WriteFile(remove) error = %v", err)
+	}
+	if err := os.WriteFile(keepPath, []byte("partial"), 0o644); err != nil {
+		t.Fatalf("WriteFile(keep) error = %v", err)
+	}
+
+	cleanupPartialDownload(removePath, false)
+	if _, err := os.Stat(removePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("removePath stat error = %v, want not exist", err)
+	}
+	cleanupPartialDownload(keepPath, true)
+	if _, err := os.Stat(keepPath); err != nil {
+		t.Fatalf("keepPath stat error = %v", err)
+	}
+}
+
+func TestDownloadStatusReportsPartialFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "lecture.mp4"), []byte("done"), 0o644); err != nil {
+		t.Fatalf("WriteFile(done) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lecture.mp4.part"), []byte("partial"), 0o644); err != nil {
+		t.Fatalf("WriteFile(partial) error = %v", err)
+	}
+
+	got, err := (&Service{}).DownloadStatus(dir)
+	if err != nil {
+		t.Fatalf("DownloadStatus() error = %v", err)
+	}
+	if got.Files != 1 || got.PartialFiles != 1 || got.PartialBytes != int64(len("partial")) {
+		t.Fatalf("DownloadStatus() = %+v", got)
 	}
 }
 

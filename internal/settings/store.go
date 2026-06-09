@@ -31,6 +31,7 @@ type Download struct {
 	Dir         string `json:"dir"`
 	Concurrency int    `json:"concurrency"`
 	Caffeinate  *bool  `json:"caffeinate"`
+	KeepPartial bool   `json:"keepPartial"`
 }
 
 type Store struct {

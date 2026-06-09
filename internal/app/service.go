@@ -398,6 +398,7 @@ type DownloadSettings struct {
 	Dir         string
 	Concurrency int
 	Caffeinate  bool
+	KeepPartial bool
 }
 
 type ConfigSettings struct {
@@ -407,10 +408,12 @@ type ConfigSettings struct {
 }
 
 type DownloadStatusResult struct {
-	Dir   string
-	Files int
-	Bytes int64
-	Items []DownloadFile
+	Dir          string
+	Files        int
+	Bytes        int64
+	PartialFiles int
+	PartialBytes int64
+	Items        []DownloadFile
 }
 
 type DownloadFile struct {
@@ -617,6 +620,7 @@ func downloadSettingsFrom(current settings.Settings) DownloadSettings {
 		Dir:         current.Download.Dir,
 		Concurrency: current.Download.Concurrency,
 		Caffeinate:  settings.DownloadCaffeinateEnabled(current.Download),
+		KeepPartial: current.Download.KeepPartial,
 	}
 }
 
@@ -636,7 +640,7 @@ func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
 	return downloadSettingsFrom(current), nil
 }
 
-func (s *Service) SetDownloadConfig(dir string, concurrency int, caffeinate *bool) (DownloadSettings, error) {
+func (s *Service) SetDownloadConfig(dir string, concurrency int, caffeinate *bool, keepPartial *bool) (DownloadSettings, error) {
 	current, err := s.loadSettings()
 	if err != nil {
 		return DownloadSettings{}, err
@@ -649,6 +653,9 @@ func (s *Service) SetDownloadConfig(dir string, concurrency int, caffeinate *boo
 	}
 	if caffeinate != nil {
 		current.Download.Caffeinate = caffeinate
+	}
+	if keepPartial != nil {
+		current.Download.KeepPartial = *keepPartial
 	}
 	if err := s.saveSettings(current); err != nil {
 		return DownloadSettings{}, err
@@ -718,6 +725,12 @@ func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, erro
 			return ConfigSettings{}, err
 		}
 		current.Download.Caffeinate = &parsed
+	case "download.keep-partial", "download.resume", "download.partial":
+		parsed, err := parseConfigBool(value)
+		if err != nil {
+			return ConfigSettings{}, err
+		}
+		current.Download.KeepPartial = parsed
 	case "term", "term.value":
 		normalized, err := normalizeTermValue(value)
 		if err != nil {
@@ -743,12 +756,17 @@ func (s *Service) DownloadStatus(dir string) (DownloadStatusResult, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".part") {
+		if entry.IsDir() {
 			return nil
 		}
 		info, err := entry.Info()
 		if err != nil {
 			return err
+		}
+		if strings.HasSuffix(entry.Name(), ".part") {
+			result.PartialFiles++
+			result.PartialBytes += info.Size()
+			return nil
 		}
 		result.Files++
 		result.Bytes += info.Size()
@@ -2105,6 +2123,10 @@ func (s *Service) LectureOpenURL(ctx context.Context, id string, user UserOption
 
 func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDownloadOptions) (LectureDownloadResult, error) {
 	defer s.startCaffeinate(ctx)()
+	currentSettings, err := s.loadSettings()
+	if err != nil {
+		return LectureDownloadResult{}, err
+	}
 
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
@@ -2187,7 +2209,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		CurrentIndex: 1,
 		TotalItems:   1,
 	})
-	bytesWritten, err := downloadFile(ctx, mediaURL, path, func(bytesWritten int64, totalBytes int64) {
+	bytesWritten, err := downloadFile(ctx, mediaURL, path, currentSettings.Download.KeepPartial, func(bytesWritten int64, totalBytes int64) {
 		emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         path,
@@ -2229,6 +2251,10 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 
 func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadAllOptions) (LectureDownloadAllResult, error) {
 	defer s.startCaffeinate(ctx)()
+	currentSettings, err := s.loadSettings()
+	if err != nil {
+		return LectureDownloadAllResult{}, err
+	}
 
 	if strings.TrimSpace(opts.CourseFilter) == "" && len(opts.LectureIDs) == 0 {
 		return LectureDownloadAllResult{}, errors.New("전체 다운로드에는 과목명 또는 course list 번호가 필요합니다")
@@ -2328,7 +2354,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	worker := func() {
 		defer wg.Done()
 		for task := range jobs {
-			results <- downloadTaskResult{Index: task.Index - 1, Item: downloadLectureTask(ctx, client, dir, task.Index, task.Total, task.Course, task.Row, opts.OnProgress)}
+			results <- downloadTaskResult{Index: task.Index - 1, Item: downloadLectureTask(ctx, client, dir, currentSettings.Download.KeepPartial, task.Index, task.Total, task.Course, task.Row, opts.OnProgress)}
 		}
 	}
 	wg.Add(concurrency)
@@ -2360,7 +2386,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	return result, nil
 }
 
-func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, index int, total int, course klas.Course, row LectureRow, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
+func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, keepPartial bool, index int, total int, course klas.Course, row LectureRow, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
 	item := LectureDownloadItem{Lecture: row}
 	if strings.TrimSpace(row.Lecture.ContentID) == "" {
 		item.Skipped = true
@@ -2439,7 +2465,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, i
 		CurrentIndex: index,
 		TotalItems:   total,
 	})
-	bytesWritten, err := downloadFile(ctx, mediaURL, item.Path, func(bytesWritten int64, totalBytes int64) {
+	bytesWritten, err := downloadFile(ctx, mediaURL, item.Path, keepPartial, func(bytesWritten int64, totalBytes int64) {
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         item.Path,
@@ -3749,7 +3775,7 @@ func emitLectureDownloadProgress(onProgress func(LectureDownloadProgress), progr
 	}
 }
 
-func downloadFile(ctx context.Context, sourceURL string, path string, onProgress func(bytesWritten int64, totalBytes int64)) (int64, error) {
+func downloadFile(ctx context.Context, sourceURL string, path string, keepPartial bool, onProgress func(bytesWritten int64, totalBytes int64)) (int64, error) {
 	if _, err := os.Stat(path); err == nil {
 		return 0, fmt.Errorf("이미 파일이 있습니다: %s", path)
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -3803,9 +3829,11 @@ func downloadFile(ctx context.Context, sourceURL string, path string, onProgress
 	written, copyErr := copyWithProgress(file, response.Body, offset, totalBytes, onProgress)
 	closeErr := file.Close()
 	if copyErr != nil {
+		cleanupPartialDownload(partPath, keepPartial)
 		return offset + written, fmt.Errorf("동영상 다운로드 실패: %w", copyErr)
 	}
 	if closeErr != nil {
+		cleanupPartialDownload(partPath, keepPartial)
 		return offset + written, fmt.Errorf("임시 파일 닫기 실패: %w", closeErr)
 	}
 
@@ -3813,6 +3841,13 @@ func downloadFile(ctx context.Context, sourceURL string, path string, onProgress
 		return offset + written, fmt.Errorf("다운로드 파일 저장 실패: %w", err)
 	}
 	return offset + written, nil
+}
+
+func cleanupPartialDownload(partPath string, keepPartial bool) {
+	if keepPartial {
+		return
+	}
+	_ = os.Remove(partPath)
 }
 
 func copyWithProgress(dst io.Writer, src io.Reader, offset int64, totalBytes int64, onProgress func(bytesWritten int64, totalBytes int64)) (int64, error) {

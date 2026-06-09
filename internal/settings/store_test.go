@@ -25,6 +25,9 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if !DownloadCaffeinateEnabled(got.Download) {
 		t.Fatal("Download.Caffeinate should default to true")
 	}
+	if got.Download.KeepPartial {
+		t.Fatal("Download.KeepPartial should default to false")
+	}
 }
 
 func TestNormalizeReminderSettings(t *testing.T) {
@@ -44,6 +47,9 @@ func TestNormalizeReminderSettings(t *testing.T) {
 	}
 	if !DownloadCaffeinateEnabled(settings.Download) {
 		t.Fatal("Download.Caffeinate should normalize to true")
+	}
+	if settings.Download.KeepPartial {
+		t.Fatal("Download.KeepPartial should normalize to false")
 	}
 }
 

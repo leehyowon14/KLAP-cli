@@ -340,12 +340,15 @@ func TestTranscriptLanguageDefaultsToKoreanAndMentionsCodeSwitching(t *testing.T
 
 func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	view := formatConfig(app.ConfigSettings{
-		Download: app.DownloadSettings{Dir: "downloads", Concurrency: 7, Caffeinate: true},
+		Download: app.DownloadSettings{Dir: "downloads", Concurrency: 7, Caffeinate: true, KeepPartial: false},
 	})
 	if !strings.Contains(view, "concurrency  7") {
 		t.Fatalf("formatConfig() missing concurrency: %q", view)
 	}
 	if !strings.Contains(view, "caffeinate  true") {
 		t.Fatalf("formatConfig() missing caffeinate: %q", view)
+	}
+	if !strings.Contains(view, "keep-partial  false") {
+		t.Fatalf("formatConfig() missing keep-partial: %q", view)
 	}
 }

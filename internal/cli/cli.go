@@ -176,9 +176,9 @@ func runConfigDownload(ctx context.Context, service *app.Service, args []string)
 		return err
 	}
 	if !ok {
-		return errors.New(`usage: klap config download [--dir <다운로드 폴더>] [--concurrency <동시 다운로드 수>] [--caffeinate|--no-caffeinate]`)
+		return errors.New(`usage: klap config download [--dir <다운로드 폴더>] [--concurrency <동시 다운로드 수>] [--caffeinate|--no-caffeinate] [--keep-partial|--no-keep-partial]`)
 	}
-	settings, err := service.SetDownloadConfig(opts.Dir, opts.Concurrency, opts.Caffeinate)
+	settings, err := service.SetDownloadConfig(opts.Dir, opts.Concurrency, opts.Caffeinate, opts.KeepPartial)
 	if err != nil {
 		return err
 	}
@@ -190,6 +190,7 @@ type downloadConfigArgs struct {
 	Dir         string
 	Concurrency int
 	Caffeinate  *bool
+	KeepPartial *bool
 }
 
 func parseDownloadConfigArgs(args []string) (downloadConfigArgs, bool, error) {
@@ -218,11 +219,17 @@ func parseDownloadConfigArgs(args []string) (downloadConfigArgs, bool, error) {
 		case "--no-caffeinate":
 			value := false
 			opts.Caffeinate = &value
+		case "--keep-partial":
+			value := true
+			opts.KeepPartial = &value
+		case "--no-keep-partial":
+			value := false
+			opts.KeepPartial = &value
 		default:
 			return downloadConfigArgs{}, false, fmt.Errorf("unknown download config option: %s", args[i])
 		}
 	}
-	if strings.TrimSpace(opts.Dir) == "" && opts.Concurrency <= 0 && opts.Caffeinate == nil {
+	if strings.TrimSpace(opts.Dir) == "" && opts.Concurrency <= 0 && opts.Caffeinate == nil && opts.KeepPartial == nil {
 		return downloadConfigArgs{}, false, nil
 	}
 	return opts, true, nil
@@ -1346,6 +1353,7 @@ func printDownloadSettings(settings app.DownloadSettings) {
 	fmt.Printf("다운로드 폴더: %s\n", settings.Dir)
 	fmt.Printf("동시 다운로드: %d\n", settings.Concurrency)
 	fmt.Printf("절전 방지: %s\n", yesNo(settings.Caffeinate))
+	fmt.Printf("부분 파일 보존: %s\n", yesNo(settings.KeepPartial))
 }
 
 func printConfigSettings(settings app.ConfigSettings) {
@@ -1357,6 +1365,7 @@ func printConfigSettings(settings app.ConfigSettings) {
 	fmt.Printf("download.dir: %s\n", settings.Download.Dir)
 	fmt.Printf("download.concurrency: %d\n", settings.Download.Concurrency)
 	fmt.Printf("download.caffeinate: %s\n", yesNo(settings.Download.Caffeinate))
+	fmt.Printf("download.keep-partial: %s\n", yesNo(settings.Download.KeepPartial))
 }
 
 func printDashboard(result app.DashboardResult) {
@@ -2379,6 +2388,9 @@ func printDownloadStatus(result app.DownloadStatusResult) {
 	fmt.Printf("다운로드 폴더: %s\n", result.Dir)
 	fmt.Printf("파일 수: %d\n", result.Files)
 	fmt.Printf("크기: %s\n", formatBytes(result.Bytes))
+	if result.PartialFiles > 0 {
+		fmt.Printf("부분 파일: %d개 (%s)\n", result.PartialFiles, formatBytes(result.PartialBytes))
+	}
 	if len(result.Items) == 0 {
 		fmt.Println("다운로드된 파일이 없습니다")
 		return
