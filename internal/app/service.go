@@ -2194,7 +2194,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 }
 
 func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadAllOptions) (LectureDownloadAllResult, error) {
-	if strings.TrimSpace(opts.CourseFilter) == "" {
+	if strings.TrimSpace(opts.CourseFilter) == "" && len(opts.LectureIDs) == 0 {
 		return LectureDownloadAllResult{}, errors.New("전체 다운로드에는 과목명 또는 course list 번호가 필요합니다")
 	}
 

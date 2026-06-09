@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	bubblesprogress "github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -80,6 +81,9 @@ const (
 	screenNotices
 	screenLectures
 	screenConfig
+	screenDownloadSelect
+	screenDownloadConfirm
+	screenDownloadProgress
 )
 
 type menuItem struct {
@@ -89,25 +93,35 @@ type menuItem struct {
 }
 
 type model struct {
-	ctx           context.Context
-	service       *app.Service
-	menu          []menuItem
-	cursor        int
-	active        screen
-	loading       bool
-	err           error
-	content       string
-	width         int
-	height        int
-	loadedAt      time.Time
-	configEditing string
-	configInput   textinput.Model
+	ctx                context.Context
+	service            *app.Service
+	menu               []menuItem
+	cursor             int
+	active             screen
+	loading            bool
+	err                error
+	content            string
+	width              int
+	height             int
+	loadedAt           time.Time
+	configEditing      string
+	configInput        textinput.Model
+	downloadRows       []app.LectureRow
+	downloadSelected   map[string]bool
+	downloadCursor     int
+	downloadTranscribe bool
+	downloadProgress   *lectureDownloadModel
 }
 
 type loadMsg struct {
 	screen  screen
 	content string
 	err     error
+}
+
+type downloadRowsMsg struct {
+	rows []app.LectureRow
+	err  error
 }
 
 func Run(ctx context.Context, service *app.Service) error {
@@ -135,11 +149,20 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.active == screenDownloadProgress {
+		return m.updateDownloadProgress(msg)
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 	case tea.KeyMsg:
+		if m.active == screenDownloadSelect {
+			return m.updateDownloadSelect(msg)
+		}
+		if m.active == screenDownloadConfirm {
+			return m.updateDownloadConfirm(msg)
+		}
 		if m.configEditing != "" {
 			return m.updateConfigInput(msg)
 		}
@@ -188,6 +211,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.adjustDownloadConcurrency(1)
 		case m.active == screenConfig && key == "-":
 			return m.adjustDownloadConcurrency(-1)
+		case m.active == screenLectures && keyMatches(key, "d", "ㅇ"):
+			m.active = screenDownloadSelect
+			m.loading = true
+			m.err = nil
+			m.content = ""
+			return m, m.loadDownloadRows()
 		}
 	case loadMsg:
 		if msg.screen != m.active {
@@ -197,6 +226,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.content = msg.content
 		m.loadedAt = time.Now()
+	case downloadRowsMsg:
+		if m.active != screenDownloadSelect {
+			return m, nil
+		}
+		m.loading = false
+		m.err = msg.err
+		m.downloadRows = msg.rows
+		m.downloadSelected = make(map[string]bool, len(msg.rows))
+		for _, row := range msg.rows {
+			if lectureDownloadable(row) {
+				m.downloadSelected[row.ID] = true
+			}
+		}
+		m.downloadCursor = 0
 	}
 	return m, nil
 }
@@ -208,6 +251,157 @@ func keyMatches(value string, keys ...string) bool {
 		}
 	}
 	return false
+}
+
+func (m model) loadDownloadRows() tea.Cmd {
+	return func() tea.Msg {
+		rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: true})
+		return downloadRowsMsg{rows: rows, err: err}
+	}
+}
+
+func (m model) updateDownloadSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
+		return m, tea.Quit
+	case key == "esc" || keyMatches(key, "b", "ㅠ"):
+		m.active = screenLectures
+		m.loading = true
+		m.err = nil
+		return m, m.load(screenLectures, false)
+	case key == "up" || keyMatches(key, "k", "ㅏ"):
+		if m.downloadCursor > 0 {
+			m.downloadCursor--
+		}
+	case key == "down" || keyMatches(key, "j", "ㅓ"):
+		if m.downloadCursor < len(m.downloadRows)-1 {
+			m.downloadCursor++
+		}
+	case key == " ":
+		m.toggleDownloadCurrent()
+	case keyMatches(key, "a", "ㅁ"):
+		m.toggleDownloadAll()
+	case key == "enter":
+		if len(m.selectedDownloadIDs()) == 0 {
+			m.err = errors.New("선택된 강의가 없습니다")
+			return m, nil
+		}
+		m.err = nil
+		m.active = screenDownloadConfirm
+		m.downloadTranscribe = false
+	}
+	return m, nil
+}
+
+func (m model) updateDownloadConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
+		return m, tea.Quit
+	case key == "esc" || keyMatches(key, "b", "ㅠ"):
+		m.active = screenDownloadSelect
+	case keyMatches(key, "y", "ㅛ"):
+		m.downloadTranscribe = true
+		return m.startDownloadProgress()
+	case keyMatches(key, "n", "ㅜ"):
+		m.downloadTranscribe = false
+		return m.startDownloadProgress()
+	case key == "left" || key == "right" || key == "tab":
+		m.downloadTranscribe = !m.downloadTranscribe
+	case key == "enter":
+		return m.startDownloadProgress()
+	}
+	return m, nil
+}
+
+func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
+	settings, err := m.service.DownloadSettings()
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	runCtx, cancel := context.WithCancel(m.ctx)
+	progress := lectureDownloadModel{
+		ctx:     runCtx,
+		cancel:  cancel,
+		service: m.service,
+		request: LectureDownloadRequest{
+			All:         true,
+			LectureIDs:  m.selectedDownloadIDs(),
+			Concurrency: settings.Concurrency,
+			Transcribe:  m.downloadTranscribe,
+		},
+		updates:   make(chan tea.Msg, 64),
+		progress:  bubblesprogress.New(bubblesprogress.WithWidth(36), bubblesprogress.WithFillCharacters('█', '░')),
+		startedAt: time.Now(),
+	}
+	m.active = screenDownloadProgress
+	m.err = nil
+	m.downloadProgress = &progress
+	return m, progress.Init()
+}
+
+func (m model) updateDownloadProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.downloadProgress == nil {
+		m.active = screenLectures
+		return m, nil
+	}
+	if key, ok := msg.(tea.KeyMsg); ok {
+		if key.String() == "ctrl+c" || keyMatches(key.String(), "q", "ㅂ") {
+			m.downloadProgress.cancel()
+			return m, tea.Quit
+		}
+		if m.downloadProgress.done && (key.String() == "esc" || keyMatches(key.String(), "b", "ㅠ")) {
+			m.active = screenLectures
+			m.loading = true
+			m.downloadProgress = nil
+			return m, m.load(screenLectures, true)
+		}
+	}
+	updated, cmd := m.downloadProgress.Update(msg)
+	progress, ok := updated.(lectureDownloadModel)
+	if !ok {
+		return m, cmd
+	}
+	m.downloadProgress = &progress
+	return m, cmd
+}
+
+func (m *model) toggleDownloadCurrent() {
+	if m.downloadCursor < 0 || m.downloadCursor >= len(m.downloadRows) {
+		return
+	}
+	row := m.downloadRows[m.downloadCursor]
+	if !lectureDownloadable(row) {
+		return
+	}
+	m.downloadSelected[row.ID] = !m.downloadSelected[row.ID]
+}
+
+func (m *model) toggleDownloadAll() {
+	allSelected := true
+	for _, row := range m.downloadRows {
+		if lectureDownloadable(row) && !m.downloadSelected[row.ID] {
+			allSelected = false
+			break
+		}
+	}
+	for _, row := range m.downloadRows {
+		if lectureDownloadable(row) {
+			m.downloadSelected[row.ID] = !allSelected
+		}
+	}
+}
+
+func (m model) selectedDownloadIDs() []string {
+	ids := make([]string, 0)
+	for _, row := range m.downloadRows {
+		if m.downloadSelected[row.ID] {
+			ids = append(ids, row.ID)
+		}
+	}
+	return ids
 }
 
 func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -285,6 +479,17 @@ func (m model) View() string {
 	if width <= 0 {
 		width = 96
 	}
+	switch m.active {
+	case screenDownloadSelect:
+		return appStyle.Render(m.renderDownloadSelectView(width))
+	case screenDownloadConfirm:
+		return appStyle.Render(m.renderDownloadConfirmView(width))
+	case screenDownloadProgress:
+		if m.downloadProgress == nil {
+			return appStyle.Render(errorStyle.Render("다운로드 상태가 없습니다"))
+		}
+		return m.downloadProgress.View()
+	}
 	if m.active == screenHome {
 		return appStyle.Render(m.renderHomeView(width))
 	}
@@ -292,8 +497,15 @@ func (m model) View() string {
 	header := m.renderHeader(width)
 	rule := mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120))))
 	panel := panelStyle.Width(maxInt(48, width-4)).Render(m.renderPanel())
-	footer := footerStyle.Render("b/esc 뒤로  r 새로고침  q 종료")
+	footer := footerStyle.Render(m.footerHelp())
 	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, rule, "", panel, "", footer))
+}
+
+func (m model) footerHelp() string {
+	if m.active == screenLectures {
+		return "d 다운로드  b/esc 뒤로  r 새로고침  q 종료"
+	}
+	return "b/esc 뒤로  r 새로고침  q 종료"
 }
 
 func (m model) renderHeader(width int) string {
@@ -360,6 +572,101 @@ func (m model) renderHomeMenu(width int) string {
 			b.WriteString("\n")
 		}
 	}
+	return b.String()
+}
+
+func (m model) renderDownloadSelectView(width int) string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader(width))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString("\n\n")
+	b.WriteString(sectionStyle.Render("Download"))
+	b.WriteString("\n")
+	if m.loading {
+		b.WriteString(warnBadgeStyle.Render("LOADING"))
+		b.WriteString(" 강의 목록을 불러오는 중입니다\n")
+		return b.String()
+	}
+	if m.err != nil {
+		b.WriteString(errorStyle.Render("ERROR"))
+		b.WriteString(" ")
+		b.WriteString(m.err.Error())
+		b.WriteString("\n\n")
+	}
+	if len(m.downloadRows) == 0 {
+		b.WriteString(emptyStyle.Render("다운로드할 온라인 강의가 없습니다"))
+		b.WriteString("\n")
+		return b.String()
+	}
+
+	visibleRows := maxInt(5, m.height-10)
+	if m.height <= 0 {
+		visibleRows = 16
+	}
+	if visibleRows > len(m.downloadRows) {
+		visibleRows = len(m.downloadRows)
+	}
+	start := m.downloadCursor - visibleRows/2
+	if start < 0 {
+		start = 0
+	}
+	if start+visibleRows > len(m.downloadRows) {
+		start = maxInt(0, len(m.downloadRows)-visibleRows)
+	}
+	end := start + visibleRows
+	for index := start; index < end; index++ {
+		row := m.downloadRows[index]
+		marker := "  "
+		if index == m.downloadCursor {
+			marker = "› "
+		}
+		check := "[ ]"
+		if m.downloadSelected[row.ID] {
+			check = "[x]"
+		}
+		if !lectureDownloadable(row) {
+			check = "[-]"
+		}
+		line := fmt.Sprintf("%s%s  %s", marker, check, truncateText(lectureDownloadLabel(row), maxInt(24, minInt(70, width-16))))
+		if index == m.downloadCursor {
+			line = menuSelectedStyle.Render(line)
+		} else if !lectureDownloadable(row) {
+			line = mutedStyle.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	if start > 0 || end < len(m.downloadRows) {
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(m.downloadRows))))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(footerStyle.Render("space 선택  |  a 전체  |  enter 다음  |  b 뒤로  |  q 종료"))
+	return b.String()
+}
+
+func (m model) renderDownloadConfirmView(width int) string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader(width))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString("\n\n")
+	b.WriteString(sectionStyle.Render("Transcript"))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("선택한 강의 %d개를 다운로드한 뒤 전사할까요?", len(m.selectedDownloadIDs())))
+	b.WriteString("\n\n")
+	yes := mutedStyle.Render("  Yes")
+	no := menuSelectedStyle.Render("› No")
+	if m.downloadTranscribe {
+		yes = menuSelectedStyle.Render("› Yes")
+		no = mutedStyle.Render("  No")
+	}
+	b.WriteString(yes)
+	b.WriteString("    ")
+	b.WriteString(no)
+	b.WriteString("\n\n")
+	b.WriteString(footerStyle.Render("←→ 선택  |  y/n  |  enter 다운로드  |  b 뒤로  |  q 종료"))
 	return b.String()
 }
 
@@ -468,6 +775,12 @@ func screenTitle(value screen) string {
 		return "Lectures"
 	case screenConfig:
 		return "Config"
+	case screenDownloadSelect:
+		return "Download"
+	case screenDownloadConfirm:
+		return "Transcript"
+	case screenDownloadProgress:
+		return "Download"
 	default:
 		return "Home"
 	}

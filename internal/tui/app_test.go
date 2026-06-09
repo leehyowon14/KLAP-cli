@@ -221,6 +221,20 @@ func TestLectureSelectionToggleAll(t *testing.T) {
 	}
 }
 
+func TestModelDownloadSelectionIDs(t *testing.T) {
+	m := model{
+		downloadRows: []app.LectureRow{
+			{ID: "1:a", Lecture: klas.Lecture{ContentID: "a"}},
+			{ID: "1:b", Lecture: klas.Lecture{ContentID: "b"}},
+		},
+		downloadSelected: map[string]bool{"1:b": true},
+	}
+	ids := m.selectedDownloadIDs()
+	if len(ids) != 1 || ids[0] != "1:b" {
+		t.Fatalf("selectedDownloadIDs() = %v", ids)
+	}
+}
+
 func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	view := formatConfig(app.ConfigSettings{
 		Download: app.DownloadSettings{Dir: "downloads", Concurrency: 7},

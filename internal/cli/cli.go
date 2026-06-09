@@ -1306,7 +1306,7 @@ Usage:
   klap academic list     학사일정 목록 출력
   klap lecture list      온라인 강의 목록 출력
   klap lecture status    온라인 강의 수강 상태 출력
-  klap lecture download <과목명|과목번호|강의ID> 온라인 강의 선택/다운로드
+  klap lecture download <과목명|과목번호|강의ID> 온라인 강의 다운로드
   klap lecture download status 다운로드 폴더 상태 출력
   klap lecture download open 다운로드 폴더 열기
   klap lecture attend <강의ID> 특정 온라인 강의 자동 수강

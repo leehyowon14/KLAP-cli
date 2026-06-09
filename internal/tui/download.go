@@ -24,19 +24,20 @@ type LectureDownloadRequest struct {
 }
 
 type lectureDownloadModel struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	service   *app.Service
-	request   LectureDownloadRequest
-	updates   chan tea.Msg
-	progress  bubblesprogress.Model
-	width     int
-	startedAt time.Time
-	current   app.LectureDownloadProgress
-	items     []downloadStatusLine
-	done      bool
-	canceling bool
-	err       error
+	ctx        context.Context
+	cancel     context.CancelFunc
+	service    *app.Service
+	request    LectureDownloadRequest
+	updates    chan tea.Msg
+	progress   bubblesprogress.Model
+	width      int
+	startedAt  time.Time
+	current    app.LectureDownloadProgress
+	items      []downloadStatusLine
+	done       bool
+	canceling  bool
+	err        error
+	quitOnDone bool
 }
 
 type downloadStatusLine struct {
@@ -69,13 +70,14 @@ func RunLectureDownload(ctx context.Context, service *app.Service, request Lectu
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	model := lectureDownloadModel{
-		ctx:       runCtx,
-		cancel:    cancel,
-		service:   service,
-		request:   request,
-		updates:   make(chan tea.Msg, 64),
-		progress:  bubblesprogress.New(bubblesprogress.WithWidth(36), bubblesprogress.WithFillCharacters('█', '░')),
-		startedAt: time.Now(),
+		ctx:        runCtx,
+		cancel:     cancel,
+		service:    service,
+		request:    request,
+		updates:    make(chan tea.Msg, 64),
+		progress:   bubblesprogress.New(bubblesprogress.WithWidth(36), bubblesprogress.WithFillCharacters('█', '░')),
+		startedAt:  time.Now(),
+		quitOnDone: true,
 	}
 	finalModel, err := tea.NewProgram(model).Run()
 	cancel()
@@ -115,7 +117,10 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.done = true
 		m.err = msg.err
 		m.applyFinalResult(msg)
-		return m, tea.Quit
+		if m.quitOnDone {
+			return m, tea.Quit
+		}
+		return m, nil
 	}
 	return m, nil
 }
