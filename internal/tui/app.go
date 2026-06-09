@@ -108,6 +108,7 @@ type model struct {
 	configInput        textinput.Model
 	downloadRows       []app.LectureRow
 	downloadSelected   map[string]bool
+	downloadCourse     int
 	downloadCursor     int
 	downloadTranscribe bool
 	downloadProgress   *lectureDownloadModel
@@ -239,6 +240,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.downloadSelected[row.ID] = true
 			}
 		}
+		m.downloadCourse = 0
 		m.downloadCursor = 0
 	}
 	return m, nil
@@ -275,8 +277,18 @@ func (m model) updateDownloadSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.downloadCursor--
 		}
 	case key == "down" || keyMatches(key, "j", "ㅓ"):
-		if m.downloadCursor < len(m.downloadRows)-1 {
+		if m.downloadCursor < len(m.currentDownloadRows()) {
 			m.downloadCursor++
+		}
+	case key == "left":
+		if m.downloadCourse > 0 {
+			m.downloadCourse--
+			m.downloadCursor = 0
+		}
+	case key == "right":
+		if m.downloadCourse < len(m.downloadGroups())-1 {
+			m.downloadCourse++
+			m.downloadCursor = 0
 		}
 	case key == " ":
 		m.toggleDownloadCurrent()
@@ -369,27 +381,42 @@ func (m model) updateDownloadProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) toggleDownloadCurrent() {
-	if m.downloadCursor < 0 || m.downloadCursor >= len(m.downloadRows) {
+	rows := m.currentDownloadRows()
+	if m.downloadCursor == 0 {
+		m.toggleDownloadCourse()
 		return
 	}
-	row := m.downloadRows[m.downloadCursor]
+	rowIndex := m.downloadCursor - 1
+	if rowIndex < 0 || rowIndex >= len(rows) {
+		return
+	}
+	row := rows[rowIndex]
 	if !lectureDownloadable(row) {
 		return
 	}
 	m.downloadSelected[row.ID] = !m.downloadSelected[row.ID]
 }
 
-func (m *model) toggleDownloadAll() {
+func (m *model) toggleDownloadCourse() {
+	rows := m.currentDownloadRows()
 	allSelected := true
-	for _, row := range m.downloadRows {
+	for _, row := range rows {
 		if lectureDownloadable(row) && !m.downloadSelected[row.ID] {
 			allSelected = false
 			break
 		}
 	}
-	for _, row := range m.downloadRows {
+	for _, row := range rows {
 		if lectureDownloadable(row) {
 			m.downloadSelected[row.ID] = !allSelected
+		}
+	}
+}
+
+func (m *model) toggleDownloadAll() {
+	for _, row := range m.downloadRows {
+		if lectureDownloadable(row) {
+			m.downloadSelected[row.ID] = true
 		}
 	}
 }
@@ -402,6 +429,64 @@ func (m model) selectedDownloadIDs() []string {
 		}
 	}
 	return ids
+}
+
+type downloadCourseGroup struct {
+	name string
+	rows []app.LectureRow
+}
+
+func (m model) downloadGroups() []downloadCourseGroup {
+	groups := make([]downloadCourseGroup, 0)
+	indexByName := make(map[string]int)
+	for _, row := range m.downloadRows {
+		name := strings.TrimSpace(row.CourseName)
+		if name == "" {
+			name = "과목 확인 필요"
+		}
+		index, ok := indexByName[name]
+		if !ok {
+			index = len(groups)
+			indexByName[name] = index
+			groups = append(groups, downloadCourseGroup{name: name})
+		}
+		groups[index].rows = append(groups[index].rows, row)
+	}
+	return groups
+}
+
+func (m model) currentDownloadGroup() downloadCourseGroup {
+	groups := m.downloadGroups()
+	if len(groups) == 0 {
+		return downloadCourseGroup{}
+	}
+	index := m.downloadCourse
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(groups) {
+		index = len(groups) - 1
+	}
+	return groups[index]
+}
+
+func (m model) currentDownloadRows() []app.LectureRow {
+	return m.currentDownloadGroup().rows
+}
+
+func (m model) currentDownloadCourseSelected() bool {
+	rows := m.currentDownloadRows()
+	hasDownloadable := false
+	for _, row := range rows {
+		if !lectureDownloadable(row) {
+			continue
+		}
+		hasDownloadable = true
+		if !m.downloadSelected[row.ID] {
+			return false
+		}
+	}
+	return hasDownloadable
 }
 
 func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -599,28 +684,54 @@ func (m model) renderDownloadSelectView(width int) string {
 		b.WriteString("\n")
 		return b.String()
 	}
+	groups := m.downloadGroups()
+	group := m.currentDownloadGroup()
+	rows := group.rows
+	page := m.downloadCourse + 1
+	if page < 1 {
+		page = 1
+	}
+	if page > len(groups) {
+		page = len(groups)
+	}
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 과목 이동  %d/%d  %s", page, len(groups), group.name)))
+	b.WriteString("\n\n")
 
 	visibleRows := maxInt(5, m.height-10)
 	if m.height <= 0 {
 		visibleRows = 16
 	}
-	if visibleRows > len(m.downloadRows) {
-		visibleRows = len(m.downloadRows)
+	totalItems := len(rows) + 1
+	if visibleRows > totalItems {
+		visibleRows = totalItems
 	}
 	start := m.downloadCursor - visibleRows/2
 	if start < 0 {
 		start = 0
 	}
-	if start+visibleRows > len(m.downloadRows) {
-		start = maxInt(0, len(m.downloadRows)-visibleRows)
+	if start+visibleRows > totalItems {
+		start = maxInt(0, totalItems-visibleRows)
 	}
 	end := start + visibleRows
 	for index := start; index < end; index++ {
-		row := m.downloadRows[index]
 		marker := "  "
 		if index == m.downloadCursor {
 			marker = "› "
 		}
+		if index == 0 {
+			check := "[ ]"
+			if m.currentDownloadCourseSelected() {
+				check = "[x]"
+			}
+			line := fmt.Sprintf("%s%s  모두 선택", marker, check)
+			if index == m.downloadCursor {
+				line = menuSelectedStyle.Render(line)
+			}
+			b.WriteString(line)
+			b.WriteString("\n")
+			continue
+		}
+		row := rows[index-1]
 		check := "[ ]"
 		if m.downloadSelected[row.ID] {
 			check = "[x]"
@@ -637,12 +748,12 @@ func (m model) renderDownloadSelectView(width int) string {
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
-	if start > 0 || end < len(m.downloadRows) {
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(m.downloadRows))))
+	if start > 0 || end < totalItems {
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, totalItems)))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("space 선택  |  a 전체  |  enter 다음  |  b 뒤로  |  q 종료"))
+	b.WriteString(footerStyle.Render("←→ 과목  |  space 선택  |  a 전체 과목  |  enter 다음  |  b 뒤로  |  q 종료"))
 	return b.String()
 }
 

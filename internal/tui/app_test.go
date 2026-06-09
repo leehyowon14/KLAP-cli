@@ -224,14 +224,63 @@ func TestLectureSelectionToggleAll(t *testing.T) {
 func TestModelDownloadSelectionIDs(t *testing.T) {
 	m := model{
 		downloadRows: []app.LectureRow{
-			{ID: "1:a", Lecture: klas.Lecture{ContentID: "a"}},
-			{ID: "1:b", Lecture: klas.Lecture{ContentID: "b"}},
+			{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
+			{ID: "1:b", CourseName: "B", Lecture: klas.Lecture{ContentID: "b"}},
 		},
 		downloadSelected: map[string]bool{"1:b": true},
 	}
 	ids := m.selectedDownloadIDs()
 	if len(ids) != 1 || ids[0] != "1:b" {
 		t.Fatalf("selectedDownloadIDs() = %v", ids)
+	}
+}
+
+func TestDownloadSelectionGroupsByCourse(t *testing.T) {
+	m := model{
+		downloadRows: []app.LectureRow{
+			{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
+			{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b"}},
+			{ID: "2:c", CourseName: "B", Lecture: klas.Lecture{ContentID: "c"}},
+		},
+		downloadSelected: map[string]bool{},
+	}
+	groups := m.downloadGroups()
+	if len(groups) != 2 || groups[0].name != "A" || len(groups[0].rows) != 2 || groups[1].name != "B" {
+		t.Fatalf("downloadGroups() = %+v", groups)
+	}
+
+	m.toggleDownloadCurrent()
+	if !m.downloadSelected["1:a"] || !m.downloadSelected["1:b"] || m.downloadSelected["2:c"] {
+		t.Fatalf("course toggle selected = %+v", m.downloadSelected)
+	}
+	m.toggleDownloadAll()
+	if !m.downloadSelected["2:c"] {
+		t.Fatalf("global toggle should include every course: %+v", m.downloadSelected)
+	}
+	m.toggleDownloadAll()
+	if !m.downloadSelected["1:a"] || !m.downloadSelected["1:b"] || !m.downloadSelected["2:c"] {
+		t.Fatalf("global select should keep every course selected: %+v", m.downloadSelected)
+	}
+}
+
+func TestDownloadSelectionLeftRightChangesCourse(t *testing.T) {
+	m := model{
+		active: screenDownloadSelect,
+		downloadRows: []app.LectureRow{
+			{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
+			{ID: "2:b", CourseName: "B", Lecture: klas.Lecture{ContentID: "b"}},
+		},
+		downloadSelected: map[string]bool{},
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	got := updated.(model)
+	if got.downloadCourse != 1 || got.downloadCursor != 0 {
+		t.Fatalf("right key course=%d cursor=%d", got.downloadCourse, got.downloadCursor)
+	}
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	got = updated.(model)
+	if got.downloadCourse != 0 || got.downloadCursor != 0 {
+		t.Fatalf("left key course=%d cursor=%d", got.downloadCourse, got.downloadCursor)
 	}
 }
 
