@@ -212,6 +212,33 @@ func TestTranscriptPath(t *testing.T) {
 	}
 }
 
+func TestLectureDownloadItemNeedsTranscriptForSkippedVideo(t *testing.T) {
+	root := t.TempDir()
+	videoPath := filepath.Join(root, "컴퓨터그래픽스", "video", "lecture.mp4")
+	if err := os.MkdirAll(filepath.Dir(videoPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(video) error = %v", err)
+	}
+	if err := os.WriteFile(videoPath, []byte("video"), 0o644); err != nil {
+		t.Fatalf("WriteFile(video) error = %v", err)
+	}
+
+	item := LectureDownloadItem{Path: videoPath, Skipped: true}
+	if !LectureDownloadItemNeedsTranscript(item) {
+		t.Fatal("LectureDownloadItemNeedsTranscript() expected true without transcript")
+	}
+
+	outputPath := filepath.Join(root, "컴퓨터그래픽스", "transcription", "lecture.txt")
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(transcript) error = %v", err)
+	}
+	if err := os.WriteFile(outputPath, []byte("text"), 0o644); err != nil {
+		t.Fatalf("WriteFile(transcript) error = %v", err)
+	}
+	if LectureDownloadItemNeedsTranscript(item) {
+		t.Fatal("LectureDownloadItemNeedsTranscript() expected false with existing transcript")
+	}
+}
+
 func TestTranscriptBridgeCandidatesPreferBuiltBinary(t *testing.T) {
 	got := transcriptBridgeCandidates("bridges/macos")
 	want := []string{

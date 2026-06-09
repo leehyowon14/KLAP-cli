@@ -2558,7 +2558,7 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 	jobs := make([]transcript.Job, 0, len(items))
 	rows := make([]LectureRow, 0, len(items))
 	for _, item := range items {
-		if item.Err != nil || item.Skipped || strings.TrimSpace(item.Path) == "" {
+		if !LectureDownloadItemNeedsTranscript(item) {
 			continue
 		}
 		outputPath := transcriptPath(item.Path)
@@ -2691,6 +2691,17 @@ func transcriptPath(path string) string {
 		return filepath.Join(dir, filepath.Base(path)+".txt")
 	}
 	return filepath.Join(dir, strings.TrimSuffix(filepath.Base(path), ext)+".txt")
+}
+
+func LectureDownloadItemNeedsTranscript(item LectureDownloadItem) bool {
+	if item.Err != nil || strings.TrimSpace(item.Path) == "" {
+		return false
+	}
+	if !item.Skipped {
+		return true
+	}
+	_, err := os.Stat(transcriptPath(item.Path))
+	return err != nil
 }
 
 func lectureTranscriptContext(row LectureRow) []string {

@@ -125,13 +125,23 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if key == "up" || keyMatches(key, "k", "ㅏ") {
-			if m.cursor > 0 {
+			if len(m.items) == 0 {
+				return m, nil
+			}
+			if m.cursor <= 0 {
+				m.cursor = len(m.items) - 1
+			} else {
 				m.cursor--
 			}
 			return m, nil
 		}
 		if key == "down" || keyMatches(key, "j", "ㅓ") {
-			if m.cursor < len(m.items)-1 {
+			if len(m.items) == 0 {
+				return m, nil
+			}
+			if m.cursor >= len(m.items)-1 {
+				m.cursor = 0
+			} else {
 				m.cursor++
 			}
 			return m, nil
@@ -416,7 +426,7 @@ func (m *lectureDownloadModel) enqueueTranscriptsForResult(msg lectureDownloadDo
 		})...)
 	}
 	for _, item := range msg.all.Items {
-		if item.Err != nil || item.Skipped || strings.TrimSpace(item.Path) == "" {
+		if !app.LectureDownloadItemNeedsTranscript(item) {
 			continue
 		}
 		cmds = append(cmds, m.enqueueTranscriptForDownload(app.LectureDownloadProgress{

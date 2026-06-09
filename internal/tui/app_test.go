@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -265,6 +267,77 @@ func TestLectureDownloadTranscriptQueueRespectsConcurrency(t *testing.T) {
 	}
 }
 
+func TestLectureDownloadTranscribesSkippedVideoWhenTranscriptMissing(t *testing.T) {
+	root := t.TempDir()
+	videoPath := filepath.Join(root, "컴퓨터그래픽스", "video", "lecture.mp4")
+	if err := os.MkdirAll(filepath.Dir(videoPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(video) error = %v", err)
+	}
+	if err := os.WriteFile(videoPath, []byte("video"), 0o644); err != nil {
+		t.Fatalf("WriteFile(video) error = %v", err)
+	}
+
+	row := app.LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", Title: "소개"}}
+	m := lectureDownloadModel{
+		request: LectureDownloadRequest{
+			Transcribe:            true,
+			TranscriptConcurrency: 1,
+		},
+		transcriptStarted: make(map[string]bool),
+		transcriptRunning: make(map[string]bool),
+	}
+	cmds := m.enqueueTranscriptsForResult(lectureDownloadDoneMsg{all: app.LectureDownloadAllResult{Items: []app.LectureDownloadItem{{
+		Lecture: row,
+		Path:    videoPath,
+		Skipped: true,
+	}}}})
+	if len(cmds) != 1 || m.transcriptActive != 1 {
+		t.Fatalf("missing transcript cmds=%d active=%d", len(cmds), m.transcriptActive)
+	}
+
+	transcriptPath := filepath.Join(root, "컴퓨터그래픽스", "transcription", "lecture.txt")
+	if err := os.MkdirAll(filepath.Dir(transcriptPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(transcript) error = %v", err)
+	}
+	if err := os.WriteFile(transcriptPath, []byte("text"), 0o644); err != nil {
+		t.Fatalf("WriteFile(transcript) error = %v", err)
+	}
+	m = lectureDownloadModel{
+		request: LectureDownloadRequest{
+			Transcribe:            true,
+			TranscriptConcurrency: 1,
+		},
+		transcriptStarted: make(map[string]bool),
+		transcriptRunning: make(map[string]bool),
+	}
+	cmds = m.enqueueTranscriptsForResult(lectureDownloadDoneMsg{all: app.LectureDownloadAllResult{Items: []app.LectureDownloadItem{{
+		Lecture: row,
+		Path:    videoPath,
+		Skipped: true,
+	}}}})
+	if len(cmds) != 0 || m.transcriptActive != 0 {
+		t.Fatalf("existing transcript cmds=%d active=%d", len(cmds), m.transcriptActive)
+	}
+}
+
+func TestLectureDownloadProgressCursorWraps(t *testing.T) {
+	rows := []app.LectureRow{
+		{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
+		{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b"}},
+	}
+	m := lectureDownloadModel{items: initialDownloadStatusLines(rows)}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	got := updated.(lectureDownloadModel)
+	if got.cursor != 1 {
+		t.Fatalf("up from top cursor = %d, want 1", got.cursor)
+	}
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyDown})
+	got = updated.(lectureDownloadModel)
+	if got.cursor != 0 {
+		t.Fatalf("down from bottom cursor = %d, want 0", got.cursor)
+	}
+}
+
 func TestConfirmAcceptsKoreanKeyboardKeys(t *testing.T) {
 	m := confirmModel{value: false}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅛ")})
@@ -420,6 +493,27 @@ func TestDownloadSelectionLeftRightChangesCourse(t *testing.T) {
 	got = updated.(model)
 	if got.downloadCourse != 0 || got.downloadCursor != 0 {
 		t.Fatalf("left key course=%d cursor=%d", got.downloadCourse, got.downloadCursor)
+	}
+}
+
+func TestDownloadSelectCursorWraps(t *testing.T) {
+	m := model{
+		active: screenDownloadSelect,
+		downloadRows: []app.LectureRow{
+			{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
+			{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b"}},
+		},
+		downloadSelected: map[string]bool{},
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	got := updated.(model)
+	if got.downloadCursor != 2 {
+		t.Fatalf("up from top downloadCursor = %d, want 2", got.downloadCursor)
+	}
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyDown})
+	got = updated.(model)
+	if got.downloadCursor != 0 {
+		t.Fatalf("down from bottom downloadCursor = %d, want 0", got.downloadCursor)
 	}
 }
 

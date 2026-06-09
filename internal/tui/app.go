@@ -523,11 +523,19 @@ func (m model) updateDownloadSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		return m, m.load(screenLectures, false)
 	case key == "up" || keyMatches(key, "k", "ㅏ"):
-		if m.downloadCursor > 0 {
+		maxCursor := len(m.currentDownloadRows())
+		if maxCursor <= 0 {
+			m.downloadCursor = 0
+		} else if m.downloadCursor <= 0 {
+			m.downloadCursor = maxCursor
+		} else {
 			m.downloadCursor--
 		}
 	case key == "down" || keyMatches(key, "j", "ㅓ"):
-		if m.downloadCursor < len(m.currentDownloadRows()) {
+		maxCursor := len(m.currentDownloadRows())
+		if maxCursor <= 0 || m.downloadCursor >= maxCursor {
+			m.downloadCursor = 0
+		} else {
 			m.downloadCursor++
 		}
 	case key == "left":
@@ -591,11 +599,17 @@ func (m model) updateDownloadLanguage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key == "esc" || keyMatches(key, "b", "ㅠ"):
 		m.active = screenDownloadConfirm
 	case key == "up" || keyMatches(key, "k", "ㅏ"):
-		if m.downloadLanguage > 0 {
+		if len(transcriptLanguages) == 0 {
+			m.downloadLanguage = 0
+		} else if m.downloadLanguage <= 0 {
+			m.downloadLanguage = len(transcriptLanguages) - 1
+		} else {
 			m.downloadLanguage--
 		}
 	case key == "down" || keyMatches(key, "j", "ㅓ"):
-		if m.downloadLanguage < len(transcriptLanguages)-1 {
+		if len(transcriptLanguages) == 0 || m.downloadLanguage >= len(transcriptLanguages)-1 {
+			m.downloadLanguage = 0
+		} else {
 			m.downloadLanguage++
 		}
 	case key == "enter":
