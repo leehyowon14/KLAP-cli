@@ -48,6 +48,44 @@ func TestHomeNavigation(t *testing.T) {
 	}
 }
 
+func TestHomeNavigationAcceptsKoreanKeyboardKeys(t *testing.T) {
+	m := model{
+		ctx: context.Background(),
+		menu: []menuItem{
+			{title: "Dashboard", screen: screenDashboard},
+			{title: "Due", screen: screenDue},
+		},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅓ")})
+	got := updated.(model)
+	if got.cursor != 1 {
+		t.Fatalf("cursor after korean j key = %d", got.cursor)
+	}
+
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅏ")})
+	got = updated.(model)
+	if got.cursor != 0 {
+		t.Fatalf("cursor after korean k key = %d", got.cursor)
+	}
+}
+
+func TestDetailShortcutsAcceptKoreanKeyboardKeys(t *testing.T) {
+	m := model{active: screenDashboard}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅠ")})
+	got := updated.(model)
+	if got.active != screenHome {
+		t.Fatalf("active after korean b key = %v", got.active)
+	}
+
+	m = model{active: screenDashboard}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㄱ")})
+	got = updated.(model)
+	if !got.loading || cmd == nil {
+		t.Fatalf("refresh after korean r key loading=%t cmd nil=%t", got.loading, cmd == nil)
+	}
+}
+
 func TestListFormatsHideInternalIDs(t *testing.T) {
 	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
 

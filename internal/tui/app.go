@@ -138,24 +138,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return m, tea.Quit
-		case "esc", "b":
+		}
+		key := msg.String()
+		switch {
+		case keyMatches(key, "q", "ㅂ"):
+			return m, tea.Quit
+		case key == "esc" || keyMatches(key, "b", "ㅠ"):
 			if m.active != screenHome {
 				m.active = screenHome
 				m.err = nil
 				m.content = ""
 				m.loading = false
 			}
-		case "up", "k":
+		case key == "up" || keyMatches(key, "k", "ㅏ"):
 			if m.active == screenHome && m.cursor > 0 {
 				m.cursor--
 			}
-		case "down", "j":
+		case key == "down" || keyMatches(key, "j", "ㅓ"):
 			if m.active == screenHome && m.cursor < len(m.menu)-1 {
 				m.cursor++
 			}
-		case "enter":
+		case key == "enter":
 			if m.active == screenHome && len(m.menu) > 0 {
 				target := m.menu[m.cursor].screen
 				m.active = target
@@ -164,7 +169,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.content = ""
 				return m, m.load(target, false)
 			}
-		case "r":
+		case keyMatches(key, "r", "ㄱ"):
 			if m.active != screenHome {
 				m.loading = true
 				m.err = nil
@@ -182,6 +187,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loadedAt = time.Now()
 	}
 	return m, nil
+}
+
+func keyMatches(value string, keys ...string) bool {
+	for _, key := range keys {
+		if value == key {
+			return true
+		}
+	}
+	return false
 }
 
 func (m model) View() string {
