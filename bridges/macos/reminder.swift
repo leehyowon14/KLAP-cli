@@ -146,6 +146,7 @@ for assignment in request.assignments {
     }
 
     if let reminder = known[assignment.id] {
+        reminder.calendar = calendar
         reminder.title = assignment.title
         reminder.notes = notes(for: assignment)
         reminder.url = URL(string: assignment.detailUrl)
