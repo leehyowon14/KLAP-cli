@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,6 +48,7 @@ type RoomBusyRow struct {
 	Room       string
 	Weekday    int
 	Period     int
+	Span       int
 	CourseName string
 	CourseCode string
 	Professor  string
@@ -56,10 +56,31 @@ type RoomBusyRow struct {
 }
 
 type RoomIndex struct {
-	TermValue string
-	Rooms     map[string][]RoomBusyRow
-	Warnings  []string
-	IndexedAt time.Time
+	Term        string
+	GeneratedAt time.Time
+	Rooms       map[string]RoomSchedule
+	Warnings    []RoomIndexWarning
+}
+
+type RoomSchedule struct {
+	Room string
+	Busy []RoomBusySlot
+}
+
+type RoomBusySlot struct {
+	Weekday     int
+	Period      int
+	Span        int
+	SubjectName string
+	Professor   string
+	CourseCode  string
+	SubjectID   string
+}
+
+type RoomIndexWarning struct {
+	SubjectID   string
+	SubjectName string
+	Error       string
 }
 
 type RoomIndexRoom struct {
@@ -86,6 +107,20 @@ type RoomQueryResult struct {
 	CacheCreatedAt time.Time
 }
 
+type RoomAvailableRoom struct {
+	Room string
+}
+
+type RoomAvailableResult struct {
+	TermValue      string
+	Weekday        int
+	Periods        []int
+	Rooms          []RoomAvailableRoom
+	Warnings       []string
+	Cached         bool
+	CacheCreatedAt time.Time
+}
+
 type RoomIndexOptions struct {
 	TermValue  string
 	Refresh    bool
@@ -98,6 +133,16 @@ type RoomQueryOptions struct {
 	Room       string
 	TermValue  string
 	Refresh    bool
+	Building   string
+	OnProgress func(done int, total int, label string)
+	User       UserOption
+}
+
+type RoomAvailableOptions struct {
+	TermValue  string
+	Refresh    bool
+	Day        string
+	Duration   string
 	Building   string
 	OnProgress func(done int, total int, label string)
 	User       UserOption
@@ -156,17 +201,17 @@ func (s *Service) RoomIndex(ctx context.Context, opts RoomIndexOptions) (RoomInd
 	}
 	rooms := make([]RoomIndexRoom, 0, len(index.Rooms))
 	building := NormalizeBuilding(opts.Building)
-	for room, rows := range index.Rooms {
+	for room, schedule := range index.Rooms {
 		if building != "" && !strings.HasPrefix(room, building) {
 			continue
 		}
-		rooms = append(rooms, RoomIndexRoom{Room: room, BusyCount: len(rows)})
+		rooms = append(rooms, RoomIndexRoom{Room: room, BusyCount: busyPeriodCount(schedule.Busy)})
 	}
 	sort.Slice(rooms, func(i, j int) bool { return rooms[i].Room < rooms[j].Room })
 	return RoomIndexResult{
-		TermValue:      index.TermValue,
+		TermValue:      index.Term,
 		Rooms:          rooms,
-		Warnings:       index.Warnings,
+		Warnings:       roomWarningMessages(index.Warnings),
 		Cached:         cached,
 		CacheCreatedAt: hit.CreatedAt,
 	}, nil
@@ -180,7 +225,9 @@ func (s *Service) RoomFree(ctx context.Context, opts RoomQueryOptions) (RoomQuer
 	busy := make(map[string]struct{}, len(result.BusyRows))
 	for _, row := range result.BusyRows {
 		if row.Weekday >= 1 && row.Weekday <= 5 && row.Period >= 1 && row.Period <= 8 {
-			busy[roomSlotKey(row.Weekday, row.Period)] = struct{}{}
+			for offset := 0; offset < normalizedSpan(row.Span); offset++ {
+				busy[roomSlotKey(row.Weekday, row.Period+offset)] = struct{}{}
+			}
 		}
 	}
 	for weekday := 1; weekday <= 5; weekday++ {
@@ -196,6 +243,36 @@ func (s *Service) RoomFree(ctx context.Context, opts RoomQueryOptions) (RoomQuer
 
 func (s *Service) RoomBusy(ctx context.Context, opts RoomQueryOptions) (RoomQueryResult, error) {
 	return s.roomQuery(ctx, opts)
+}
+
+func (s *Service) RoomAvailable(ctx context.Context, opts RoomAvailableOptions) (RoomAvailableResult, error) {
+	weekday := parseRoomWeekday(opts.Day)
+	if weekday == 0 {
+		return RoomAvailableResult{}, errors.New("--day에는 월, 월요일, mon, monday 같은 요일이 필요합니다")
+	}
+	periods, err := parseRoomDuration(opts.Duration)
+	if err != nil {
+		return RoomAvailableResult{}, err
+	}
+	index, hit, cached, err := s.roomIndex(ctx, RoomIndexOptions{
+		TermValue:  opts.TermValue,
+		Refresh:    opts.Refresh,
+		Building:   opts.Building,
+		OnProgress: opts.OnProgress,
+		User:       opts.User,
+	})
+	if err != nil {
+		return RoomAvailableResult{}, err
+	}
+	return RoomAvailableResult{
+		TermValue:      index.Term,
+		Weekday:        weekday,
+		Periods:        periods,
+		Rooms:          availableRooms(index, weekday, periods, opts.Building),
+		Warnings:       roomWarningMessages(index.Warnings),
+		Cached:         cached,
+		CacheCreatedAt: hit.CreatedAt,
+	}, nil
 }
 
 func (s *Service) ClearRoomCache() (CacheClearResult, error) {
@@ -222,8 +299,8 @@ func (s *Service) roomQuery(ctx context.Context, opts RoomQueryOptions) (RoomQue
 	}
 	candidates := matchRooms(index.Rooms, opts.Room, opts.Building)
 	result := RoomQueryResult{
-		TermValue:      index.TermValue,
-		Warnings:       index.Warnings,
+		TermValue:      index.Term,
+		Warnings:       roomWarningMessages(index.Warnings),
 		Cached:         cached,
 		CacheCreatedAt: hit.CreatedAt,
 	}
@@ -232,7 +309,7 @@ func (s *Service) roomQuery(ctx context.Context, opts RoomQueryOptions) (RoomQue
 		return result, nil
 	}
 	result.Room = candidates[0]
-	result.BusyRows = append(result.BusyRows, index.Rooms[result.Room]...)
+	result.BusyRows = roomBusyRows(index.Rooms[result.Room])
 	sortRoomBusyRows(result.BusyRows)
 	return result, nil
 }
@@ -273,9 +350,9 @@ func buildRoomIndexFromKlas(ctx context.Context, client *klas.Client, termValue 
 		return RoomIndex{}, err
 	}
 	index := RoomIndex{
-		TermValue: termValue,
-		Rooms:     make(map[string][]RoomBusyRow),
-		IndexedAt: time.Now(),
+		Term:        termValue,
+		Rooms:       make(map[string]RoomSchedule),
+		GeneratedAt: time.Now(),
 	}
 	type job struct {
 		item      klas.SyllabusListItem
@@ -293,7 +370,11 @@ func buildRoomIndexFromKlas(ctx context.Context, client *klas.Client, termValue 
 			times, err := client.SyllabusTimeInfo(ctx, current.subjectID)
 			mu.Lock()
 			if err != nil {
-				index.Warnings = append(index.Warnings, fmt.Sprintf("%s: %v", firstNonEmpty(current.item.KoreanName, current.subjectID), err))
+				index.Warnings = append(index.Warnings, RoomIndexWarning{
+					SubjectID:   current.subjectID,
+					SubjectName: current.item.KoreanName,
+					Error:       err.Error(),
+				})
 			} else {
 				addRoomIndexTimes(&index, current.item, current.subjectID, times)
 			}
@@ -320,7 +401,11 @@ func buildRoomIndexFromKlas(ctx context.Context, client *klas.Client, termValue 
 		subjectID, err := item.SubjectID()
 		if err != nil {
 			mu.Lock()
-			index.Warnings = append(index.Warnings, fmt.Sprintf("%s: %v", firstNonEmpty(item.KoreanName, item.CourseCode()), err))
+			index.Warnings = append(index.Warnings, RoomIndexWarning{
+				SubjectID:   item.CourseCode(),
+				SubjectName: item.KoreanName,
+				Error:       err.Error(),
+			})
 			done++
 			if onProgress != nil {
 				onProgress(done, total, firstNonEmpty(item.KoreanName, item.CourseCode()))
@@ -338,9 +423,10 @@ func buildRoomIndexFromKlas(ctx context.Context, client *klas.Client, termValue 
 	}
 	close(jobs)
 	wg.Wait()
-	sort.Strings(index.Warnings)
-	for room := range index.Rooms {
-		sortRoomBusyRows(index.Rooms[room])
+	sortRoomWarnings(index.Warnings)
+	for room, schedule := range index.Rooms {
+		sortRoomBusySlots(schedule.Busy)
+		index.Rooms[room] = schedule
 	}
 	return index, nil
 }
@@ -355,30 +441,32 @@ func addRoomIndexTimes(index *RoomIndex, item klas.SyllabusListItem, subjectID s
 		if weekday == 0 {
 			continue
 		}
-		for _, period := range timeInfo.Periods {
-			if period <= 0 {
-				continue
-			}
-			index.Rooms[room] = append(index.Rooms[room], RoomBusyRow{
-				Room:       room,
-				Weekday:    weekday,
-				Period:     period,
-				CourseName: item.KoreanName,
-				CourseCode: item.CourseCode(),
-				Professor:  item.Professor,
-				SubjectID:  subjectID,
+		schedule := index.Rooms[room]
+		if schedule.Room == "" {
+			schedule.Room = room
+		}
+		for _, span := range roomPeriodSpans(timeInfo.Periods) {
+			schedule.Busy = append(schedule.Busy, RoomBusySlot{
+				Weekday:     weekday,
+				Period:      span.Period,
+				Span:        span.Span,
+				SubjectName: item.KoreanName,
+				CourseCode:  item.CourseCode(),
+				Professor:   item.Professor,
+				SubjectID:   subjectID,
 			})
 		}
+		index.Rooms[room] = schedule
 	}
 }
 
-func matchRooms(rooms map[string][]RoomBusyRow, query string, buildingFilter string) []string {
+func matchRooms(rooms map[string]RoomSchedule, query string, buildingFilter string) []string {
 	normalizedQuery := NormalizeRoom(query)
 	building := NormalizeBuilding(buildingFilter)
 	if normalizedQuery == "" {
 		return nil
 	}
-	if rows, ok := rooms[normalizedQuery]; ok && len(rows) > 0 {
+	if schedule, ok := rooms[normalizedQuery]; ok && len(schedule.Busy) > 0 {
 		if building == "" || strings.HasPrefix(normalizedQuery, building) {
 			return []string{normalizedQuery}
 		}
@@ -400,7 +488,7 @@ func matchRooms(rooms map[string][]RoomBusyRow, query string, buildingFilter str
 }
 
 func parseRoomWeekday(value string) int {
-	switch strings.TrimSpace(value) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "월", "월요일":
 		return 1
 	case "화", "화요일":
@@ -413,9 +501,149 @@ func parseRoomWeekday(value string) int {
 		return 5
 	case "토", "토요일":
 		return 6
+	case "mon", "monday":
+		return 1
+	case "tue", "tues", "tuesday":
+		return 2
+	case "wed", "wednesday":
+		return 3
+	case "thu", "thur", "thurs", "thursday":
+		return 4
+	case "fri", "friday":
+		return 5
+	case "sat", "saturday":
+		return 6
 	default:
 		return 0
 	}
+}
+
+func parseRoomDuration(value string) ([]int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, errors.New("--duration에는 1-3 또는 5 같은 교시 범위가 필요합니다")
+	}
+	parts := strings.Split(value, "-")
+	if len(parts) > 2 {
+		return nil, errors.New("--duration은 1-3 또는 5 형식이어야 합니다")
+	}
+	start, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || start < 1 || start > 8 {
+		return nil, errors.New("--duration 교시는 1부터 8 사이여야 합니다")
+	}
+	end := start
+	if len(parts) == 2 {
+		end, err = strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil || end < 1 || end > 8 || end < start {
+			return nil, errors.New("--duration 범위는 1-8 사이의 오름차순이어야 합니다")
+		}
+	}
+	periods := make([]int, 0, end-start+1)
+	for period := start; period <= end; period++ {
+		periods = append(periods, period)
+	}
+	return periods, nil
+}
+
+func availableRooms(index RoomIndex, weekday int, periods []int, buildingFilter string) []RoomAvailableRoom {
+	building := NormalizeBuilding(buildingFilter)
+	rooms := make([]RoomAvailableRoom, 0, len(index.Rooms))
+	for room, schedule := range index.Rooms {
+		if building != "" && !strings.HasPrefix(room, building) {
+			continue
+		}
+		busy := roomBusySet(schedule.Busy)
+		available := true
+		for _, period := range periods {
+			if _, ok := busy[roomSlotKey(weekday, period)]; ok {
+				available = false
+				break
+			}
+		}
+		if available {
+			rooms = append(rooms, RoomAvailableRoom{Room: room})
+		}
+	}
+	sort.Slice(rooms, func(i, j int) bool { return rooms[i].Room < rooms[j].Room })
+	return rooms
+}
+
+func roomBusyRows(schedule RoomSchedule) []RoomBusyRow {
+	rows := make([]RoomBusyRow, 0, len(schedule.Busy))
+	for _, slot := range schedule.Busy {
+		rows = append(rows, RoomBusyRow{
+			Room:       schedule.Room,
+			Weekday:    slot.Weekday,
+			Period:     slot.Period,
+			Span:       normalizedSpan(slot.Span),
+			CourseName: slot.SubjectName,
+			CourseCode: slot.CourseCode,
+			Professor:  slot.Professor,
+			SubjectID:  slot.SubjectID,
+		})
+	}
+	return rows
+}
+
+func roomBusySet(slots []RoomBusySlot) map[string]struct{} {
+	busy := make(map[string]struct{}, len(slots))
+	for _, slot := range slots {
+		if slot.Weekday <= 0 || slot.Period <= 0 {
+			continue
+		}
+		for offset := 0; offset < normalizedSpan(slot.Span); offset++ {
+			busy[roomSlotKey(slot.Weekday, slot.Period+offset)] = struct{}{}
+		}
+	}
+	return busy
+}
+
+func busyPeriodCount(slots []RoomBusySlot) int {
+	count := 0
+	for _, slot := range slots {
+		count += normalizedSpan(slot.Span)
+	}
+	return count
+}
+
+type roomPeriodSpan struct {
+	Period int
+	Span   int
+}
+
+func roomPeriodSpans(periods []int) []roomPeriodSpan {
+	values := make([]int, 0, len(periods))
+	seen := make(map[int]struct{}, len(periods))
+	for _, period := range periods {
+		if period <= 0 {
+			continue
+		}
+		if _, ok := seen[period]; ok {
+			continue
+		}
+		seen[period] = struct{}{}
+		values = append(values, period)
+	}
+	sort.Ints(values)
+	spans := make([]roomPeriodSpan, 0, len(values))
+	for index := 0; index < len(values); {
+		start := values[index]
+		end := start
+		index++
+		for index < len(values) && values[index] == end+1 {
+			end = values[index]
+			index++
+		}
+		spans = append(spans, roomPeriodSpan{Period: start, Span: end - start + 1})
+	}
+	return spans
+}
+
+func normalizedSpan(span int) int {
+	if span <= 0 {
+		return 1
+	}
+	return span
 }
 
 func sortRoomBusyRows(rows []RoomBusyRow) {
@@ -431,6 +659,43 @@ func sortRoomBusyRows(rows []RoomBusyRow) {
 		}
 		return rows[i].CourseName < rows[j].CourseName
 	})
+}
+
+func sortRoomBusySlots(slots []RoomBusySlot) {
+	sort.Slice(slots, func(i, j int) bool {
+		if slots[i].Weekday != slots[j].Weekday {
+			return slots[i].Weekday < slots[j].Weekday
+		}
+		if slots[i].Period != slots[j].Period {
+			return slots[i].Period < slots[j].Period
+		}
+		return slots[i].SubjectName < slots[j].SubjectName
+	})
+}
+
+func sortRoomWarnings(warnings []RoomIndexWarning) {
+	sort.Slice(warnings, func(i, j int) bool {
+		if warnings[i].SubjectName != warnings[j].SubjectName {
+			return warnings[i].SubjectName < warnings[j].SubjectName
+		}
+		return warnings[i].SubjectID < warnings[j].SubjectID
+	})
+}
+
+func roomWarningMessages(warnings []RoomIndexWarning) []string {
+	messages := make([]string, 0, len(warnings))
+	for _, warning := range warnings {
+		label := firstNonEmpty(warning.SubjectName, warning.SubjectID)
+		if label == "" {
+			label = "unknown"
+		}
+		if strings.TrimSpace(warning.Error) == "" {
+			messages = append(messages, label)
+			continue
+		}
+		messages = append(messages, label+": "+warning.Error)
+	}
+	return messages
 }
 
 func roomSlotKey(weekday int, period int) string {

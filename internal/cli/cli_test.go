@@ -170,6 +170,19 @@ func TestRoomIndexOptions(t *testing.T) {
 	}
 }
 
+func TestRoomAvailableOptions(t *testing.T) {
+	opts, err := roomAvailableOptions([]string{"--day", "금요일", "--duration", "1-3", "--term", "2026-1", "--building", "새빛", "--refresh", "--user", "20260000"})
+	if err != nil {
+		t.Fatalf("roomAvailableOptions() error = %v", err)
+	}
+	if opts.Day != "금요일" || opts.Duration != "1-3" || opts.TermValue != "2026-1" || opts.Building != "새빛" || !opts.Refresh || opts.User.StudentID != "20260000" {
+		t.Fatalf("roomAvailableOptions() = %+v", opts)
+	}
+	if _, err := roomAvailableOptions([]string{"--day", "금"}); err == nil {
+		t.Fatal("roomAvailableOptions() expected missing duration error")
+	}
+}
+
 func TestRenderProgressBar(t *testing.T) {
 	got := renderProgressBar(25, 12)
 	if got == "" || !strings.Contains(got, "25%") {

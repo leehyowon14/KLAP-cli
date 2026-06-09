@@ -323,6 +323,16 @@ room-index 계산용 `LectreTimeInfo.do` 응답 케이스:
 ]
 ```
 
+시간 기준 빈 강의실 조회는 위 room-index 캐시를 먼저 읽고, 캐시가 없을 때만 전체 인덱싱을 수행한다. 추가 API 호출은 없다.
+
+```text
+klap room available --day 금요일 --duration 1-3
+klap room available --day 화 --duration 2-4 --building 새빛
+klap room empty --term 2026-1 --day 월 --duration 6-8
+```
+
+`--duration 1-3`은 1, 2, 3교시가 모두 비어 있는 강의실만 통과한다. `--building 새빛`은 canonical room 기준 `새빛관*`으로 필터링한다.
+
 컴퓨터그래픽스 기준 빈 배열로 확인된 endpoint:
 
 ```text

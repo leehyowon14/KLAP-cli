@@ -721,6 +721,25 @@ func runRoom(ctx context.Context, service *app.Service, args []string) error {
 		}
 		printRoomBusy(result)
 		return nil
+	case "available", "empty":
+		opts, err := roomAvailableOptions(args[1:])
+		if err != nil {
+			return err
+		}
+		progressed := false
+		opts.OnProgress = func(done int, total int, label string) {
+			progressed = true
+			fmt.Printf("\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
+		}
+		result, err := service.RoomAvailable(ctx, opts)
+		if progressed {
+			fmt.Println()
+		}
+		if err != nil {
+			return err
+		}
+		printRoomAvailable(result)
+		return nil
 	case "index":
 		opts, err := roomIndexOptions(args[1:])
 		if err != nil {
@@ -790,6 +809,51 @@ func roomQueryOptions(args []string) (app.RoomQueryOptions, error) {
 	opts.Room = strings.Join(roomParts, " ")
 	if strings.TrimSpace(opts.Room) == "" {
 		return app.RoomQueryOptions{}, errors.New("usage: klap room <free|busy> <강의실명> [--term YYYY-S] [--building <건물명>] [--refresh]")
+	}
+	return opts, nil
+}
+
+func roomAvailableOptions(args []string) (app.RoomAvailableOptions, error) {
+	opts := app.RoomAvailableOptions{User: app.UserOption{StudentID: userFlag(args)}}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--day":
+			if i+1 >= len(args) {
+				return app.RoomAvailableOptions{}, errors.New("--day에는 요일이 필요합니다")
+			}
+			opts.Day = args[i+1]
+			i++
+		case "--duration":
+			if i+1 >= len(args) {
+				return app.RoomAvailableOptions{}, errors.New("--duration에는 1-3 또는 5 같은 교시 범위가 필요합니다")
+			}
+			opts.Duration = args[i+1]
+			i++
+		case "--term":
+			if i+1 >= len(args) {
+				return app.RoomAvailableOptions{}, errors.New("--term에는 YYYY-S 형식의 학기가 필요합니다")
+			}
+			opts.TermValue = args[i+1]
+			i++
+		case "--building":
+			if i+1 >= len(args) {
+				return app.RoomAvailableOptions{}, errors.New("--building에는 건물명이 필요합니다")
+			}
+			opts.Building = args[i+1]
+			i++
+		case "--refresh":
+			opts.Refresh = true
+		case "--user":
+			if i+1 >= len(args) {
+				return app.RoomAvailableOptions{}, errors.New("--user에는 학번이 필요합니다")
+			}
+			i++
+		default:
+			return app.RoomAvailableOptions{}, fmt.Errorf("unknown room available option: %s", args[i])
+		}
+	}
+	if strings.TrimSpace(opts.Day) == "" || strings.TrimSpace(opts.Duration) == "" {
+		return app.RoomAvailableOptions{}, errors.New("usage: klap room available --day <요일> --duration <교시범위> [--term YYYY-S] [--building <건물명>] [--refresh]")
 	}
 	return opts, nil
 }
@@ -1477,7 +1541,21 @@ func printRoomBusy(result app.RoomQueryResult) {
 	for _, row := range result.BusyRows {
 		course := emptyFallback(row.CourseName, row.CourseCode)
 		professor := emptyFallback(row.Professor, "교수 미지정")
-		fmt.Printf("%s %d교시 | %s | %s | %s\n", app.RoomWeekdayLabel(row.Weekday), row.Period, course, professor, row.CourseCode)
+		fmt.Printf("%s %s | %s | %s | %s\n", app.RoomWeekdayLabel(row.Weekday), roomPeriodLabel(row.Period, row.Span), course, professor, row.CourseCode)
+	}
+	printRoomWarnings(result.Warnings)
+}
+
+func printRoomAvailable(result app.RoomAvailableResult) {
+	status := roomAvailabilityStatus(result.Weekday, result.Periods)
+	fmt.Printf("빈 강의실 | %s | %s%s\n", displayRoomTermValue(result.TermValue), status, roomCacheLabel(result.Cached))
+	if len(result.Rooms) == 0 {
+		fmt.Println("조건에 맞는 빈 강의실이 없습니다")
+		printRoomWarnings(result.Warnings)
+		return
+	}
+	for index, room := range result.Rooms {
+		fmt.Printf("%d. %s | %s\n", index+1, room.Room, status)
 	}
 	printRoomWarnings(result.Warnings)
 }
@@ -1544,6 +1622,29 @@ func roomCacheLabel(cached bool) string {
 	return ""
 }
 
+func roomAvailabilityStatus(weekday int, periods []int) string {
+	return app.RoomWeekdayLabel(weekday) + " " + roomPeriodsLabel(periods) + " 비어있음"
+}
+
+func roomPeriodLabel(period int, span int) string {
+	if span <= 1 {
+		return strconv.Itoa(period) + "교시"
+	}
+	return strconv.Itoa(period) + "-" + strconv.Itoa(period+span-1) + "교시"
+}
+
+func roomPeriodsLabel(periods []int) string {
+	if len(periods) == 0 {
+		return "교시 미지정"
+	}
+	start := periods[0]
+	end := periods[len(periods)-1]
+	if start == end {
+		return strconv.Itoa(start) + "교시"
+	}
+	return strconv.Itoa(start) + "-" + strconv.Itoa(end) + "교시"
+}
+
 func truncateForLine(value string, max int) string {
 	runes := []rune(strings.TrimSpace(value))
 	if max <= 0 || len(runes) <= max {
@@ -1592,6 +1693,8 @@ Usage:
   klap syllabus <과목명|과목번호|학정번호> 강의계획서 출력
   klap room free <강의실명> 강의실 빈 시간 출력
   klap room busy <강의실명> 강의실 사용 목록 출력
+  klap room available --day <요일> --duration <교시범위> 조건에 맞는 빈 강의실 출력
+  klap room empty --day <요일> --duration <교시범위> room available alias
   klap room index        강의실 시간표 인덱스 생성/출력
   klap room cache clear  강의실 인덱스 캐시 삭제
   klap academic list     학사일정 목록 출력
