@@ -616,9 +616,6 @@ func (m lectureDownloadModel) itemProgressText(item downloadStatusLine) string {
 		}
 		return taglineStyle.Render("전사중")
 	case item.status == "transcribed":
-		if strings.TrimSpace(item.path) != "" {
-			return taglineStyle.Render(truncateText(filepath.Base(item.path), 34))
-		}
 		return taglineStyle.Render("전사완료")
 	case item.status == "done":
 		if strings.TrimSpace(item.path) != "" {

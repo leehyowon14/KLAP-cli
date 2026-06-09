@@ -227,6 +227,14 @@ func TestLectureDownloadTranscriptStatusPreservesDoneOverwrite(t *testing.T) {
 	}
 }
 
+func TestLectureDownloadTranscribedTextOmitsPath(t *testing.T) {
+	m := lectureDownloadModel{}
+	got := m.itemProgressText(downloadStatusLine{status: "transcribed", path: "/tmp/lecture.txt"})
+	if !strings.Contains(got, "전사완료") || strings.Contains(got, "lecture.txt") {
+		t.Fatalf("itemProgressText(transcribed) = %q", got)
+	}
+}
+
 func TestConfirmAcceptsKoreanKeyboardKeys(t *testing.T) {
 	m := confirmModel{value: false}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅛ")})
