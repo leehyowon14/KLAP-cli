@@ -96,7 +96,7 @@ func (s *Settings) Normalize() {
 	if s.Reminder.AlarmBeforeMin <= 0 {
 		s.Reminder.AlarmBeforeMin = 24 * 60
 	}
-	if s.Download.Dir == "" {
+	if s.Download.Dir == "" || s.Download.Dir == "downloads" {
 		s.Download.Dir = DefaultDownloadDir()
 	}
 	if s.Download.Concurrency <= 0 {

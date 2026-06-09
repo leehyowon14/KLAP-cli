@@ -40,3 +40,11 @@ func TestNormalizeReminderSettings(t *testing.T) {
 		t.Fatalf("Download.Concurrency = %d", settings.Download.Concurrency)
 	}
 }
+
+func TestNormalizeMigratesLegacyDownloadDefault(t *testing.T) {
+	settings := Settings{Download: Download{Dir: "downloads"}}
+	settings.Normalize()
+	if settings.Download.Dir != DefaultDownloadDir() {
+		t.Fatalf("Download.Dir = %q", settings.Download.Dir)
+	}
+}
