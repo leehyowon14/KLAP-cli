@@ -738,56 +738,26 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 			return err
 		}
 		if !looksLikeLectureID(args[1]) {
-			user := app.UserOption{StudentID: userFlag(args[2:])}
-			rows, err := service.LectureList(ctx, app.LectureListOptions{
-				User:         user,
+			result, err := service.DownloadAllLectures(ctx, app.LectureDownloadAllOptions{
+				User:         app.UserOption{StudentID: userFlag(args[2:])},
 				CourseFilter: args[1],
-				Refresh:      true,
+				Dir:          dir,
 			})
 			if err != nil {
 				return err
 			}
-			lectureIDs, err := tui.RunLectureSelection(ctx, rows)
-			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					return nil
-				}
-				return err
-			}
-			transcribe, err := tui.RunConfirm(ctx, "TRANSCRIPT", "다운로드 완료 후 선택한 강의를 전사할까요?", false)
-			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					return nil
-				}
-				return err
-			}
-			settings, err := service.DownloadSettings()
-			if err != nil {
-				return err
-			}
-			return tui.RunLectureDownload(ctx, service, tui.LectureDownloadRequest{
-				Target:      args[1],
-				User:        user,
-				Dir:         dir,
-				All:         true,
-				LectureIDs:  lectureIDs,
-				Concurrency: settings.Concurrency,
-				Transcribe:  transcribe,
-			})
+			printLectureDownloadAllResult(result)
+			return nil
 		}
-		transcribe, err := tui.RunConfirm(ctx, "TRANSCRIPT", "다운로드 완료 후 이 강의를 전사할까요?", false)
+		result, err := service.DownloadLecture(ctx, args[1], app.LectureDownloadOptions{
+			User: app.UserOption{StudentID: userFlag(args[2:])},
+			Dir:  dir,
+		})
 		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil
-			}
 			return err
 		}
-		return tui.RunLectureDownload(ctx, service, tui.LectureDownloadRequest{
-			Target:     args[1],
-			User:       app.UserOption{StudentID: userFlag(args[2:])},
-			Dir:        dir,
-			Transcribe: transcribe,
-		})
+		fmt.Printf("다운로드 완료: %s (%s)\n", result.Path, formatBytes(result.Bytes))
+		return nil
 	case "attend":
 		return runLectureAttend(ctx, service, args[1:])
 	case "open":
