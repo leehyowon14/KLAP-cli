@@ -379,6 +379,20 @@ func TestExtractMediaURLPreservesExternalDesktopHost(t *testing.T) {
 	}
 }
 
+func TestExtractMediaURLNestedMainMediaDesktop(t *testing.T) {
+	body := []byte(`<?xml version="1.0"?>
+<content version="1.0"><content_playing_info version="1.0"><content_id>699bd27c797cb</content_id><main_media><desktop><html5><method>progressive</method><media_uri>https://kwcommons.kw.ac.kr/contents5/KW10000001/699bd27c797cb/contents/media_files/mobile/ssmovie.mp4</media_uri></html5><flash_fallback><method>pseudo</method><media_uri>https://kwcommons.kw.ac.kr/contents5_pseudo/KW10000001/699bd27c797cb/contents/media_files/mobile/ssmovie.mp4</media_uri></flash_fallback></desktop><mobile><html5><method>progressive</method><media_uri>https://kwcommons.kw.ac.kr/contents5/KW10000001/699bd27c797cb/contents/media_files/mobile/ssmovie.mp4</media_uri></html5></mobile></main_media></content_playing_info></content>`)
+
+	got, err := ExtractMediaURL(body)
+	if err != nil {
+		t.Fatalf("ExtractMediaURL() error = %v", err)
+	}
+	want := "https://kwcommons.kw.ac.kr/contents5/KW10000001/699bd27c797cb/contents/media_files/mobile/ssmovie.mp4"
+	if got != want {
+		t.Fatalf("ExtractMediaURL() = %q, want %q", got, want)
+	}
+}
+
 func TestExtractMediaURLFallbackMainMedia(t *testing.T) {
 	body := []byte(`<content><media_uri target="all">https://media.example.com/path/[MEDIA_FILE]</media_uri><main_media media_id="m1">video.mp4</main_media></content>`)
 

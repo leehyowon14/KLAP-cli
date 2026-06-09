@@ -2298,19 +2298,15 @@ func ExtractMediaURL(body []byte) (string, error) {
 					allPrefix = strings.Split(candidate.URL, "[MEDIA_FILE]")[0]
 				}
 				candidates = append(candidates, candidate)
-			case "main_media":
-				text, readErr := readElementText(decoder)
-				if readErr != nil {
-					continue
-				}
-				stack = stack[:len(stack)-1]
-				mainMedia = strings.TrimSpace(text)
 			}
 		case xml.EndElement:
 			if len(stack) > 0 {
 				stack = stack[:len(stack)-1]
 			}
 		}
+	}
+	if mainMedia == "" {
+		mainMedia = regexMainMedia(string(body))
 	}
 
 	for _, candidate := range candidates {
