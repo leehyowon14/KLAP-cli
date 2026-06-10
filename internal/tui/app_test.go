@@ -433,9 +433,9 @@ func TestWrapHelpKeepsTrailingCommands(t *testing.T) {
 }
 
 func TestHeaderRendersSingleLineWithoutTUI(t *testing.T) {
-	m := model{active: screenDashboard}
+	m := model{active: screenDashboard, loadedAt: time.Date(2026, 6, 10, 17, 29, 5, 0, time.Local)}
 	header := m.renderHeader(48)
-	if strings.Contains(header, "\n") || strings.Contains(header, "tui") {
+	if strings.Contains(header, "\n") || strings.Contains(header, "tui") || strings.Contains(header, "17:29") {
 		t.Fatalf("renderHeader() = %q", header)
 	}
 	if !strings.Contains(header, "KLAP") || !strings.Contains(header, "Dashboard") {
@@ -443,6 +443,30 @@ func TestHeaderRendersSingleLineWithoutTUI(t *testing.T) {
 	}
 	if lipgloss.Width(header) > 48 {
 		t.Fatalf("renderHeader() width = %d: %q", lipgloss.Width(header), header)
+	}
+}
+
+func TestViewLinesFitTerminalWidth(t *testing.T) {
+	m := model{
+		active: screenLectures,
+		width:  80,
+		height: 24,
+		lectureRows: []app.LectureRow{{
+			ID:         "1",
+			CourseName: "진로탐색및설계",
+			Lecture: klas.Lecture{
+				Title:        "2026-1학기 진로탐색 및 설계 오리엔테이션 매우 긴 제목",
+				Progress:     "100",
+				AchievedTime: "10",
+				RequiredTime: "10",
+			},
+		}},
+	}
+	view := m.View()
+	for index, line := range strings.Split(view, "\n") {
+		if width := lipgloss.Width(line); width > m.width {
+			t.Fatalf("line %d width = %d > %d: %q", index, width, m.width, line)
+		}
 	}
 }
 

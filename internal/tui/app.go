@@ -21,6 +21,7 @@ import (
 )
 
 const menuNumberWidth = 3
+const appHorizontalPadding = 4
 
 var (
 	appStyle = lipgloss.NewStyle().
@@ -2035,36 +2036,48 @@ func (m model) View() string {
 	if width <= 0 {
 		width = 96
 	}
+	contentWidth := tuiContentWidth(width)
 	switch m.active {
 	case screenDownloadSelect:
-		return appStyle.Render(m.renderDownloadSelectView(width))
+		return appStyle.Render(m.renderDownloadSelectView(contentWidth))
 	case screenDownloadConfirm:
-		return appStyle.Render(m.renderDownloadConfirmView(width))
+		return appStyle.Render(m.renderDownloadConfirmView(contentWidth))
 	case screenDownloadLanguage:
-		return appStyle.Render(m.renderDownloadLanguageView(width))
+		return appStyle.Render(m.renderDownloadLanguageView(contentWidth))
 	case screenDownloadProgress:
 		if m.downloadProgress == nil {
 			return appStyle.Render(errorStyle.Render("다운로드 상태가 없습니다"))
 		}
 		return m.downloadProgress.View()
 	case screenConfigChoice:
-		return appStyle.Render(m.renderConfigChoiceView(width))
+		return appStyle.Render(m.renderConfigChoiceView(contentWidth))
 	case screenConfigInput:
-		return appStyle.Render(m.renderConfigInputView(width))
+		return appStyle.Render(m.renderConfigInputView(contentWidth))
 	case screenRoomDay:
-		return appStyle.Render(m.renderRoomDayView(width))
+		return appStyle.Render(m.renderRoomDayView(contentWidth))
 	case screenRoomPeriod:
-		return appStyle.Render(m.renderRoomPeriodView(width))
+		return appStyle.Render(m.renderRoomPeriodView(contentWidth))
 	}
 	if m.active == screenHome {
-		return appStyle.Render(m.renderHomeView(width))
+		return appStyle.Render(m.renderHomeView(contentWidth))
 	}
 
-	header := m.renderHeader(width)
-	rule := mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120))))
-	panel := panelStyle.Width(maxInt(48, width-4)).Render(m.renderPanel(width))
-	footer := m.renderFooterHelp(width)
+	header := m.renderHeader(contentWidth)
+	rule := renderRule(contentWidth)
+	panel := panelStyle.Width(contentWidth).Render(m.renderPanel(contentWidth))
+	footer := m.renderFooterHelp(contentWidth)
 	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, rule, "", panel, "", footer))
+}
+
+func tuiContentWidth(width int) int {
+	if width <= 0 {
+		width = 96
+	}
+	return maxInt(1, width-appHorizontalPadding)
+}
+
+func renderRule(width int) string {
+	return mutedStyle.Render(strings.Repeat("─", maxInt(1, minInt(width, 120))))
 }
 
 func (m model) footerHelp() string {
@@ -2112,7 +2125,7 @@ func (m model) renderFooterHelp(width int) string {
 }
 
 func renderHelpText(help string, width int) string {
-	return footerStyle.Render(wrapHelp(help, maxInt(24, width-4)))
+	return footerStyle.Render(wrapHelp(help, maxInt(1, width)))
 }
 
 func wrapHelp(help string, width int) string {
@@ -2147,9 +2160,6 @@ func (m model) renderHeader(width int) string {
 	}
 	title := headerStyle.Render("KLAP")
 	subtitle := screenTitle(m.active)
-	if !m.loadedAt.IsZero() && !m.loading && m.active != screenHome {
-		subtitle += " · " + m.loadedAt.Format("15:04:05")
-	}
 	titleWidth := lipgloss.Width("KLAP")
 	gap := 2
 	available := width - titleWidth - gap
@@ -2165,7 +2175,13 @@ func (m model) renderHeader(width int) string {
 		return title
 	}
 	spacer := strings.Repeat(" ", maxInt(1, width-titleWidth-lipgloss.Width(subtitle)))
-	return title + spacer + headerMetaStyle.Render(subtitle)
+	line := title + spacer + headerMetaStyle.Render(subtitle)
+	if lipgloss.Width(line) > width {
+		subtitle = truncateText(subtitle, maxInt(0, width-titleWidth-1))
+		spacer = strings.Repeat(" ", maxInt(1, width-titleWidth-lipgloss.Width(subtitle)))
+		line = title + spacer + headerMetaStyle.Render(subtitle)
+	}
+	return line
 }
 
 func (m model) renderHomeView(width int) string {
@@ -2220,7 +2236,7 @@ func (m model) renderDownloadSelectView(width int) string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader(width))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("Download"))
 	b.WriteString("\n")
@@ -2317,7 +2333,7 @@ func (m model) renderDownloadConfirmView(width int) string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader(width))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("Transcript"))
 	b.WriteString("\n")
@@ -2341,7 +2357,7 @@ func (m model) renderDownloadLanguageView(width int) string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader(width))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("Transcript Language"))
 	b.WriteString("\n")
@@ -2368,7 +2384,7 @@ func (m model) renderConfigChoiceView(width int) string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader(width))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render(configInputLabel(m.configChoiceKey)))
 	b.WriteString("\n")
@@ -2413,7 +2429,7 @@ func (m model) renderConfigInputView(width int) string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader(width))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render(configInputLabel(m.configEditing)))
 	b.WriteString("\n")
@@ -2433,7 +2449,7 @@ func (m model) renderRoomDayView(width int) string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader(width))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("Rooms"))
 	b.WriteString("\n")
@@ -2470,7 +2486,7 @@ func (m model) renderRoomPeriodView(width int) string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader(width))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("Rooms"))
 	b.WriteString("\n")
