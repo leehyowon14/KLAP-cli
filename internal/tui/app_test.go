@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -101,6 +102,60 @@ func TestInactiveLoadMsgCachesWithoutClobberingOtherScreens(t *testing.T) {
 	}
 	if len(m.assignmentRows) != 1 || m.assignmentRows[0].ID != "1" {
 		t.Fatalf("assignmentRows clobbered: %+v", m.assignmentRows)
+	}
+}
+
+func TestPreparePrefetchStartsOnlyFirstScreen(t *testing.T) {
+	m := (model{loadingScreens: map[screen]bool{}}).preparePrefetch([]screen{screenAssignments, screenLectures, screenDashboard})
+	if !m.prefetchActive || m.prefetchCurrent != screenAssignments {
+		t.Fatalf("prefetch active=%t current=%v", m.prefetchActive, m.prefetchCurrent)
+	}
+	if !m.loadingScreens[screenAssignments] || m.loadingScreens[screenLectures] || m.loadingScreens[screenDashboard] {
+		t.Fatalf("loadingScreens = %+v", m.loadingScreens)
+	}
+	if len(m.prefetchQueue) != 2 || m.prefetchQueue[0] != screenLectures || m.prefetchQueue[1] != screenDashboard {
+		t.Fatalf("prefetchQueue = %+v", m.prefetchQueue)
+	}
+}
+
+func TestPrefetchLoadMsgStartsNextQueuedScreen(t *testing.T) {
+	m := model{
+		active:          screenHome,
+		loadedScreens:   map[screen]bool{},
+		loadingScreens:  map[screen]bool{screenAssignments: true},
+		screenErrors:    map[screen]error{},
+		prefetchActive:  true,
+		prefetchCurrent: screenAssignments,
+		prefetchQueue:   []screen{screenLectures},
+	}
+	updated, cmd := m.Update(loadMsg{screen: screenAssignments, prefetch: true, assignments: []app.AssignmentRow{{ID: "1"}}})
+	got := updated.(model)
+	if cmd == nil {
+		t.Fatal("next prefetch command is nil")
+	}
+	if !got.loadedScreens[screenAssignments] || got.loadingScreens[screenAssignments] {
+		t.Fatalf("assignments loaded/loading = %+v/%+v", got.loadedScreens, got.loadingScreens)
+	}
+	if !got.prefetchActive || got.prefetchCurrent != screenLectures || !got.loadingScreens[screenLectures] {
+		t.Fatalf("next prefetch active=%t current=%v loading=%+v", got.prefetchActive, got.prefetchCurrent, got.loadingScreens)
+	}
+}
+
+func TestPrefetchErrorIsStoredAsLoadedError(t *testing.T) {
+	errBoom := errors.New("boom")
+	m := model{}
+	m.markScreenLoaded(screenLectures, errBoom)
+	if !m.isScreenLoaded(screenLectures) {
+		t.Fatal("failed screen should be considered loaded")
+	}
+	if got := m.screenError(screenLectures); got == nil || got.Error() != "boom" {
+		t.Fatalf("screenError() = %v", got)
+	}
+
+	updated, cmd := m.enterScreen(screenLectures)
+	got := updated.(model)
+	if cmd != nil || got.loading || got.err == nil {
+		t.Fatalf("enter failed screen cmd=%v loading=%t err=%v", cmd, got.loading, got.err)
 	}
 }
 

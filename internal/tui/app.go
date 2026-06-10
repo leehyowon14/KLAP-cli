@@ -124,6 +124,9 @@ type model struct {
 	loadedScreens       map[screen]bool
 	loadingScreens      map[screen]bool
 	screenErrors        map[screen]error
+	prefetchQueue       []screen
+	prefetchCurrent     screen
+	prefetchActive      bool
 	err                 error
 	content             string
 	dashboardResult     app.DashboardResult
@@ -223,6 +226,7 @@ var roomDayOptions = []roomDayOption{
 
 type loadMsg struct {
 	screen      screen
+	prefetch    bool
 	content     string
 	err         error
 	assignments []app.AssignmentRow
@@ -268,16 +272,11 @@ func Run(ctx context.Context, service *app.Service) error {
 	if service == nil {
 		return errors.New("TUI service가 없습니다")
 	}
-	prefetchTargets := mainPrefetchScreens()
-	loadingScreens := make(map[screen]bool, len(prefetchTargets))
-	for _, target := range prefetchTargets {
-		loadingScreens[target] = true
-	}
 	initial := model{
 		ctx:            ctx,
 		service:        service,
 		loadedScreens:  map[screen]bool{},
-		loadingScreens: loadingScreens,
+		loadingScreens: map[screen]bool{},
 		screenErrors:   map[screen]error{},
 		menu: []menuItem{
 			{title: "Dashboard", help: "현재 학기 요약", screen: screenDashboard},
@@ -290,12 +289,16 @@ func Run(ctx context.Context, service *app.Service) error {
 			{title: "Config", help: "설정", screen: screenConfig},
 		},
 	}
+	initial = initial.preparePrefetch(mainPrefetchScreens())
 	_, err := tea.NewProgram(initial, tea.WithAltScreen()).Run()
 	return err
 }
 
 func (m model) Init() tea.Cmd {
-	return m.prefetchMainScreens()
+	if !m.prefetchActive {
+		return nil
+	}
+	return m.loadPrefetch(m.prefetchCurrent, false)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -471,6 +474,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case loadMsg:
 		m.applyLoadMsg(msg)
+		if msg.prefetch {
+			m.prefetchActive = false
+			m.prefetchCurrent = 0
+			return m.startNextPrefetch()
+		}
 	case syncMsg:
 		m.loading = false
 		m.active = screenDashboard
@@ -547,23 +555,41 @@ func keyMatches(value string, keys ...string) bool {
 
 func mainPrefetchScreens() []screen {
 	return []screen{
-		screenDashboard,
-		screenDue,
 		screenAssignments,
 		screenNotices,
 		screenLectures,
 		screenAcademic,
 		screenConfig,
+		screenDashboard,
+		screenDue,
 	}
 }
 
-func (m model) prefetchMainScreens() tea.Cmd {
-	targets := mainPrefetchScreens()
-	cmds := make([]tea.Cmd, 0, len(targets))
-	for _, target := range targets {
-		cmds = append(cmds, m.load(target, false))
+func (m model) preparePrefetch(targets []screen) model {
+	if len(targets) == 0 {
+		return m
 	}
-	return tea.Batch(cmds...)
+	m.prefetchCurrent = targets[0]
+	m.prefetchActive = true
+	m.prefetchQueue = append([]screen(nil), targets[1:]...)
+	m.markScreenLoading(targets[0])
+	return m
+}
+
+func (m model) startNextPrefetch() (model, tea.Cmd) {
+	for len(m.prefetchQueue) > 0 {
+		target := m.prefetchQueue[0]
+		m.prefetchQueue = m.prefetchQueue[1:]
+		if m.isScreenLoaded(target) || m.isScreenLoading(target) {
+			continue
+		}
+		m.prefetchCurrent = target
+		m.prefetchActive = true
+		m.markScreenLoading(target)
+		return m, m.loadPrefetch(target, false)
+	}
+	m.prefetchActive = false
+	return m, nil
 }
 
 func (m model) enterScreen(target screen) (tea.Model, tea.Cmd) {
@@ -679,7 +705,7 @@ func (m *model) markScreenLoaded(target screen, err error) {
 	}
 	delete(m.loadingScreens, target)
 	m.screenErrors[target] = err
-	m.loadedScreens[target] = err == nil
+	m.loadedScreens[target] = true
 }
 
 func (m model) isDetailScreen() bool {
@@ -3446,36 +3472,44 @@ func daysInMonth(year int, month int) int {
 }
 
 func (m model) load(target screen, refresh bool) tea.Cmd {
+	return m.loadWithPrefetch(target, refresh, false)
+}
+
+func (m model) loadPrefetch(target screen, refresh bool) tea.Cmd {
+	return m.loadWithPrefetch(target, refresh, true)
+}
+
+func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.Cmd {
 	return func() tea.Msg {
 		switch target {
 		case screenDashboard:
 			result, err := m.service.Dashboard(m.ctx, app.DashboardOptions{Refresh: refresh})
-			return loadMsg{screen: target, content: formatDashboard(result), dashboard: result, err: err}
+			return loadMsg{screen: target, prefetch: prefetch, content: formatDashboard(result), dashboard: result, err: err}
 		case screenDue:
 			result, err := m.service.Due(m.ctx, app.DueOptions{Days: 14, Refresh: refresh})
-			return loadMsg{screen: target, due: result, err: err}
+			return loadMsg{screen: target, prefetch: prefetch, due: result, err: err}
 		case screenAssignments:
 			rows, err := m.service.AssignmentList(m.ctx, app.AssignmentListOptions{Refresh: refresh})
-			return loadMsg{screen: target, assignments: rows, err: err}
+			return loadMsg{screen: target, prefetch: prefetch, assignments: rows, err: err}
 		case screenNotices:
 			rows, err := m.service.NoticeList(m.ctx, app.NoticeListOptions{Refresh: refresh})
-			return loadMsg{screen: target, notices: rows, err: err}
+			return loadMsg{screen: target, prefetch: prefetch, notices: rows, err: err}
 		case screenLectures:
 			rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: refresh})
-			return loadMsg{screen: target, lectures: rows, err: err}
+			return loadMsg{screen: target, prefetch: prefetch, lectures: rows, err: err}
 		case screenAcademic:
 			result, err := m.service.AcademicList(m.ctx, app.AcademicListOptions{Refresh: refresh})
-			return loadMsg{screen: target, academic: result, err: err}
+			return loadMsg{screen: target, prefetch: prefetch, academic: result, err: err}
 		case screenConfig:
 			settings, err := m.service.ConfigSettings()
 			if err != nil {
-				return loadMsg{screen: target, err: err}
+				return loadMsg{screen: target, prefetch: prefetch, err: err}
 			}
 			categories, err := m.service.CategoryOptions()
-			return loadMsg{screen: target, content: formatConfig(settings), config: settings, categories: categories, err: err}
+			return loadMsg{screen: target, prefetch: prefetch, content: formatConfig(settings), config: settings, categories: categories, err: err}
 		}
 		content, err := m.loadContent(target, refresh)
-		return loadMsg{screen: target, content: content, err: err}
+		return loadMsg{screen: target, prefetch: prefetch, content: content, err: err}
 	}
 }
 
