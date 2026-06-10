@@ -157,7 +157,8 @@ for item in request.events {
     } else {
         event.recurrenceRules = nil
     }
-    try store.save(event, span: .thisEvent, commit: false)
+    let saveSpan: EKSpan = (event.recurrenceRules?.isEmpty == false) ? .futureEvents : .thisEvent
+    try store.save(event, span: saveSpan, commit: false)
     if isNew {
         result.created += 1
     } else {
