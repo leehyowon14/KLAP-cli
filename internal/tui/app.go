@@ -40,6 +40,10 @@ var (
 			Foreground(lipgloss.Color("#58A6FF"))
 	mutedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6E7781"))
+	successTextStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#9ACD32"))
+	warnTextStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#D4A72C"))
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#CF222E")).
 			Bold(true)
@@ -967,15 +971,19 @@ func noticeContentGroups(rows []app.NoticeRow, width int) []contentCourseGroup {
 	indexByName := make(map[string]int)
 	for _, row := range rows {
 		groupIndex := contentGroupIndex(&groups, indexByName, row.CourseName)
-		pinned := fixedColumn("", 6)
+		date := mutedStyle.Render(formatTime(row.Notice.Registered))
+		badge := ""
+		titleWidth := maxInt(12, width-19)
 		if row.Notice.Top {
-			pinned = warnBadgeStyle.Render(fixedColumn("고정", 6))
+			date = warnTextStyle.Render(formatTime(row.Notice.Registered))
+			badge = " " + warnBadgeStyle.Render("Pinned")
+			titleWidth = maxInt(12, width-28)
 		}
-		title := truncateText(row.Notice.Title, maxInt(12, width-27))
-		groups[groupIndex].lines = append(groups[groupIndex].lines, fmt.Sprintf("%s %s  %s",
-			pinned,
-			mutedStyle.Render(formatTime(row.Notice.Registered)),
+		title := truncateText(row.Notice.Title, titleWidth)
+		groups[groupIndex].lines = append(groups[groupIndex].lines, fmt.Sprintf("%s  %s%s",
+			date,
 			title,
+			badge,
 		))
 	}
 	return groups
@@ -989,7 +997,7 @@ func lectureContentGroups(rows []app.LectureRow, width int) []contentCourseGroup
 	for _, row := range rows {
 		groupIndex := contentGroupIndex(&groups, indexByName, row.CourseName)
 		progressText := lectureProgress(row.Lecture)
-		progress := mutedStyle.Render(fixedColumn(progressText, progressWidth))
+		progress := lectureProgressStyle(row.Lecture).Render(fixedColumn(progressText, progressWidth))
 		module := emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요")
 		module = fixedColumn(module, moduleWidth)
 		titleWidth := maxInt(12, width-progressWidth-moduleWidth-6)
@@ -1020,6 +1028,23 @@ func contentGroupIndex(groups *[]contentCourseGroup, indexByName map[string]int,
 func fixedColumn(value string, width int) string {
 	value = truncateText(value, width)
 	return lipgloss.NewStyle().Width(width).Render(value)
+}
+
+func lectureProgressStyle(lecture klas.Lecture) lipgloss.Style {
+	if lectureCompleted(lecture) {
+		return successTextStyle
+	}
+	return warnTextStyle
+}
+
+func lectureCompleted(lecture klas.Lecture) bool {
+	if strings.TrimSpace(lecture.ContentID) != "" {
+		progress, err := strconv.ParseFloat(strings.TrimSpace(lecture.Progress), 64)
+		return err == nil && progress >= 100
+	}
+	achieved, achievedErr := strconv.ParseFloat(strings.TrimSpace(lecture.AchievedTime), 64)
+	required, requiredErr := strconv.ParseFloat(strings.TrimSpace(lecture.RequiredTime), 64)
+	return achievedErr == nil && requiredErr == nil && required > 0 && achieved >= required
 }
 
 func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

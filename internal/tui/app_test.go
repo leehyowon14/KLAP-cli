@@ -220,8 +220,11 @@ func TestNoticeContentGroupsMarksPinnedNotices(t *testing.T) {
 	if len(groups) != 1 || len(groups[0].lines) != 1 {
 		t.Fatalf("noticeContentGroups() = %+v", groups)
 	}
-	if !strings.Contains(groups[0].lines[0], "고정") || !strings.Contains(groups[0].lines[0], "중요 공지") {
+	if !strings.Contains(groups[0].lines[0], "Pinned") || !strings.Contains(groups[0].lines[0], "중요 공지") {
 		t.Fatalf("pinned notice line = %q", groups[0].lines[0])
+	}
+	if strings.Index(groups[0].lines[0], "Pinned") < strings.Index(groups[0].lines[0], "중요 공지") {
+		t.Fatalf("pinned badge should be rendered after title: %q", groups[0].lines[0])
 	}
 }
 
@@ -262,6 +265,21 @@ func TestLectureContentGroupsAlignsTitleColumn(t *testing.T) {
 	}
 	if strings.Contains(groups[0].lines[1], "\n") {
 		t.Fatalf("lecture line contains newline: %q", groups[0].lines[1])
+	}
+}
+
+func TestLectureCompletedDetectsPercentAndMinuteProgress(t *testing.T) {
+	if !lectureCompleted(klas.Lecture{ContentID: "content", Progress: "100"}) {
+		t.Fatal("content lecture with 100% progress should be completed")
+	}
+	if lectureCompleted(klas.Lecture{ContentID: "content", Progress: "99"}) {
+		t.Fatal("content lecture below 100% should not be completed")
+	}
+	if !lectureCompleted(klas.Lecture{AchievedTime: "10", RequiredTime: "10"}) {
+		t.Fatal("minute based lecture with achieved >= required should be completed")
+	}
+	if lectureCompleted(klas.Lecture{AchievedTime: "9", RequiredTime: "10"}) {
+		t.Fatal("minute based lecture below required time should not be completed")
 	}
 }
 
