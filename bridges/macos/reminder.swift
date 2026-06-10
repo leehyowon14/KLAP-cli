@@ -162,11 +162,6 @@ for assignment in request.assignments {
         continue
     }
 
-    if assignment.submitted {
-        result.skipped += 1
-        continue
-    }
-
     let reminder = EKReminder(eventStore: store)
     reminder.calendar = calendar
     reminder.title = assignment.title
@@ -174,6 +169,9 @@ for assignment in request.assignments {
     reminder.url = URL(string: assignment.detailUrl)
     applyDueDate(dueAt, to: reminder)
     applyAlarm(dueAt, beforeMinutes: request.alarmBeforeMin, to: reminder)
+    if assignment.submitted {
+        reminder.isCompleted = true
+    }
     try store.save(reminder, commit: false)
     result.created += 1
 }

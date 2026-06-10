@@ -2880,9 +2880,10 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 		return ReminderSyncResult{}, err
 	}
 
+	now := time.Now()
 	assignments := make([]reminder.Assignment, 0, len(rows))
 	for _, row := range rows {
-		if row.Assignment.DueAt == nil {
+		if !futureTime(row.Assignment.DueAt, now) {
 			continue
 		}
 		detail, detailErr := s.AssignmentDetail(ctx, row.ID, opts.User)
@@ -2933,7 +2934,7 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOpti
 	now := time.Now()
 	assignments := make([]reminder.Assignment, 0, len(rows))
 	for _, row := range rows {
-		if row.Lecture.EndAt == nil {
+		if !futureTime(row.Lecture.EndAt, now) {
 			continue
 		}
 		assignments = append(assignments, reminder.Assignment{
@@ -2978,9 +2979,10 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOpt
 	}
 
 	events := make([]klapcalendar.Event, 0, len(result.Events))
+	now := time.Now()
 	for _, academicEvent := range result.Events {
 		startAt, ok := academicEventDueAt(academicEvent)
-		if !ok {
+		if !ok || startAt.Before(now) {
 			continue
 		}
 		endAt := startAt.Add(24 * time.Hour)
@@ -3639,6 +3641,10 @@ func textMatches(query string, values ...string) bool {
 
 func inDueWindow(value time.Time, from time.Time, until time.Time) bool {
 	return !value.Before(from) && !value.After(until)
+}
+
+func futureTime(value *time.Time, now time.Time) bool {
+	return value != nil && !value.Before(now)
 }
 
 func lectureDueStatus(lecture klas.Lecture) string {
