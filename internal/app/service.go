@@ -3375,11 +3375,11 @@ func buildAcademicCalendarNotes(event AcademicEvent) string {
 }
 
 func academicEventID(event AcademicEvent) string {
-	parts := []string{event.Year, event.Month, event.Date, event.Title}
+	parts := []string{event.Year, event.Title, event.Note}
 	for index, part := range parts {
 		parts[index] = strings.TrimSpace(part)
 	}
-	return "academic:" + strings.Join(parts, ":")
+	return "academic:" + strings.Join(compactNonEmpty(parts), ":")
 }
 
 func buildTimetableCalendarNotes(termValue string, entry klas.TimetableEntry) string {

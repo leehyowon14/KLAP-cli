@@ -706,7 +706,7 @@ func TestBuildAcademicCalendarNotesIncludesMarker(t *testing.T) {
 	event := AcademicEvent{Year: "2026", Month: "3월", Date: "3(화)", Title: "개강", Note: "비고"}
 	notes := buildAcademicCalendarNotes(event)
 	for _, want := range []string{
-		"ID: academic:2026:3월:3(화):개강",
+		"ID: academic:2026:개강:비고",
 		"학년도: 2026",
 		"비고: 비고",
 		"[This calendar event is created by KLAP.]",
@@ -714,6 +714,14 @@ func TestBuildAcademicCalendarNotesIncludesMarker(t *testing.T) {
 		if !strings.Contains(notes, want) {
 			t.Fatalf("buildAcademicCalendarNotes() missing %q: %q", want, notes)
 		}
+	}
+}
+
+func TestAcademicEventIDStableWhenDateChanges(t *testing.T) {
+	before := AcademicEvent{Year: "2026", Month: "3월", Date: "3(화)", Title: "개강", Note: "비고"}
+	after := AcademicEvent{Year: "2026", Month: "3월", Date: "2(월)", Title: "개강", Note: "비고"}
+	if academicEventID(before) != academicEventID(after) {
+		t.Fatalf("academicEventID should ignore date changes: %q != %q", academicEventID(before), academicEventID(after))
 	}
 }
 

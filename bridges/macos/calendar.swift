@@ -88,23 +88,55 @@ func klapID(from event: EKEvent) -> String? {
     return nil
 }
 
+func academicYear(from id: String) -> String? {
+    guard id.hasPrefix("academic:") else { return nil }
+    let parts = id.split(separator: ":", omittingEmptySubsequences: false)
+    guard parts.count > 1 else { return nil }
+    return String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func fallbackKey(for id: String, title: String) -> String? {
+    guard let year = academicYear(from: id) else { return nil }
+    let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedTitle.isEmpty else { return nil }
+    return "academic-fallback:\(year):\(trimmedTitle)"
+}
+
+func calendarSearchRange(for events: [AcademicEvent]) -> (Date, Date) {
+    let calendar = Calendar.current
+    let startDates = events.map { $0.startAt }
+    guard let minDate = startDates.min(), let maxDate = startDates.max() else {
+        let now = Date()
+        return (now, calendar.date(byAdding: .year, value: 1, to: now) ?? now)
+    }
+    let minYear = calendar.component(.year, from: minDate)
+    let maxYear = calendar.component(.year, from: maxDate)
+    let start = calendar.date(from: DateComponents(year: minYear, month: 1, day: 1)) ?? minDate
+    let end = calendar.date(from: DateComponents(year: maxYear + 1, month: 12, day: 31)) ?? (calendar.date(byAdding: .year, value: 1, to: maxDate) ?? maxDate)
+    return (start, end)
+}
+
 let calendarName = request.calendarName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Kwangwoon Univ." : request.calendarName
 let calendar = try klapCalendar(named: calendarName, useExistingList: request.useExistingList)
 
-let startDates = request.events.map { $0.startAt }
-let rangeStart = startDates.min() ?? Date()
-let rangeEnd = Calendar.current.date(byAdding: .year, value: 1, to: startDates.max() ?? Date()) ?? Date()
+let (rangeStart, rangeEnd) = calendarSearchRange(for: request.events)
 let predicate = store.predicateForEvents(withStart: rangeStart, end: rangeEnd, calendars: store.calendars(for: .event))
 var known: [String: EKEvent] = [:]
+var fallbackKnown: [String: EKEvent] = [:]
 for event in store.events(matching: predicate) {
     guard let id = klapID(from: event), known[id] == nil else { continue }
     known[id] = event
+    if let key = fallbackKey(for: id, title: event.title), fallbackKnown[key] == nil {
+        fallbackKnown[key] = event
+    }
 }
 
 var result = SyncResult()
 for item in request.events {
-    let event = known[item.id] ?? EKEvent(eventStore: store)
-    let isNew = known[item.id] == nil
+    let fallback = fallbackKey(for: item.id, title: item.title)
+    let existing = known[item.id] ?? (fallback.flatMap { fallbackKnown[$0] })
+    let event = existing ?? EKEvent(eventStore: store)
+    let isNew = existing == nil
     event.calendar = calendar
     event.title = item.title
     event.startDate = item.startAt
