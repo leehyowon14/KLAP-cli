@@ -2155,11 +2155,14 @@ func wrapHelp(help string, width int) string {
 }
 
 func (m model) renderHeader(width int) string {
+	return renderHeaderTitle(width, screenTitle(m.active))
+}
+
+func renderHeaderTitle(width int, subtitle string) string {
 	if width <= 0 {
 		width = 96
 	}
 	title := headerStyle.Render("KLAP")
-	subtitle := screenTitle(m.active)
 	titleWidth := lipgloss.Width("KLAP")
 	gap := 2
 	available := width - titleWidth - gap

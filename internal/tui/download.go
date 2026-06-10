@@ -200,26 +200,26 @@ func (m lectureDownloadModel) View() string {
 	if width <= 0 {
 		width = 96
 	}
+	contentWidth := tuiContentWidth(width)
 
 	var b strings.Builder
-	b.WriteString(headerStyle.Render("KLAP"))
-	b.WriteString(mutedStyle.Render(" download"))
+	b.WriteString(renderHeaderTitle(contentWidth, "Download"))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 96)))))
+	b.WriteString(renderRule(contentWidth))
 	b.WriteString("\n\n")
-	b.WriteString(m.renderProgressList(width))
+	b.WriteString(m.renderProgressList(contentWidth))
 	b.WriteString("\n")
 	if m.done {
 		b.WriteString(m.renderSummary())
-		b.WriteString(footerStyle.Render("↑↓ 이동  |  esc 뒤로  |  h 홈  |  q 종료"))
+		b.WriteString(renderHelpText("↑↓ 이동  |  esc 뒤로  |  h 홈  |  q 종료", contentWidth))
 		b.WriteString("\n")
 	} else if m.canceling {
 		b.WriteString(warnBadgeStyle.Render("CANCEL"))
 		b.WriteString(" 다운로드를 중단하는 중입니다\n")
-		b.WriteString(footerStyle.Render("esc 삭제/뒤로  |  h 홈  |  q 종료"))
+		b.WriteString(renderHelpText("esc 삭제/뒤로  |  h 홈  |  q 종료", contentWidth))
 		b.WriteString("\n")
 	} else {
-		b.WriteString(footerStyle.Render("↑↓ 이동  |  esc 삭제/뒤로  |  h 홈  |  q 종료"))
+		b.WriteString(renderHelpText("↑↓ 이동  |  esc 삭제/뒤로  |  h 홈  |  q 종료", contentWidth))
 		b.WriteString("\n")
 	}
 	return appStyle.Render(b.String())

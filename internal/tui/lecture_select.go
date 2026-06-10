@@ -94,12 +94,12 @@ func (m lectureSelectionModel) View() string {
 	if width <= 0 {
 		width = 96
 	}
+	contentWidth := tuiContentWidth(width)
 
 	var b strings.Builder
-	b.WriteString(headerStyle.Render("KLAP"))
-	b.WriteString(mutedStyle.Render(" select"))
+	b.WriteString(renderHeaderTitle(contentWidth, "Download"))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 96)))))
+	b.WriteString(renderRule(contentWidth))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("LECTURES"))
 	b.WriteString("\n")
@@ -132,7 +132,7 @@ func (m lectureSelectionModel) View() string {
 		if !lectureDownloadable(row) {
 			check = "[-]"
 		}
-		label := truncateText(lectureDownloadLabel(row), maxInt(24, minInt(62, width-16)))
+		label := truncateText(lectureDownloadLabel(row), maxInt(24, minInt(62, contentWidth-16)))
 		line := fmt.Sprintf("%s%s  %s", marker, check, label)
 		if index == m.cursor {
 			line = menuSelectedStyle.Render(line)
@@ -147,7 +147,7 @@ func (m lectureSelectionModel) View() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("space 선택  |  a 전체  |  enter 다운로드  |  q 취소"))
+	b.WriteString(renderHelpText("space 선택  |  a 전체  |  enter 다운로드  |  q 취소", contentWidth))
 	return appStyle.Render(b.String())
 }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kw-klap/klap-cli/internal/app"
@@ -471,16 +472,122 @@ func TestViewLinesFitTerminalWidth(t *testing.T) {
 }
 
 func TestViewStartsWithHeaderBeforeRule(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		view string
+	}{
+		{name: "dashboard", view: testChromeModel(screenDashboard).View()},
+		{name: "due", view: testChromeModel(screenDue).View()},
+		{name: "assignments", view: testChromeModel(screenAssignments).View()},
+		{name: "notices", view: testChromeModel(screenNotices).View()},
+		{name: "lectures", view: testChromeModel(screenLectures).View()},
+		{name: "assignment-detail", view: testChromeModel(screenAssignmentDetail).View()},
+		{name: "notice-detail", view: testChromeModel(screenNoticeDetail).View()},
+		{name: "academic", view: testChromeModel(screenAcademic).View()},
+		{name: "config", view: testChromeModel(screenConfig).View()},
+		{name: "config-choice", view: testChromeModel(screenConfigChoice).View()},
+		{name: "config-input", view: testChromeModel(screenConfigInput).View()},
+		{name: "room-day", view: testChromeModel(screenRoomDay).View()},
+		{name: "room-period", view: testChromeModel(screenRoomPeriod).View()},
+		{name: "download-select", view: testChromeModel(screenDownloadSelect).View()},
+		{name: "download-confirm", view: testChromeModel(screenDownloadConfirm).View()},
+		{name: "download-language", view: testChromeModel(screenDownloadLanguage).View()},
+		{name: "download-progress", view: lectureDownloadModel{width: 80, height: 24, items: initialDownloadStatusLines([]app.LectureRow{{ID: "1", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}})}.View()},
+		{name: "confirm", view: confirmModel{title: "확인", message: "진행할까요?", width: 80}.View()},
+		{name: "lecture-select", view: lectureSelectionModel{width: 80, height: 24, rows: []app.LectureRow{{ID: "1", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}}, selected: map[string]bool{"1": true}}.View()},
+	} {
+		assertChromeInvariant(t, tt.name, tt.view, 80)
+	}
+}
+
+func testChromeModel(active screen) model {
+	dueAt := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
 	m := model{
-		active: screenDue,
+		active: active,
 		width:  80,
 		height: 24,
+		dashboardResult: app.DashboardResult{
+			Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+			Courses: []app.DashboardCourse{{
+				Index: 1,
+				Name:  "강의",
+			}},
+		},
 		dueResult: app.DueResult{
 			From:  time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local),
 			Until: time.Date(2026, 6, 24, 0, 0, 0, 0, time.Local),
 		},
+		assignmentRows: []app.AssignmentRow{{
+			ID:         "1",
+			CourseName: "강의",
+			Assignment: klas.Assignment{
+				Title: "과제",
+				DueAt: &dueAt,
+			},
+		}},
+		noticeRows: []app.NoticeRow{{
+			ID:         "1",
+			CourseName: "강의",
+			Notice: klas.Notice{
+				Title:      "공지",
+				Registered: &dueAt,
+			},
+		}},
+		lectureRows: []app.LectureRow{{
+			ID:         "1",
+			CourseName: "강의",
+			Lecture: klas.Lecture{
+				Title:        "영상",
+				Progress:     "100",
+				AchievedTime: "10",
+				RequiredTime: "10",
+			},
+		}},
+		academicResult: app.AcademicListResult{
+			Year: "2026",
+			Events: []app.AcademicEvent{{
+				Year:  "2026",
+				Month: "6월",
+				Date:  "6.17(수)",
+				Title: "종강",
+			}},
+		},
+		academicMonth: 6,
+		assignmentDetail: app.AssignmentDetailResult{
+			ID:         "1",
+			CourseName: "강의",
+			DetailURL:  "https://klas.kw.ac.kr",
+			Detail:     klas.AssignmentDetail{Title: "과제", DueAt: &dueAt, ContentText: "본문"},
+		},
+		noticeDetail: app.NoticeDetailResult{
+			ID:         "1",
+			CourseName: "강의",
+			DetailURL:  "https://klas.kw.ac.kr",
+			Detail:     klas.NoticeDetail{Title: "공지", Registered: &dueAt, ContentText: "본문"},
+		},
+		configSettings: app.ConfigSettings{
+			Reminder: app.ReminderSettings{ListName: "Kwangwoon Univ.", AlarmBeforeMin: 1440},
+			Calendar: app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
+			Download: app.DownloadSettings{
+				Dir:         "downloads",
+				Concurrency: 3,
+				Caffeinate:  true,
+			},
+			Transcript: app.TranscriptSettings{Concurrency: 1},
+		},
+		configOptions:       app.CategoryOptions{Reminders: []string{"Kwangwoon Univ."}, Calendars: []string{"학사일정", "시간표"}},
+		configChoiceKey:     "calendar.name",
+		configInput:         textinput.New(),
+		roomDaysSelected:    map[int]bool{1: true},
+		roomPeriodsSelected: map[int]bool{1: true},
 	}
-	lines := strings.Split(m.View(), "\n")
+	m.configInput.SetValue("입력값")
+	return m
+}
+
+func assertChromeInvariant(t *testing.T, name string, view string, terminalWidth int) {
+	t.Helper()
+	lines := strings.Split(view, "\n")
 	first := ""
 	second := ""
 	for _, line := range lines {
@@ -494,11 +601,16 @@ func TestViewStartsWithHeaderBeforeRule(t *testing.T) {
 		second = line
 		break
 	}
-	if !strings.Contains(first, "KLAP") || !strings.Contains(first, "Due") {
-		t.Fatalf("first visible line should be header, got %q", first)
+	if !strings.Contains(first, "KLAP") {
+		t.Fatalf("%s first visible line should be header, got %q", name, first)
 	}
 	if strings.Contains(first, "─") || !strings.Contains(second, "─") {
-		t.Fatalf("rule order failed: first=%q second=%q", first, second)
+		t.Fatalf("%s rule order failed: first=%q second=%q", name, first, second)
+	}
+	for index, line := range lines {
+		if width := lipgloss.Width(line); width > terminalWidth {
+			t.Fatalf("%s line %d width = %d > %d: %q", name, index, width, terminalWidth, line)
+		}
 	}
 }
 

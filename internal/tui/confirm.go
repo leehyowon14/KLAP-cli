@@ -12,6 +12,7 @@ type confirmModel struct {
 	message  string
 	value    bool
 	canceled bool
+	width    int
 }
 
 func RunConfirm(ctx context.Context, title string, message string, defaultValue bool) (bool, error) {
@@ -38,6 +39,8 @@ func (m confirmModel) Init() tea.Cmd {
 
 func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
 	case tea.KeyMsg:
 		key := msg.String()
 		switch {
@@ -60,6 +63,11 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m confirmModel) View() string {
+	width := m.width
+	if width <= 0 {
+		width = 96
+	}
+	contentWidth := tuiContentWidth(width)
 	yes := "Yes"
 	no := "No"
 	if m.value {
@@ -71,10 +79,9 @@ func (m confirmModel) View() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(headerStyle.Render("KLAP"))
-	b.WriteString(mutedStyle.Render(" confirm"))
+	b.WriteString(renderHeaderTitle(contentWidth, "Confirm"))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(strings.Repeat("─", 72)))
+	b.WriteString(renderRule(contentWidth))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render(m.title))
 	b.WriteString("\n")
@@ -84,6 +91,6 @@ func (m confirmModel) View() string {
 	b.WriteString("    ")
 	b.WriteString(no)
 	b.WriteString("\n\n")
-	b.WriteString(footerStyle.Render("←/→ 선택  |  y/n  |  enter 확인  |  q 취소"))
+	b.WriteString(renderHelpText("←/→ 선택  |  y/n  |  enter 확인  |  q 취소", contentWidth))
 	return appStyle.Render(b.String())
 }
