@@ -137,6 +137,8 @@ type model struct {
 	width               int
 	height              int
 	loadedAt            time.Time
+	lastSyncAt          time.Time
+	syncPhase           string
 	configEditing       string
 	configInput         textinput.Model
 	configSettings      app.ConfigSettings
@@ -214,6 +216,13 @@ type downloadRowsMsg struct {
 }
 
 type syncMsg struct {
+	status string
+	err    error
+}
+
+type syncDoneTimeoutMsg struct{}
+
+type statusMsg struct {
 	status string
 	err    error
 }
@@ -393,9 +402,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case keyMatches(key, "s", "ㄴ"):
 			if cmd := m.syncCurrentScreen(); cmd != nil {
-				m.loading = true
+				m.loading = false
 				m.err = nil
-				m.syncStatus = "동기화 중..."
+				m.syncPhase = "syncing"
+				m.syncStatus = ""
 				return m, cmd
 			}
 		case keyMatches(key, "k", "ㅏ"):
@@ -440,9 +450,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.contentCourse = 0
 		m.contentCursor = 0
-		m.syncStatus = ""
+		if m.syncPhase == "" {
+			m.syncStatus = ""
+		}
 		m.loadedAt = time.Now()
 	case syncMsg:
+		m.loading = false
+		m.active = screenDashboard
+		m.dashboardPage = 0
+		m.syncStatus = msg.status
+		m.syncPhase = "done"
+		if msg.err != nil {
+			m.syncPhase = "error"
+		} else {
+			m.lastSyncAt = time.Now()
+		}
+		m.err = nil
+		m.loadedAt = time.Now()
+		return m, tea.Batch(m.load(screenDashboard, false), syncDoneTimeout())
+	case syncDoneTimeoutMsg:
+		m.syncPhase = ""
+		m.syncStatus = ""
+		m.err = nil
+	case statusMsg:
 		m.loading = false
 		m.err = msg.err
 		m.syncStatus = msg.status
@@ -562,12 +592,12 @@ func (m model) openCurrentKlasURL() tea.Cmd {
 				return func() tea.Msg {
 					result, err := m.service.LectureOpenURL(m.ctx, id, app.UserOption{})
 					if err != nil {
-						return syncMsg{status: "KLAS 원문 열기 실패", err: err}
+						return statusMsg{status: "KLAS 원문 열기 실패", err: err}
 					}
 					if err := openExternalURL(result.URL); err != nil {
-						return syncMsg{status: "KLAS 원문 열기 실패", err: err}
+						return statusMsg{status: "KLAS 원문 열기 실패", err: err}
 					}
-					return syncMsg{status: "KLAS 원문을 열었습니다"}
+					return statusMsg{status: "KLAS 원문을 열었습니다"}
 				}
 			}
 			url = row.Lecture.PlayURL
@@ -582,9 +612,9 @@ func (m model) openCurrentKlasURL() tea.Cmd {
 	}
 	return func() tea.Msg {
 		if err := openExternalURL(url); err != nil {
-			return syncMsg{status: "KLAS 원문 열기 실패", err: err}
+			return statusMsg{status: "KLAS 원문 열기 실패", err: err}
 		}
-		return syncMsg{status: "KLAS 원문을 열었습니다"}
+		return statusMsg{status: "KLAS 원문을 열었습니다"}
 	}
 }
 
@@ -707,6 +737,12 @@ func (m model) syncAcademic() tea.Cmd {
 		result, err := m.service.SyncAcademicCalendar(m.ctx, app.AcademicListOptions{})
 		return syncMsg{status: "학사일정 " + formatCalendarSyncStatus("", result), err: err}
 	}
+}
+
+func syncDoneTimeout() tea.Cmd {
+	return tea.Tick(5*time.Second, func(time.Time) tea.Msg {
+		return syncDoneTimeoutMsg{}
+	})
 }
 
 func formatReminderSyncStatus(label string, result app.ReminderSyncResult) string {
@@ -1790,23 +1826,26 @@ func (m model) View() string {
 }
 
 func (m model) footerHelp() string {
+	if m.syncPhase != "" {
+		return "동기화 진행 중  q 종료"
+	}
 	if m.active == screenDashboard {
-		return "←→ 페이지  s sync  b/esc 뒤로  r 새로고침  q 종료"
+		return "←→ 페이지  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenDue {
 		if m.duePage == 3 {
-			return "←→ 페이지  ↑↓ 스크롤  s sync  b/esc 뒤로  r 새로고침  q 종료"
+			return "←→ 페이지  ↑↓ 스크롤  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 		}
 		return "←→ 페이지  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenAcademic {
-		return "←→ 월 이동  s sync  b/esc 뒤로  r 새로고침  q 종료"
+		return "←→ 월 이동  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.isDetailScreen() {
 		return "↑↓ 스크롤  k KLAS  b/esc 목록  q 종료"
 	}
 	if m.active == screenLectures {
-		return "←→ 과목  ↑↓ 스크롤  k KLAS  d 다운로드  s sync  b/esc 뒤로  r 새로고침  q 종료"
+		return "←→ 과목  ↑↓ 스크롤  k KLAS  d 다운로드  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenConfig {
 		if m.configEditing != "" {
@@ -1816,7 +1855,7 @@ func (m model) footerHelp() string {
 	}
 	if m.isCoursePagedScreen() {
 		if m.active == screenAssignments {
-			return "←→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  s sync  b/esc 뒤로  r 새로고침  q 종료"
+			return "←→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 		}
 		if m.active == screenNotices {
 			return "←→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  b/esc 뒤로  r 새로고침  q 종료"
@@ -2127,6 +2166,10 @@ func (m model) renderPanel(width int) string {
 	b.WriteString("\n")
 	b.WriteString(mutedStyle.Render(screenSubtitle(m.active)))
 	b.WriteString("\n\n")
+	if m.syncPhase != "" {
+		b.WriteString(m.renderSyncPanel())
+		return b.String()
+	}
 	if m.loading {
 		b.WriteString(warnBadgeStyle.Render("LOADING"))
 		b.WriteString(" 데이터를 불러오는 중입니다\n")
@@ -2193,6 +2236,25 @@ func (m model) renderPanel(width int) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+func (m model) renderSyncPanel() string {
+	switch m.syncPhase {
+	case "syncing":
+		return warnBadgeStyle.Render("SYNCING") + " " + "캘린더와 미리알림을 동기화하는 중입니다\n"
+	case "error":
+		status := strings.TrimSpace(m.syncStatus)
+		if status == "" {
+			status = "동기화 중 오류가 발생했습니다"
+		}
+		return errorStyle.Render("ERROR") + " " + status + "\n"
+	default:
+		status := strings.TrimSpace(m.syncStatus)
+		if status == "" {
+			status = "동기화 완료"
+		}
+		return successBadgeStyle.Render("DONE") + " " + status + "\n"
+	}
 }
 
 func (m model) renderConfigPanel(width int) string {
@@ -2316,6 +2378,10 @@ func (m model) renderDashboardPagedPanel(width int) string {
 		b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 페이지 이동  1/%d  전체", maxInt(1, pages))))
 		b.WriteString("\n\n")
 		b.WriteString(formatDashboard(m.dashboardResult))
+		if !m.lastSyncAt.IsZero() {
+			b.WriteString("\n")
+			b.WriteString(renderSection("SYNC", []string{dashboardMetric("Last Syncing", m.lastSyncAt.Format("2006-01-02 15:04:05"))}))
+		}
 		return b.String()
 	}
 	courses := m.dashboardResult.Courses
@@ -2906,7 +2972,7 @@ func formatDashboardCourseOverview(result app.DashboardResult, course app.Dashbo
 }
 
 func dashboardMetric(label string, value string) string {
-	return mutedStyle.Render(lipgloss.NewStyle().Width(11).Render(label)) + " " + value
+	return mutedStyle.Render(lipgloss.NewStyle().Width(13).Render(label)) + " " + value
 }
 
 func formatDashboardFocus(result app.DashboardResult) []string {

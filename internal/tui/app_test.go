@@ -390,6 +390,47 @@ func TestFormatSyncStatus(t *testing.T) {
 	}
 }
 
+func TestFooterUsesKoreanSyncLabel(t *testing.T) {
+	m := model{active: screenDashboard}
+	footer := m.footerHelp()
+	if strings.Contains(footer, "sync") || !strings.Contains(footer, "동기화") {
+		t.Fatalf("footerHelp() = %q", footer)
+	}
+}
+
+func TestSyncPanelHidesDashboardStatus(t *testing.T) {
+	m := model{
+		active:     screenDashboard,
+		syncPhase:  "done",
+		syncStatus: "동기화 완료: 과제 생성 1",
+		dashboardResult: app.DashboardResult{
+			Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		},
+	}
+	view := m.renderPanel(96)
+	if !strings.Contains(view, "DONE") || !strings.Contains(view, "과제 생성 1") {
+		t.Fatalf("renderPanel() missing sync result: %q", view)
+	}
+	if strings.Contains(view, "OVERVIEW") {
+		t.Fatalf("renderPanel() should hide dashboard while sync panel is active: %q", view)
+	}
+}
+
+func TestDashboardShowsLastSyncing(t *testing.T) {
+	last := time.Date(2026, 6, 10, 15, 4, 5, 0, time.Local)
+	m := model{
+		active:     screenDashboard,
+		lastSyncAt: last,
+		dashboardResult: app.DashboardResult{
+			Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		},
+	}
+	view := m.renderDashboardPagedPanel(96)
+	if !strings.Contains(view, "Last Syncing") || !strings.Contains(view, "2026-06-10 15:04:05") {
+		t.Fatalf("renderDashboardPagedPanel() missing last sync: %q", view)
+	}
+}
+
 func TestDashboardFormatUsesScanSections(t *testing.T) {
 	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
 	result := app.DashboardResult{
