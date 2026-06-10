@@ -107,6 +107,11 @@ type model struct {
 	loading             bool
 	err                 error
 	content             string
+	assignmentRows      []app.AssignmentRow
+	noticeRows          []app.NoticeRow
+	lectureRows         []app.LectureRow
+	contentCourse       int
+	contentCursor       int
 	width               int
 	height              int
 	loadedAt            time.Time
@@ -154,9 +159,12 @@ var roomDayOptions = []roomDayOption{
 }
 
 type loadMsg struct {
-	screen  screen
-	content string
-	err     error
+	screen      screen
+	content     string
+	err         error
+	assignments []app.AssignmentRow
+	notices     []app.NoticeRow
+	lectures    []app.LectureRow
 }
 
 type downloadRowsMsg struct {
@@ -244,10 +252,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "up" || keyMatches(key, "k", "ㅏ"):
 			if m.active == screenHome && m.cursor > 0 {
 				m.cursor--
+			} else if m.isCoursePagedScreen() && !m.loading {
+				m.moveContentCursor(-1)
 			}
 		case key == "down" || keyMatches(key, "j", "ㅓ"):
 			if m.active == screenHome && m.cursor < len(m.menu)-1 {
 				m.cursor++
+			} else if m.isCoursePagedScreen() && !m.loading {
+				m.moveContentCursor(1)
+			}
+		case key == "left":
+			if m.isCoursePagedScreen() && !m.loading {
+				m.moveContentCourse(-1)
+			}
+		case key == "right":
+			if m.isCoursePagedScreen() && !m.loading {
+				m.moveContentCourse(1)
 			}
 		case key == "enter":
 			if m.active == screenHome && len(m.menu) > 0 {
@@ -304,6 +324,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = msg.err
 		m.content = msg.content
+		m.assignmentRows = msg.assignments
+		m.noticeRows = msg.notices
+		m.lectureRows = msg.lectures
+		m.contentCourse = 0
+		m.contentCursor = 0
 		m.loadedAt = time.Now()
 	case downloadRowsMsg:
 		if m.active != screenDownloadSelect {
@@ -790,6 +815,11 @@ type downloadCourseGroup struct {
 	rows []app.LectureRow
 }
 
+type contentCourseGroup struct {
+	name  string
+	lines []string
+}
+
 func (m model) downloadGroups() []downloadCourseGroup {
 	groups := make([]downloadCourseGroup, 0)
 	indexByName := make(map[string]int)
@@ -841,6 +871,142 @@ func (m model) currentDownloadCourseSelected() bool {
 		}
 	}
 	return hasDownloadable
+}
+
+func (m model) isCoursePagedScreen() bool {
+	switch m.active {
+	case screenAssignments, screenNotices, screenLectures:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m model) contentGroups(width int) []contentCourseGroup {
+	lineWidth := maxInt(24, minInt(92, width-12))
+	switch m.active {
+	case screenAssignments:
+		return assignmentContentGroups(m.assignmentRows, lineWidth)
+	case screenNotices:
+		return noticeContentGroups(m.noticeRows, lineWidth)
+	case screenLectures:
+		return lectureContentGroups(m.lectureRows, lineWidth)
+	default:
+		return nil
+	}
+}
+
+func (m model) currentContentGroup(width int) contentCourseGroup {
+	groups := m.contentGroups(width)
+	if len(groups) == 0 {
+		return contentCourseGroup{}
+	}
+	index := m.contentCourse
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(groups) {
+		index = len(groups) - 1
+	}
+	return groups[index]
+}
+
+func (m *model) moveContentCourse(delta int) {
+	groups := m.contentGroups(m.width)
+	if len(groups) == 0 {
+		m.contentCourse = 0
+		m.contentCursor = 0
+		return
+	}
+	m.contentCourse += delta
+	if m.contentCourse < 0 {
+		m.contentCourse = len(groups) - 1
+	}
+	if m.contentCourse >= len(groups) {
+		m.contentCourse = 0
+	}
+	m.contentCursor = 0
+}
+
+func (m *model) moveContentCursor(delta int) {
+	group := m.currentContentGroup(m.width)
+	if len(group.lines) == 0 {
+		m.contentCursor = 0
+		return
+	}
+	m.contentCursor += delta
+	if m.contentCursor < 0 {
+		m.contentCursor = len(group.lines) - 1
+	}
+	if m.contentCursor >= len(group.lines) {
+		m.contentCursor = 0
+	}
+}
+
+func assignmentContentGroups(rows []app.AssignmentRow, width int) []contentCourseGroup {
+	groups := make([]contentCourseGroup, 0)
+	indexByName := make(map[string]int)
+	for _, row := range rows {
+		groupIndex := contentGroupIndex(&groups, indexByName, row.CourseName)
+		status := warnBadgeStyle.Render("미제출")
+		if row.Assignment.Submitted {
+			status = successBadgeStyle.Render("제출")
+		}
+		title := truncateText(row.Assignment.Title, maxInt(12, width-24))
+		groups[groupIndex].lines = append(groups[groupIndex].lines, fmt.Sprintf("%s  %s  %s",
+			mutedStyle.Render(formatTime(row.Assignment.DueAt)),
+			status,
+			title,
+		))
+	}
+	return groups
+}
+
+func noticeContentGroups(rows []app.NoticeRow, width int) []contentCourseGroup {
+	groups := make([]contentCourseGroup, 0)
+	indexByName := make(map[string]int)
+	for _, row := range rows {
+		groupIndex := contentGroupIndex(&groups, indexByName, row.CourseName)
+		title := truncateText(row.Notice.Title, maxInt(12, width-19))
+		groups[groupIndex].lines = append(groups[groupIndex].lines, fmt.Sprintf("%s  %s",
+			mutedStyle.Render(formatTime(row.Notice.Registered)),
+			title,
+		))
+	}
+	return groups
+}
+
+func lectureContentGroups(rows []app.LectureRow, width int) []contentCourseGroup {
+	groups := make([]contentCourseGroup, 0)
+	indexByName := make(map[string]int)
+	for _, row := range rows {
+		groupIndex := contentGroupIndex(&groups, indexByName, row.CourseName)
+		progressText := lectureProgress(row.Lecture)
+		progress := mutedStyle.Render(progressText)
+		module := emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요")
+		titleWidth := maxInt(12, width-lipgloss.Width(progressText)-lipgloss.Width(module)-8)
+		title := truncateText(row.Lecture.Title, titleWidth)
+		groups[groupIndex].lines = append(groups[groupIndex].lines, fmt.Sprintf("%s  %s  %s",
+			progress,
+			module,
+			title,
+		))
+	}
+	return groups
+}
+
+func contentGroupIndex(groups *[]contentCourseGroup, indexByName map[string]int, courseName string) int {
+	name := strings.TrimSpace(courseName)
+	if name == "" {
+		name = "과목 확인 필요"
+	}
+	index, ok := indexByName[name]
+	if !ok {
+		index = len(*groups)
+		indexByName[name] = index
+		*groups = append(*groups, contentCourseGroup{name: name})
+	}
+	return index
 }
 
 func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1005,14 +1171,17 @@ func (m model) View() string {
 
 	header := m.renderHeader(width)
 	rule := mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120))))
-	panel := panelStyle.Width(maxInt(48, width-4)).Render(m.renderPanel())
+	panel := panelStyle.Width(maxInt(48, width-4)).Render(m.renderPanel(width))
 	footer := footerStyle.Render(m.footerHelp())
 	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, rule, "", panel, "", footer))
 }
 
 func (m model) footerHelp() string {
 	if m.active == screenLectures {
-		return "d 다운로드  b/esc 뒤로  r 새로고침  q 종료"
+		return "←→ 과목  ↑↓ 스크롤  d 다운로드  b/esc 뒤로  r 새로고침  q 종료"
+	}
+	if m.isCoursePagedScreen() {
+		return "←→ 과목  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenRoomResult {
 		return "b/esc 뒤로  r 새로고침  q 종료"
@@ -1312,7 +1481,7 @@ func (m model) renderRoomPeriodView(width int) string {
 	return b.String()
 }
 
-func (m model) renderPanel() string {
+func (m model) renderPanel(width int) string {
 	var b strings.Builder
 	b.WriteString(sectionStyle.Render(screenTitle(m.active)))
 	b.WriteString("\n")
@@ -1328,6 +1497,10 @@ func (m model) renderPanel() string {
 		b.WriteString(" ")
 		b.WriteString(m.err.Error())
 		b.WriteString("\n")
+		return b.String()
+	}
+	if m.isCoursePagedScreen() {
+		b.WriteString(m.renderCoursePagedPanel(width))
 		return b.String()
 	}
 	if strings.TrimSpace(m.content) == "" {
@@ -1353,8 +1526,91 @@ func (m model) renderPanel() string {
 	return b.String()
 }
 
+func (m model) renderCoursePagedPanel(width int) string {
+	groups := m.contentGroups(width)
+	if len(groups) == 0 {
+		switch m.active {
+		case screenAssignments:
+			return emptyStyle.Render("과제가 없습니다") + "\n"
+		case screenNotices:
+			return emptyStyle.Render("강의 공지가 없습니다") + "\n"
+		case screenLectures:
+			return emptyStyle.Render("온라인 강의가 없습니다") + "\n"
+		default:
+			return emptyStyle.Render("표시할 내용이 없습니다") + "\n"
+		}
+	}
+
+	group := m.currentContentGroup(width)
+	page := m.contentCourse + 1
+	if page < 1 {
+		page = 1
+	}
+	if page > len(groups) {
+		page = len(groups)
+	}
+
+	var b strings.Builder
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 과목 이동  %d/%d  %s", page, len(groups), group.name)))
+	b.WriteString("\n\n")
+
+	visibleRows := maxInt(5, m.height-10)
+	if m.height <= 0 {
+		visibleRows = 16
+	}
+	if visibleRows > len(group.lines) {
+		visibleRows = len(group.lines)
+	}
+
+	cursor := m.contentCursor
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= len(group.lines) {
+		cursor = len(group.lines) - 1
+	}
+
+	start := cursor - visibleRows/2
+	if start < 0 {
+		start = 0
+	}
+	if start+visibleRows > len(group.lines) {
+		start = maxInt(0, len(group.lines)-visibleRows)
+	}
+	end := start + visibleRows
+
+	for index := start; index < end; index++ {
+		marker := "  "
+		if index == cursor {
+			marker = "› "
+		}
+		line := marker + group.lines[index]
+		if index == cursor {
+			line = menuSelectedStyle.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	if start > 0 || end < len(group.lines) {
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(group.lines))))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 func (m model) load(target screen, refresh bool) tea.Cmd {
 	return func() tea.Msg {
+		switch target {
+		case screenAssignments:
+			rows, err := m.service.AssignmentList(m.ctx, app.AssignmentListOptions{Refresh: refresh})
+			return loadMsg{screen: target, assignments: rows, err: err}
+		case screenNotices:
+			rows, err := m.service.NoticeList(m.ctx, app.NoticeListOptions{Refresh: refresh})
+			return loadMsg{screen: target, notices: rows, err: err}
+		case screenLectures:
+			rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: refresh})
+			return loadMsg{screen: target, lectures: rows, err: err}
+		}
 		content, err := m.loadContent(target, refresh)
 		return loadMsg{screen: target, content: content, err: err}
 	}
@@ -1374,24 +1630,6 @@ func (m model) loadContent(target screen, refresh bool) (string, error) {
 			return "", err
 		}
 		return formatDue(result), nil
-	case screenAssignments:
-		rows, err := m.service.AssignmentList(m.ctx, app.AssignmentListOptions{Refresh: refresh})
-		if err != nil {
-			return "", err
-		}
-		return formatAssignments(rows), nil
-	case screenNotices:
-		rows, err := m.service.NoticeList(m.ctx, app.NoticeListOptions{Refresh: refresh})
-		if err != nil {
-			return "", err
-		}
-		return formatNotices(rows), nil
-	case screenLectures:
-		rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: refresh})
-		if err != nil {
-			return "", err
-		}
-		return formatLectures(rows), nil
 	case screenConfig:
 		settings, err := m.service.ConfigSettings()
 		if err != nil {
