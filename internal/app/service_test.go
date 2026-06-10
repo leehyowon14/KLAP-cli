@@ -124,6 +124,36 @@ func TestFutureTime(t *testing.T) {
 	}
 }
 
+func TestDashboardCoursesBuildsCourseScopedSummary(t *testing.T) {
+	due := time.Now().Add(24 * time.Hour)
+	courses := []klas.Course{{Name: "컴퓨터그래픽스"}, {Name: "오픈소스소프트웨어실습"}}
+	assignments := []AssignmentRow{
+		{CourseName: "컴퓨터그래픽스", Assignment: klas.Assignment{Title: "과제1", DueAt: &due}},
+		{CourseName: "오픈소스소프트웨어실습", Assignment: klas.Assignment{Title: "기말", DueAt: &due}},
+	}
+	lectures := []LectureRow{
+		{CourseName: "오픈소스소프트웨어실습", Lecture: klas.Lecture{Title: "HuggingFace", ContentID: "a", Progress: "0", EndAt: &due}},
+	}
+	notices := []NoticeRow{
+		{CourseName: "컴퓨터그래픽스", Notice: klas.Notice{Title: "공지"}},
+	}
+	attendance := DashboardAttendance{Rows: []DashboardAttendanceRow{{
+		Course:    klas.AttendanceCourse{Name: "컴퓨터그래픽스"},
+		Completed: 10,
+	}}}
+
+	got := dashboardCourses(courses, assignments, lectures, notices, attendance, DashboardEvaluation{})
+	if len(got) != 2 {
+		t.Fatalf("len(dashboardCourses) = %d", len(got))
+	}
+	if got[0].Name != "컴퓨터그래픽스" || len(got[0].Assignments) != 1 || len(got[0].Notices) != 1 || got[0].Attendance == nil {
+		t.Fatalf("first dashboard course = %+v", got[0])
+	}
+	if got[1].Name != "오픈소스소프트웨어실습" || len(got[1].Assignments) != 1 || len(got[1].Lectures) != 1 {
+		t.Fatalf("second dashboard course = %+v", got[1])
+	}
+}
+
 func TestTermLabel(t *testing.T) {
 	if got := termLabel("2026,3"); got != "2026년도 여름학기" {
 		t.Fatalf("termLabel() = %q", got)

@@ -431,6 +431,48 @@ func TestDashboardFormatUsesScanSections(t *testing.T) {
 	}
 }
 
+func TestDashboardPagedPanelShowsCoursePages(t *testing.T) {
+	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	result := app.DashboardResult{
+		Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		Courses: []app.DashboardCourse{
+			{
+				Index: 1,
+				Name:  "컴퓨터그래픽스",
+				Assignments: []app.AssignmentRow{{
+					CourseName: "컴퓨터그래픽스",
+					Assignment: klas.Assignment{Title: "과제1", DueAt: &due},
+				}},
+				Notices: []app.NoticeRow{{
+					CourseName: "컴퓨터그래픽스",
+					Notice:     klas.Notice{Title: "강의 공지", Registered: &due},
+				}},
+				Attendance: &app.DashboardAttendanceRow{Completed: 10, Absent: 1},
+			},
+		},
+	}
+	m := model{active: screenDashboard, dashboardResult: result, dashboardPage: 1}
+
+	view := m.renderDashboardPagedPanel(96)
+	for _, want := range []string{"2/2", "컴퓨터그래픽스", "과제1", "강의 공지", "STATUS"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("renderDashboardPagedPanel() missing %q: %q", want, view)
+		}
+	}
+}
+
+func TestDashboardPageWraps(t *testing.T) {
+	m := model{dashboardResult: app.DashboardResult{Courses: []app.DashboardCourse{{Name: "A"}, {Name: "B"}}}}
+	m.moveDashboardPage(-1)
+	if m.dashboardPage != 2 {
+		t.Fatalf("dashboardPage after left wrap = %d", m.dashboardPage)
+	}
+	m.moveDashboardPage(1)
+	if m.dashboardPage != 0 {
+		t.Fatalf("dashboardPage after right wrap = %d", m.dashboardPage)
+	}
+}
+
 func TestLectureDownloadFormatting(t *testing.T) {
 	row := app.LectureRow{
 		CourseName: "오픈소스소프트웨어실습",

@@ -257,9 +257,20 @@ type DashboardResult struct {
 	Assignments    []AssignmentRow
 	Notices        []NoticeRow
 	Lectures       []LectureRow
+	Courses        []DashboardCourse
 	Attendance     DashboardAttendance
 	Evaluation     DashboardEvaluation
 	SectionErrors  []DashboardSectionError
+}
+
+type DashboardCourse struct {
+	Index       int
+	Name        string
+	Assignments []AssignmentRow
+	Notices     []NoticeRow
+	Lectures    []LectureRow
+	Attendance  *DashboardAttendanceRow
+	Evaluation  *EvaluationRow
 }
 
 type DashboardAttendance struct {
@@ -1251,11 +1262,15 @@ func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (Dashboa
 		Term:        term,
 		GeneratedAt: time.Now(),
 	}
+	var assignmentRows []AssignmentRow
+	var lectureRows []LectureRow
+	var noticeRows []NoticeRow
 
 	assignments, err := s.AssignmentList(ctx, AssignmentListOptions{User: user, Refresh: opts.Refresh})
 	if err != nil {
 		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "과제", Err: err})
 	} else {
+		assignmentRows = assignments
 		result.Assignments = dashboardAssignments(assignments, 5)
 	}
 
@@ -1263,6 +1278,7 @@ func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (Dashboa
 	if err != nil {
 		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "온라인 강의", Err: err})
 	} else {
+		lectureRows = lectures
 		result.Lectures = dashboardLectures(lectures, time.Now(), 5)
 	}
 
@@ -1270,6 +1286,7 @@ func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (Dashboa
 	if err != nil {
 		result.SectionErrors = append(result.SectionErrors, DashboardSectionError{Section: "공지", Err: err})
 	} else {
+		noticeRows = notices
 		result.Notices = dashboardNotices(notices, 5)
 	}
 
@@ -1286,6 +1303,7 @@ func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (Dashboa
 	} else {
 		result.Evaluation = dashboardEvaluation(evaluation)
 	}
+	result.Courses = dashboardCourses(term.Courses, assignmentRows, lectureRows, noticeRows, result.Attendance, result.Evaluation)
 
 	if dashboardCacheable(result) {
 		cacheValue := result
@@ -3623,8 +3641,62 @@ func dashboardEvaluation(result EvaluationListResult) DashboardEvaluation {
 	return evaluation
 }
 
+func dashboardCourses(courses []klas.Course, assignments []AssignmentRow, lectures []LectureRow, notices []NoticeRow, attendance DashboardAttendance, evaluation DashboardEvaluation) []DashboardCourse {
+	result := make([]DashboardCourse, 0, len(courses))
+	now := time.Now()
+	for index, course := range courses {
+		name := strings.TrimSpace(course.Name)
+		if name == "" {
+			name = "과목 확인 필요"
+		}
+		item := DashboardCourse{
+			Index:       index + 1,
+			Name:        name,
+			Assignments: dashboardAssignments(filterRowsByCourse(assignments, name, func(row AssignmentRow) string { return row.CourseName }), 5),
+			Lectures:    dashboardLectures(filterRowsByCourse(lectures, name, func(row LectureRow) string { return row.CourseName }), now, 5),
+			Notices:     dashboardNotices(filterRowsByCourse(notices, name, func(row NoticeRow) string { return row.CourseName }), 5),
+		}
+		if row, ok := dashboardAttendanceForCourse(attendance.Rows, name); ok {
+			item.Attendance = &row
+		}
+		if row, ok := dashboardEvaluationForCourse(evaluation.Rows, name); ok {
+			item.Evaluation = &row
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+func filterRowsByCourse[T any](rows []T, courseName string, course func(T) string) []T {
+	filtered := make([]T, 0)
+	for _, row := range rows {
+		if strings.TrimSpace(course(row)) == courseName {
+			filtered = append(filtered, row)
+		}
+	}
+	return filtered
+}
+
+func dashboardAttendanceForCourse(rows []DashboardAttendanceRow, courseName string) (DashboardAttendanceRow, bool) {
+	for _, row := range rows {
+		if strings.TrimSpace(row.Course.Name) == courseName {
+			return row, true
+		}
+	}
+	return DashboardAttendanceRow{}, false
+}
+
+func dashboardEvaluationForCourse(rows []EvaluationRow, courseName string) (EvaluationRow, bool) {
+	for _, row := range rows {
+		if strings.TrimSpace(row.Course.Name) == courseName {
+			return row, true
+		}
+	}
+	return EvaluationRow{}, false
+}
+
 func dashboardCacheKey(studentID string, termValue string) string {
-	return "dashboard:v1:" + strings.TrimSpace(studentID) + ":" + strings.TrimSpace(termValue)
+	return "dashboard:v2:" + strings.TrimSpace(studentID) + ":" + strings.TrimSpace(termValue)
 }
 
 func dashboardCacheTTL() time.Duration {

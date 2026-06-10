@@ -117,6 +117,8 @@ type model struct {
 	loading             bool
 	err                 error
 	content             string
+	dashboardResult     app.DashboardResult
+	dashboardPage       int
 	assignmentRows      []app.AssignmentRow
 	noticeRows          []app.NoticeRow
 	lectureRows         []app.LectureRow
@@ -201,6 +203,7 @@ type loadMsg struct {
 	lectures    []app.LectureRow
 	due         app.DueResult
 	academic    app.AcademicListResult
+	dashboard   app.DashboardResult
 	config      app.ConfigSettings
 	categories  app.CategoryOptions
 }
@@ -332,6 +335,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "left":
 			if m.active == screenConfig && !m.loading {
 				return m.adjustConfigCurrent(-1)
+			} else if m.active == screenDashboard && !m.loading {
+				m.moveDashboardPage(-1)
 			} else if m.active == screenDue && !m.loading {
 				m.moveDuePage(-1)
 			} else if m.active == screenAcademic && !m.loading {
@@ -342,6 +347,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "right":
 			if m.active == screenConfig && !m.loading {
 				return m.adjustConfigCurrent(1)
+			} else if m.active == screenDashboard && !m.loading {
+				m.moveDashboardPage(1)
 			} else if m.active == screenDue && !m.loading {
 				m.moveDuePage(1)
 			} else if m.active == screenAcademic && !m.loading {
@@ -410,6 +417,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = msg.err
 		m.content = msg.content
+		m.dashboardResult = msg.dashboard
 		m.assignmentRows = msg.assignments
 		m.noticeRows = msg.notices
 		m.lectureRows = msg.lectures
@@ -417,6 +425,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.academicResult = msg.academic
 		m.configSettings = msg.config
 		m.configOptions = msg.categories
+		if msg.screen == screenDashboard {
+			m.dashboardPage = 0
+		}
 		if msg.screen == screenDue {
 			m.duePage = 0
 			m.dueCursor = 0
@@ -1339,6 +1350,21 @@ func (m *model) moveDetailCursor(delta int) {
 
 var duePageLabels = []string{"Summary", "과제", "온라인 강의", "학사일정"}
 
+func (m *model) moveDashboardPage(delta int) {
+	total := dashboardPageCount(m.dashboardResult)
+	if total <= 0 {
+		m.dashboardPage = 0
+		return
+	}
+	m.dashboardPage += delta
+	if m.dashboardPage < 0 {
+		m.dashboardPage = total - 1
+	}
+	if m.dashboardPage >= total {
+		m.dashboardPage = 0
+	}
+}
+
 func (m *model) moveDuePage(delta int) {
 	m.duePage += delta
 	if m.duePage < 0 {
@@ -1765,7 +1791,7 @@ func (m model) View() string {
 
 func (m model) footerHelp() string {
 	if m.active == screenDashboard {
-		return "s sync  b/esc 뒤로  r 새로고침  q 종료"
+		return "←→ 페이지  s sync  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenDue {
 		if m.duePage == 3 {
@@ -2113,6 +2139,15 @@ func (m model) renderPanel(width int) string {
 		b.WriteString("\n")
 		return b.String()
 	}
+	if m.active == screenDashboard {
+		b.WriteString(m.renderDashboardPagedPanel(width))
+		if m.syncStatus != "" {
+			b.WriteString("\n")
+			b.WriteString(footerStyle.Render(m.syncStatus))
+			b.WriteString("\n")
+		}
+		return b.String()
+	}
 	if m.active == screenDue {
 		b.WriteString(m.renderDuePagedPanel(width))
 		return b.String()
@@ -2271,6 +2306,30 @@ func (m model) renderCoursePagedPanel(width int) string {
 		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(group.lines))))
 		b.WriteString("\n")
 	}
+	return b.String()
+}
+
+func (m model) renderDashboardPagedPanel(width int) string {
+	pages := dashboardPageCount(m.dashboardResult)
+	if pages <= 1 || m.dashboardPage == 0 {
+		var b strings.Builder
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 페이지 이동  1/%d  전체", maxInt(1, pages))))
+		b.WriteString("\n\n")
+		b.WriteString(formatDashboard(m.dashboardResult))
+		return b.String()
+	}
+	courses := m.dashboardResult.Courses
+	index := m.dashboardPage - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(courses) {
+		index = len(courses) - 1
+	}
+	var b strings.Builder
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 페이지 이동  %d/%d  %s", m.dashboardPage+1, pages, courses[index].Name)))
+	b.WriteString("\n\n")
+	b.WriteString(formatDashboardCourse(m.dashboardResult, courses[index]))
 	return b.String()
 }
 
@@ -2669,6 +2728,9 @@ func daysInMonth(year int, month int) int {
 func (m model) load(target screen, refresh bool) tea.Cmd {
 	return func() tea.Msg {
 		switch target {
+		case screenDashboard:
+			result, err := m.service.Dashboard(m.ctx, app.DashboardOptions{Refresh: refresh})
+			return loadMsg{screen: target, content: formatDashboard(result), dashboard: result, err: err}
 		case screenDue:
 			result, err := m.service.Due(m.ctx, app.DueOptions{Days: 14, Refresh: refresh})
 			return loadMsg{screen: target, due: result, err: err}
@@ -2700,11 +2762,7 @@ func (m model) load(target screen, refresh bool) tea.Cmd {
 func (m model) loadContent(target screen, refresh bool) (string, error) {
 	switch target {
 	case screenDashboard:
-		result, err := m.service.Dashboard(m.ctx, app.DashboardOptions{Refresh: refresh})
-		if err != nil {
-			return "", err
-		}
-		return formatDashboard(result), nil
+		return "", errors.New("Dashboard는 structured loader를 사용해야 합니다")
 	default:
 		return "", errors.New("지원하지 않는 TUI 화면입니다")
 	}
@@ -2791,6 +2849,10 @@ func formatDashboard(result app.DashboardResult) string {
 	return b.String()
 }
 
+func dashboardPageCount(result app.DashboardResult) int {
+	return 1 + len(result.Courses)
+}
+
 func formatDashboardOverview(result app.DashboardResult) string {
 	lines := []string{
 		fmt.Sprintf("%s  %s", badgeStyle.Render(result.Term.Value), result.Term.Label),
@@ -2803,6 +2865,42 @@ func formatDashboardOverview(result app.DashboardResult) string {
 	}
 	if result.Evaluation.Enabled {
 		lines = append(lines, dashboardMetric("Evaluation", fmt.Sprintf("완료 %d · 미완료 %d", result.Evaluation.Done, result.Evaluation.Pending)))
+	}
+	return renderSection("OVERVIEW", lines)
+}
+
+func formatDashboardCourse(result app.DashboardResult, course app.DashboardCourse) string {
+	var b strings.Builder
+	b.WriteString(formatDashboardCourseOverview(result, course))
+	b.WriteString("\n")
+	b.WriteString(renderSection("FOCUS", formatDashboardCourseFocus(course)))
+	b.WriteString("\n")
+	b.WriteString(renderSection("LATEST", formatNoticeSummary(course.Notices)))
+	status := formatDashboardCourseStatus(course)
+	if len(status) > 0 {
+		b.WriteString("\n")
+		b.WriteString(renderSection("STATUS", status))
+	}
+	return b.String()
+}
+
+func formatDashboardCourseOverview(result app.DashboardResult, course app.DashboardCourse) string {
+	lines := []string{
+		fmt.Sprintf("%s  %s", badgeStyle.Render(result.Term.Value), result.Term.Label),
+		dashboardMetric("Course", fmt.Sprintf("%d. %s", course.Index, course.Name)),
+		dashboardMetric("Due", fmt.Sprintf("%d assignments · %d lectures", len(course.Assignments), len(course.Lectures))),
+		dashboardMetric("Activity", fmt.Sprintf("%d notices", len(course.Notices))),
+	}
+	if course.Attendance != nil {
+		total := course.Attendance.Completed + course.Attendance.Absent + course.Attendance.Late + course.Attendance.LeaveEarly + course.Attendance.Excused + course.Attendance.Unknown
+		lines = append(lines, dashboardMetric("Attendance", fmt.Sprintf("출석 %d/%d · 결석 %d · 지각 %d", course.Attendance.Completed, total, course.Attendance.Absent, course.Attendance.Late)))
+	}
+	if result.Evaluation.Enabled {
+		evaluationStatus := "완료"
+		if course.Evaluation != nil {
+			evaluationStatus = "미완료"
+		}
+		lines = append(lines, dashboardMetric("Evaluation", evaluationStatus))
 	}
 	return renderSection("OVERVIEW", lines)
 }
@@ -2829,6 +2927,50 @@ func formatDashboardFocus(result app.DashboardResult) []string {
 	}
 	if len(lines) == 0 {
 		return []string{emptyStyle.Render("처리할 항목이 없습니다")}
+	}
+	return lines
+}
+
+func formatDashboardCourseFocus(course app.DashboardCourse) []string {
+	lines := make([]string, 0, len(course.Assignments)+len(course.Lectures))
+	for _, row := range course.Assignments {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s",
+			warnBadgeStyle.Render("과제"),
+			mutedStyle.Render(formatTime(row.Assignment.DueAt)),
+			row.Assignment.Title,
+		))
+	}
+	for _, row := range course.Lectures {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s",
+			badgeStyle.Render("강의"),
+			mutedStyle.Render(formatTime(row.Lecture.EndAt)),
+			row.Lecture.Title,
+		))
+	}
+	if len(lines) == 0 {
+		return []string{emptyStyle.Render("처리할 항목이 없습니다")}
+	}
+	return lines
+}
+
+func formatDashboardCourseStatus(course app.DashboardCourse) []string {
+	lines := make([]string, 0, 3)
+	if course.Attendance != nil {
+		if course.Attendance.Err != nil {
+			lines = append(lines, warnTextStyle.Render("출석 상세를 불러오지 못했습니다"))
+		} else {
+			lines = append(lines, fmt.Sprintf("출석  %s · %s · %s",
+				successTextStyle.Render(fmt.Sprintf("O %d", course.Attendance.Completed)),
+				warnTextStyle.Render(fmt.Sprintf("X %d", course.Attendance.Absent)),
+				warnTextStyle.Render(fmt.Sprintf("L %d", course.Attendance.Late)),
+			))
+		}
+	}
+	if course.Evaluation != nil {
+		lines = append(lines, warnTextStyle.Render("수업평가 미완료"))
+	}
+	if len(lines) == 0 {
+		return nil
 	}
 	return lines
 }
