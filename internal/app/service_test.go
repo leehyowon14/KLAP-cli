@@ -576,6 +576,49 @@ func TestReminderHashtags(t *testing.T) {
 	}
 }
 
+func TestBuildLectureReminderNotesIncludesMarker(t *testing.T) {
+	dueAt := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	notes := buildLectureReminderNotes(LectureRow{
+		ID:         "7:lecture",
+		TermValue:  "2026,1",
+		CourseName: "오픈소스소프트웨어실습",
+		Lecture: klas.Lecture{
+			Title:        "HuggingFace",
+			ModuleTitle:  "14주차",
+			EndAt:        &dueAt,
+			AchievedTime: "0",
+			RequiredTime: "10",
+		},
+	})
+
+	for _, want := range []string{
+		"ID: lecture:7:lecture",
+		"과목: 오픈소스소프트웨어실습",
+		"제목: HuggingFace",
+		"#2026-1 #오픈소스소프트웨어실습",
+		"[This reminder is created by KLAP.]",
+	} {
+		if !strings.Contains(notes, want) {
+			t.Fatalf("buildLectureReminderNotes() missing %q: %q", want, notes)
+		}
+	}
+}
+
+func TestBuildAcademicCalendarNotesIncludesMarker(t *testing.T) {
+	event := AcademicEvent{Year: "2026", Month: "3월", Date: "3(화)", Title: "개강", Note: "비고"}
+	notes := buildAcademicCalendarNotes(event)
+	for _, want := range []string{
+		"ID: academic:2026:3월:3(화):개강",
+		"학년도: 2026",
+		"비고: 비고",
+		"[This calendar event is created by KLAP.]",
+	} {
+		if !strings.Contains(notes, want) {
+			t.Fatalf("buildAcademicCalendarNotes() missing %q: %q", want, notes)
+		}
+	}
+}
+
 func TestTermHashtagSeasonSemesters(t *testing.T) {
 	if got := termHashtag("2026,3"); got != "#2026-여름학기" {
 		t.Fatalf("termHashtag() summer = %q", got)

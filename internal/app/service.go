@@ -20,6 +20,7 @@ import (
 
 	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/cache"
+	klapcalendar "github.com/kw-klap/klap-cli/internal/calendar"
 	"github.com/kw-klap/klap-cli/internal/klas"
 	"github.com/kw-klap/klap-cli/internal/reminder"
 	"github.com/kw-klap/klap-cli/internal/settings"
@@ -31,6 +32,7 @@ type Service struct {
 	settingsStore        *settings.Store
 	cacheStore           *cache.Store
 	reminderBridgePath   string
+	calendarBridgePath   string
 	transcriptBridgePath string
 }
 
@@ -492,6 +494,11 @@ type ReminderSyncResult struct {
 	EligibleCount int
 }
 
+type CalendarSyncResult struct {
+	Result        klapcalendar.SyncResult
+	EligibleCount int
+}
+
 type ReminderSettings struct {
 	ListName        string
 	UseExistingList bool
@@ -526,6 +533,7 @@ func NewService(store *account.Store) *Service {
 		settingsStore:        settingsStore,
 		cacheStore:           cacheStore,
 		reminderBridgePath:   defaultReminderBridgePath(),
+		calendarBridgePath:   defaultCalendarBridgePath(),
 		transcriptBridgePath: defaultTranscriptBridgePath(),
 	}
 }
@@ -2911,6 +2919,96 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 	}, nil
 }
 
+func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOptions) (ReminderSyncResult, error) {
+	rows, err := s.LectureList(ctx, opts)
+	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+
+	currentSettings, err := s.loadSettings()
+	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+
+	now := time.Now()
+	assignments := make([]reminder.Assignment, 0, len(rows))
+	for _, row := range rows {
+		if row.Lecture.EndAt == nil {
+			continue
+		}
+		assignments = append(assignments, reminder.Assignment{
+			ID:        "lecture:" + row.ID,
+			Title:     firstNonEmpty(row.Lecture.Title, row.Lecture.ModuleTitle, "온라인 강의"),
+			Course:    row.CourseName,
+			DueAt:     row.Lecture.EndAt,
+			Submitted: !lectureNeedsAttendance(row.Lecture, now),
+			DetailURL: row.Lecture.PlayURL,
+			Notes:     buildLectureReminderNotes(row),
+		})
+	}
+
+	if len(assignments) == 0 {
+		return ReminderSyncResult{}, nil
+	}
+
+	result, err := reminder.NewMacOSBridge(s.reminderBridgePath).Sync(reminder.SyncRequest{
+		ListName:        currentSettings.Reminder.ListName,
+		UseExistingList: currentSettings.Reminder.UseExistingList,
+		AlarmBeforeMin:  currentSettings.Reminder.AlarmBeforeMin,
+		Assignments:     assignments,
+	})
+	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+	return ReminderSyncResult{
+		Result:        result,
+		EligibleCount: len(assignments),
+	}, nil
+}
+
+func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOptions) (CalendarSyncResult, error) {
+	result, err := s.AcademicList(ctx, opts)
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+
+	currentSettings, err := s.loadSettings()
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+
+	events := make([]klapcalendar.Event, 0, len(result.Events))
+	for _, academicEvent := range result.Events {
+		startAt, ok := academicEventDueAt(academicEvent)
+		if !ok {
+			continue
+		}
+		endAt := startAt.Add(24 * time.Hour)
+		events = append(events, klapcalendar.Event{
+			ID:      academicEventID(academicEvent),
+			Title:   academicEvent.Title,
+			StartAt: startAt,
+			EndAt:   endAt,
+			AllDay:  true,
+			Notes:   buildAcademicCalendarNotes(academicEvent),
+			URL:     result.SourceURL,
+		})
+	}
+	if len(events) == 0 {
+		return CalendarSyncResult{}, nil
+	}
+
+	syncResult, err := klapcalendar.NewMacOSBridge(s.calendarBridgePath).Sync(klapcalendar.SyncRequest{
+		CalendarName:    currentSettings.Reminder.ListName,
+		UseExistingList: currentSettings.Reminder.UseExistingList,
+		Events:          events,
+	})
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+	return CalendarSyncResult{Result: syncResult, EligibleCount: len(events)}, nil
+}
+
 func (s *Service) loadSettings() (settings.Settings, error) {
 	if s.settingsStore == nil {
 		return settings.Default(), nil
@@ -3020,6 +3118,72 @@ func buildReminderNotes(result AssignmentDetailResult) string {
 	builder.WriteString("[This reminder is created by KLAP.]")
 
 	return builder.String()
+}
+
+func buildLectureReminderNotes(row LectureRow) string {
+	var builder strings.Builder
+	builder.WriteString("--- KLAP ---\n\n")
+	builder.WriteString("ID: lecture:")
+	builder.WriteString(row.ID)
+	builder.WriteString("\n")
+	builder.WriteString("과목: ")
+	builder.WriteString(row.CourseName)
+	builder.WriteString("\n")
+	builder.WriteString("제목: ")
+	builder.WriteString(firstNonEmpty(row.Lecture.Title, row.Lecture.ModuleTitle, "온라인 강의"))
+	builder.WriteString("\n")
+	builder.WriteString("마감: ")
+	if row.Lecture.EndAt == nil {
+		builder.WriteString("마감 확인 필요")
+	} else {
+		builder.WriteString(row.Lecture.EndAt.Format("2006-01-02 15:04"))
+	}
+	builder.WriteString("\n")
+	builder.WriteString("상태: ")
+	builder.WriteString(lectureDueStatus(row.Lecture))
+	builder.WriteString("\n")
+	if row.Lecture.ModuleTitle != "" {
+		builder.WriteString("주차/모듈: ")
+		builder.WriteString(row.Lecture.ModuleTitle)
+		builder.WriteString("\n")
+	}
+	if hashtags := reminderHashtags(row.TermValue, row.CourseName); hashtags != "" {
+		builder.WriteString(hashtags)
+		builder.WriteString("\n")
+	}
+	builder.WriteString("[This reminder is created by KLAP.]")
+	return builder.String()
+}
+
+func buildAcademicCalendarNotes(event AcademicEvent) string {
+	var builder strings.Builder
+	builder.WriteString("--- KLAP ---\n\n")
+	builder.WriteString("ID: ")
+	builder.WriteString(academicEventID(event))
+	builder.WriteString("\n")
+	builder.WriteString("학년도: ")
+	builder.WriteString(event.Year)
+	builder.WriteString("\n")
+	builder.WriteString("날짜: ")
+	builder.WriteString(event.Month)
+	builder.WriteString(" ")
+	builder.WriteString(event.Date)
+	builder.WriteString("\n")
+	if strings.TrimSpace(event.Note) != "" {
+		builder.WriteString("비고: ")
+		builder.WriteString(event.Note)
+		builder.WriteString("\n")
+	}
+	builder.WriteString("[This calendar event is created by KLAP.]")
+	return builder.String()
+}
+
+func academicEventID(event AcademicEvent) string {
+	parts := []string{event.Year, event.Month, event.Date, event.Title}
+	for index, part := range parts {
+		parts[index] = strings.TrimSpace(part)
+	}
+	return "academic:" + strings.Join(parts, ":")
 }
 
 func reminderHashtags(termValue string, courseName string) string {
@@ -4190,6 +4354,30 @@ func defaultReminderBridgePath() string {
 	}
 	if executable, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "reminder.swift"))
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
+func defaultCalendarBridgePath() string {
+	if override := os.Getenv("KLAP_CALENDAR_BRIDGE"); override != "" {
+		return override
+	}
+
+	candidates := []string{
+		filepath.Join("bridges", "macos", "calendar.swift"),
+	}
+	if _, currentFile, _, ok := runtime.Caller(0); ok {
+		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "calendar.swift"))
+	}
+	if executable, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "calendar.swift"))
 	}
 
 	for _, candidate := range candidates {

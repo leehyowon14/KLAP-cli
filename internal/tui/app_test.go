@@ -283,6 +283,54 @@ func TestLectureCompletedDetectsPercentAndMinuteProgress(t *testing.T) {
 	}
 }
 
+func TestDuePageLinesSplitByKind(t *testing.T) {
+	dueAt := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	result := app.DueResult{Items: []app.DueItem{
+		{Kind: "과제", CourseName: "컴퓨터그래픽스", Title: "과제1", DueAt: dueAt},
+		{Kind: "온라인 강의", CourseName: "오픈소스", Title: "HuggingFace", DueAt: dueAt},
+		{Kind: "학사일정", Title: "종강", DueAt: dueAt},
+	}}
+
+	summary := strings.Join(duePageLines(result, 0, 96), "\n")
+	if !strings.Contains(summary, "전체") || !strings.Contains(summary, "3") {
+		t.Fatalf("summary lines = %q", summary)
+	}
+	assignments := strings.Join(duePageLines(result, 1, 96), "\n")
+	if !strings.Contains(assignments, "과제1") || strings.Contains(assignments, "HuggingFace") {
+		t.Fatalf("assignment due lines = %q", assignments)
+	}
+	academic := strings.Join(duePageLines(result, 3, 96), "\n")
+	if !strings.Contains(academic, "종강") || strings.Contains(academic, "과제1") {
+		t.Fatalf("academic due lines = %q", academic)
+	}
+}
+
+func TestAcademicCalendarRendersMonthEvents(t *testing.T) {
+	result := app.AcademicListResult{
+		Year: "2026",
+		Events: []app.AcademicEvent{
+			{Year: "2026", Month: "3월", Date: "3(화)", Title: "개강"},
+			{Year: "2026", Month: "4월", Date: "1(수)", Title: "다른 달"},
+		},
+	}
+
+	view := renderAcademicMonthCalendar(result, 3, 96)
+	if !strings.Contains(view, "개강") || strings.Contains(view, "다른 달") {
+		t.Fatalf("renderAcademicMonthCalendar() = %q", view)
+	}
+}
+
+func TestFormatSyncStatus(t *testing.T) {
+	got := formatReminderSyncStatus("과제", app.ReminderSyncResult{EligibleCount: 2})
+	if !strings.Contains(got, "과제") || !strings.Contains(got, "생성 0") {
+		t.Fatalf("formatReminderSyncStatus() = %q", got)
+	}
+	calendar := formatCalendarSyncStatus("학사일정", app.CalendarSyncResult{})
+	if calendar != "학사일정 대상 없음" {
+		t.Fatalf("formatCalendarSyncStatus() = %q", calendar)
+	}
+}
+
 func TestDashboardFormatUsesScanSections(t *testing.T) {
 	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
 	result := app.DashboardResult{
