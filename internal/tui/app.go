@@ -522,6 +522,8 @@ func (m model) updateDownloadSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.err = nil
 		return m, m.load(screenLectures, false)
+	case m.loading:
+		return m, nil
 	case key == "up" || keyMatches(key, "k", "ㅏ"):
 		maxCursor := len(m.currentDownloadRows())
 		if maxCursor <= 0 {

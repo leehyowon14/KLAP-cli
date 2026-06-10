@@ -2085,7 +2085,7 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 		}
 		for _, lecture := range lectures {
 			rows = append(rows, LectureRow{
-				ID:         LectureID(selectedCourse.Index, lectureAttendKey(lecture)),
+				ID:         lectureRowID(selectedCourse.Index, lecture),
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				Lecture:    lecture,
@@ -2363,7 +2363,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 		rows := make([]LectureRow, 0, len(lectures))
 		for _, lecture := range lectures {
 			rows = append(rows, LectureRow{
-				ID:         LectureID(selectedCourse.Index, lecture.ContentID),
+				ID:         lectureRowID(selectedCourse.Index, lecture),
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				Lecture:    lecture,
@@ -2845,7 +2845,7 @@ func (s *Service) AttendAllLectures(ctx context.Context, opts LectureAttendAllOp
 				continue
 			}
 			row := LectureRow{
-				ID:         LectureID(selectedCourse.Index, lectureAttendKey(lecture)),
+				ID:         lectureRowID(selectedCourse.Index, lecture),
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				Lecture:    lecture,
@@ -4165,6 +4165,10 @@ func lectureAttendKey(lecture klas.Lecture) string {
 		return "lrn-" + learningSeq
 	}
 	return ""
+}
+
+func lectureRowID(courseIndex int, lecture klas.Lecture) string {
+	return LectureID(courseIndex, lectureAttendKey(lecture))
 }
 
 func lectureMatchesKey(lecture klas.Lecture, key string) bool {

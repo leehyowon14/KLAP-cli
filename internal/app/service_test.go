@@ -375,6 +375,17 @@ func TestParseLectureID(t *testing.T) {
 	}
 }
 
+func TestLectureRowIDMatchesLearningSeqFallback(t *testing.T) {
+	lecture := klas.Lecture{LearningSeq: "39769"}
+	if got := lectureRowID(1, lecture); got != "1:lrn-39769" {
+		t.Fatalf("lectureRowID() = %q", got)
+	}
+	lecture.ContentID = "content-123"
+	if got := lectureRowID(1, lecture); got != "1:content-123" {
+		t.Fatalf("lectureRowID() content = %q", got)
+	}
+}
+
 func TestLectureFilenameSanitizesPathComponents(t *testing.T) {
 	got := lectureVideoPath("root", "오픈소스/실습", klas.Lecture{
 		ModuleTitle: "1주차: 소개",

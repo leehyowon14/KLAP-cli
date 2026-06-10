@@ -463,6 +463,26 @@ func TestDownloadRowsStartUnselected(t *testing.T) {
 	}
 }
 
+func TestDownloadSelectIgnoresSelectionWhileLoading(t *testing.T) {
+	m := model{
+		active:             screenDownloadSelect,
+		loading:            true,
+		downloadRows:       []app.LectureRow{{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}}},
+		downloadSelected:   map[string]bool{},
+		downloadCourse:     0,
+		downloadCursor:     1,
+		downloadTranscribe: false,
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	got := updated.(model)
+	if got.downloadSelected["1:a"] {
+		t.Fatalf("loading selection changed: %+v", got.downloadSelected)
+	}
+	if got.active != screenDownloadSelect {
+		t.Fatalf("active = %v, want screenDownloadSelect", got.active)
+	}
+}
+
 func TestRoomFlowSelectsDaysAndPeriods(t *testing.T) {
 	m := model{active: screenHome}
 	updated, _ := m.startRoomFlow()
