@@ -172,6 +172,9 @@ type model struct {
 	roomDaysSelected    map[int]bool
 	roomPeriodCursor    int
 	roomPeriodsSelected map[int]bool
+	roomResults         []app.RoomAvailableResult
+	roomResultPage      int
+	roomResultCursor    int
 }
 
 type transcriptLanguage struct {
@@ -361,6 +364,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			} else if m.active == screenConfig && !m.loading {
 				m.moveConfigCursor(-1)
+			} else if m.active == screenRoomResult && !m.loading {
+				m.moveRoomResultCursor(-1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
 			} else if m.active == screenDashboard && !m.loading {
@@ -377,6 +382,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			} else if m.active == screenConfig && !m.loading {
 				m.moveConfigCursor(1)
+			} else if m.active == screenRoomResult && !m.loading {
+				m.moveRoomResultCursor(1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
 			} else if m.active == screenDashboard && !m.loading {
@@ -391,6 +398,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "left":
 			if m.active == screenConfig && !m.loading {
 				m.moveConfigPage(-1)
+			} else if m.active == screenRoomResult && !m.loading {
+				m.moveRoomResultPage(-1)
 			} else if m.active == screenDashboard && !m.loading {
 				m.moveDashboardPage(-1)
 			} else if m.active == screenDue && !m.loading {
@@ -403,6 +412,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "right":
 			if m.active == screenConfig && !m.loading {
 				m.moveConfigPage(1)
+			} else if m.active == screenRoomResult && !m.loading {
+				m.moveRoomResultPage(1)
 			} else if m.active == screenDashboard && !m.loading {
 				m.moveDashboardPage(1)
 			} else if m.active == screenDue && !m.loading {
@@ -538,7 +549,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading = false
 		m.err = msg.err
-		m.content = formatRoomAvailableResults(msg.results)
+		m.roomResults = msg.results
+		m.roomResultPage = 0
+		m.roomResultCursor = 0
 		m.loadedAt = time.Now()
 	}
 	return m, nil
@@ -994,6 +1007,9 @@ func (m model) startRoomFlow() (tea.Model, tea.Cmd) {
 	m.roomPeriodCursor = 0
 	m.roomDaysSelected = map[int]bool{}
 	m.roomPeriodsSelected = map[int]bool{}
+	m.roomResults = nil
+	m.roomResultPage = 0
+	m.roomResultCursor = 0
 	return m, nil
 }
 
@@ -1061,6 +1077,9 @@ func (m model) updateRoomPeriod(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.active = screenRoomResult
 		m.loading = true
 		m.content = ""
+		m.roomResults = nil
+		m.roomResultPage = 0
+		m.roomResultCursor = 0
 		return m, m.loadRoomAvailableResults(false)
 	}
 	return m, nil
@@ -2234,6 +2253,9 @@ func (m model) footerHelp() string {
 	if m.active == screenAcademic {
 		return "←/→ 월 이동  ↑↓ 일정  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
+	if m.active == screenRoomResult {
+		return "←/→ 건물  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
+	}
 	if m.isDetailScreen() {
 		return "↑↓ 스크롤  k KLAS  b/esc 목록  q 종료"
 	}
@@ -2664,6 +2686,77 @@ func (m model) renderRoomPeriodView(width int) string {
 	return b.String()
 }
 
+type roomAvailableDisplayRow struct {
+	Room   string
+	Status string
+}
+
+type roomAvailableBuildingGroup struct {
+	Building string
+	Rows     []roomAvailableDisplayRow
+}
+
+func (m model) renderRoomResultPanel(width int) string {
+	groups := roomAvailableBuildingGroups(m.roomResults)
+	if len(groups) == 0 {
+		return emptyStyle.Render("조건에 맞는 빈 강의실이 없습니다") + "\n"
+	}
+	page := clampInt(m.roomResultPage, 0, len(groups)-1)
+	group := groups[page]
+	warnings := roomAvailableWarnings(m.roomResults)
+	visibleRows := m.visibleRoomResultRows()
+	if len(warnings) > 0 {
+		visibleRows = maxInt(3, visibleRows-3)
+	}
+	cursor := clampInt(m.roomResultCursor, 0, maxInt(0, len(group.Rows)-1))
+	start := cursor - visibleRows/2
+	if start < 0 {
+		start = 0
+	}
+	if start+visibleRows > len(group.Rows) {
+		start = maxInt(0, len(group.Rows)-visibleRows)
+	}
+	end := minInt(len(group.Rows), start+visibleRows)
+
+	var b strings.Builder
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 건물 이동  %d/%d  %s", page+1, len(groups), group.Building)))
+	b.WriteString("\n\n")
+	for index := start; index < end; index++ {
+		row := group.Rows[index]
+		marker := "  "
+		if index == cursor {
+			marker = "› "
+		}
+		status := row.Status
+		roomWidth := maxInt(8, minInt(28, width-lipgloss.Width(marker)-lipgloss.Width(status)-4))
+		room := padRight(truncateText(row.Room, roomWidth), roomWidth)
+		line := fmt.Sprintf("%s%s  %s", marker, room, mutedStyle.Render(status))
+		if index == cursor {
+			line = menuSelectedStyle.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	if start > 0 || end < len(group.Rows) {
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(group.Rows))))
+		b.WriteString("\n")
+	}
+	if len(warnings) > 0 {
+		b.WriteString("\n")
+		b.WriteString(warnBadgeStyle.Render("WARN"))
+		b.WriteString(fmt.Sprintf(" %d개 과목의 강의시간 조회 실패", len(warnings)))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func (m model) visibleRoomResultRows() int {
+	if m.height <= 0 {
+		return 14
+	}
+	return maxInt(5, m.height-11)
+}
+
 func (m model) renderPanel(width int) string {
 	var b strings.Builder
 	if subtitle := strings.TrimSpace(screenSubtitle(m.active)); subtitle != "" {
@@ -2705,6 +2798,10 @@ func (m model) renderPanel(width int) string {
 	}
 	if m.active == screenAcademic {
 		b.WriteString(m.renderAcademicCalendarPanel(width))
+		return b.String()
+	}
+	if m.active == screenRoomResult {
+		b.WriteString(m.renderRoomResultPanel(width))
 		return b.String()
 	}
 	if m.active == screenConfig {
@@ -4130,6 +4227,118 @@ func formatRoomAvailableResults(results []app.RoomAvailableResult) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+func roomAvailableBuildingGroups(results []app.RoomAvailableResult) []roomAvailableBuildingGroup {
+	groupRows := make(map[string][]roomAvailableDisplayRow)
+	for _, result := range results {
+		status := roomAvailableStatus(result.Weekday, result.Periods)
+		for _, room := range result.Rooms {
+			roomName := strings.TrimSpace(room.Room)
+			if roomName == "" {
+				continue
+			}
+			building := roomBuildingName(roomName)
+			groupRows[building] = append(groupRows[building], roomAvailableDisplayRow{
+				Room:   roomName,
+				Status: status,
+			})
+		}
+	}
+	buildings := make([]string, 0, len(groupRows))
+	for building := range groupRows {
+		buildings = append(buildings, building)
+	}
+	sort.Strings(buildings)
+	groups := make([]roomAvailableBuildingGroup, 0, len(buildings))
+	for _, building := range buildings {
+		rows := groupRows[building]
+		sort.SliceStable(rows, func(i, j int) bool {
+			if rows[i].Room == rows[j].Room {
+				return rows[i].Status < rows[j].Status
+			}
+			return rows[i].Room < rows[j].Room
+		})
+		groups = append(groups, roomAvailableBuildingGroup{Building: building, Rows: rows})
+	}
+	return groups
+}
+
+func roomAvailableWarnings(results []app.RoomAvailableResult) []string {
+	seen := make(map[string]struct{})
+	for _, result := range results {
+		for _, warning := range result.Warnings {
+			warning = strings.TrimSpace(warning)
+			if warning != "" {
+				seen[warning] = struct{}{}
+			}
+		}
+	}
+	warnings := make([]string, 0, len(seen))
+	for warning := range seen {
+		warnings = append(warnings, warning)
+	}
+	sort.Strings(warnings)
+	return warnings
+}
+
+func roomBuildingName(room string) string {
+	room = strings.TrimSpace(room)
+	for _, building := range []string{"화도관", "한천재", "한울관", "참빛관", "옥의관", "연구관", "새빛관", "비마관", "누리관", "기념관"} {
+		if strings.HasPrefix(room, building) {
+			return building
+		}
+	}
+	for index, r := range room {
+		if r >= '0' && r <= '9' {
+			if index == 0 {
+				return "기타"
+			}
+			return strings.TrimSpace(room[:index])
+		}
+	}
+	if room == "" {
+		return "기타"
+	}
+	return room
+}
+
+func (m *model) moveRoomResultPage(delta int) {
+	groups := roomAvailableBuildingGroups(m.roomResults)
+	if len(groups) == 0 {
+		m.roomResultPage = 0
+		m.roomResultCursor = 0
+		return
+	}
+	m.roomResultPage += delta
+	if m.roomResultPage < 0 {
+		m.roomResultPage = len(groups) - 1
+	}
+	if m.roomResultPage >= len(groups) {
+		m.roomResultPage = 0
+	}
+	m.roomResultCursor = 0
+}
+
+func (m *model) moveRoomResultCursor(delta int) {
+	groups := roomAvailableBuildingGroups(m.roomResults)
+	if len(groups) == 0 {
+		m.roomResultCursor = 0
+		return
+	}
+	page := clampInt(m.roomResultPage, 0, len(groups)-1)
+	rows := groups[page].Rows
+	if len(rows) == 0 {
+		m.roomResultCursor = 0
+		return
+	}
+	m.roomResultCursor += delta
+	if m.roomResultCursor < 0 {
+		m.roomResultCursor = len(rows) - 1
+	}
+	if m.roomResultCursor >= len(rows) {
+		m.roomResultCursor = 0
+	}
+}
+
 func roomAvailableStatus(weekday int, periods []int) string {
 	return app.RoomWeekdayLabel(weekday) + " " + roomPeriodsLabel(periods) + " 비어있음"
 }
@@ -4273,6 +4482,14 @@ func truncateText(value string, limit int) string {
 	return b.String() + "…"
 }
 
+func padRight(value string, width int) string {
+	padding := width - lipgloss.Width(value)
+	if padding <= 0 {
+		return value
+	}
+	return value + strings.Repeat(" ", padding)
+}
+
 func minInt(left int, right int) int {
 	if left < right {
 		return left
@@ -4285,4 +4502,14 @@ func maxInt(left int, right int) int {
 		return left
 	}
 	return right
+}
+
+func clampInt(value int, minValue int, maxValue int) int {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
 }
