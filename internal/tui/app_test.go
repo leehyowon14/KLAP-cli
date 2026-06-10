@@ -1068,6 +1068,30 @@ func TestConfigPageNavigationResetsCursor(t *testing.T) {
 	}
 }
 
+func TestConfigArrowKeysNavigatePages(t *testing.T) {
+	m := model{
+		active: screenConfig,
+		configSettings: app.ConfigSettings{
+			Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+			Calendar:   app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
+			Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
+			Transcript: app.TranscriptSettings{Concurrency: 1},
+		},
+		configOptions: app.CategoryOptions{Reminders: []string{"To-do"}, Calendars: []string{"시간표"}},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	got := updated.(model)
+	if got.configPage != configPageSchedule {
+		t.Fatalf("configPage after right = %d", got.configPage)
+	}
+	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	got = updated.(model)
+	if got.configPage != configPageGeneral {
+		t.Fatalf("configPage after left = %d", got.configPage)
+	}
+}
+
 func TestCategoryChoicesAppendDirectInput(t *testing.T) {
 	got := categoryChoices([]string{"개인", "회사"}, "시간표")
 	want := []string{"개인", "회사", "시간표", directInputChoice}
@@ -1076,12 +1100,35 @@ func TestCategoryChoicesAppendDirectInput(t *testing.T) {
 	}
 }
 
-func TestBoundedCategoryChoiceStopsAtEdges(t *testing.T) {
-	if got, _, ok := boundedCategoryChoice([]string{"개인", "회사"}, "개인", -1); ok || got != "" {
-		t.Fatalf("boundedCategoryChoice left edge = %q, %t", got, ok)
+func TestConfigEnterOpensChoiceViewForCategories(t *testing.T) {
+	m := model{
+		active: screenConfig,
+		configSettings: app.ConfigSettings{
+			Reminder: app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+		},
+		configOptions: app.CategoryOptions{Reminders: []string{"개인", "To-do"}},
 	}
-	got, useExisting, ok := boundedCategoryChoice([]string{"개인", "회사"}, "회사", 1)
-	if !ok || got != directInputChoice || useExisting {
-		t.Fatalf("boundedCategoryChoice direct input = %q, %t, %t", got, useExisting, ok)
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(model)
+	if got.active != screenConfigChoice || got.configChoiceKey != "reminder.name" {
+		t.Fatalf("config choice state = %v/%q", got.active, got.configChoiceKey)
+	}
+}
+
+func TestConfigEnterOpensInputViewForTextRows(t *testing.T) {
+	m := model{
+		active: screenConfig,
+		configSettings: app.ConfigSettings{
+			Reminder: app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+			Download: app.DownloadSettings{Dir: "downloads", Concurrency: 3},
+		},
+		configPage: configPageDownload,
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(model)
+	if got.active != screenConfigInput || got.configEditing != "download.dir" {
+		t.Fatalf("config input state = %v/%q", got.active, got.configEditing)
 	}
 }

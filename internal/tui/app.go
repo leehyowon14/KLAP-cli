@@ -96,6 +96,8 @@ const (
 	screenRoomDay
 	screenRoomPeriod
 	screenRoomResult
+	screenConfigChoice
+	screenConfigInput
 	screenDownloadSelect
 	screenDownloadConfirm
 	screenDownloadLanguage
@@ -145,6 +147,8 @@ type model struct {
 	configOptions       app.CategoryOptions
 	configCursor        int
 	configPage          int
+	configChoiceKey     string
+	configChoiceCursor  int
 	downloadRows        []app.LectureRow
 	downloadSelected    map[string]bool
 	downloadCourse      int
@@ -295,14 +299,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.active == screenDownloadLanguage {
 			return m.updateDownloadLanguage(msg)
 		}
+		if m.active == screenConfigChoice {
+			return m.updateConfigChoice(msg)
+		}
+		if m.active == screenConfigInput {
+			return m.updateConfigInput(msg)
+		}
 		if m.active == screenRoomDay {
 			return m.updateRoomDay(msg)
 		}
 		if m.active == screenRoomPeriod {
 			return m.updateRoomPeriod(msg)
-		}
-		if m.configEditing != "" {
-			return m.updateConfigInput(msg)
 		}
 		switch msg.String() {
 		case "ctrl+c":
@@ -355,7 +362,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key == "left":
 			if m.active == screenConfig && !m.loading {
-				return m.adjustConfigCurrent(-1)
+				m.moveConfigPage(-1)
 			} else if m.active == screenDashboard && !m.loading {
 				m.moveDashboardPage(-1)
 			} else if m.active == screenDue && !m.loading {
@@ -367,7 +374,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key == "right":
 			if m.active == screenConfig && !m.loading {
-				return m.adjustConfigCurrent(1)
+				m.moveConfigPage(1)
 			} else if m.active == screenDashboard && !m.loading {
 				m.moveDashboardPage(1)
 			} else if m.active == screenDue && !m.loading {
@@ -379,11 +386,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key == "tab" || key == "]":
 			if m.active == screenConfig && !m.loading {
-				m.moveConfigPage(1)
+				return m.adjustConfigCurrent(1)
 			}
 		case key == "shift+tab" || key == "backtab" || key == "[":
 			if m.active == screenConfig && !m.loading {
-				m.moveConfigPage(-1)
+				return m.adjustConfigCurrent(-1)
 			}
 		case key == "enter":
 			if m.active == screenHome && len(m.menu) > 0 {
@@ -1559,14 +1566,72 @@ func lectureCompleted(lecture klas.Lecture) bool {
 	return achievedErr == nil && requiredErr == nil && required > 0 && achieved >= required
 }
 
-func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
+func (m model) updateConfigChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
 		return m, tea.Quit
-	case "esc":
+	case key == "esc" || keyMatches(key, "b", "ㅠ"):
+		m.active = screenConfig
+		m.configChoiceKey = ""
+		m.configChoiceCursor = 0
+		m.err = nil
+	case key == "up" || keyMatches(key, "k", "ㅏ"):
+		choices := m.currentConfigChoices()
+		if len(choices) == 0 {
+			m.configChoiceCursor = 0
+		} else if m.configChoiceCursor <= 0 {
+			m.configChoiceCursor = len(choices) - 1
+		} else {
+			m.configChoiceCursor--
+		}
+	case key == "down" || keyMatches(key, "j", "ㅓ"):
+		choices := m.currentConfigChoices()
+		if len(choices) == 0 || m.configChoiceCursor >= len(choices)-1 {
+			m.configChoiceCursor = 0
+		} else {
+			m.configChoiceCursor++
+		}
+	case key == "enter":
+		choices := m.currentConfigChoices()
+		if len(choices) == 0 {
+			return m, nil
+		}
+		if m.configChoiceCursor < 0 {
+			m.configChoiceCursor = 0
+		}
+		if m.configChoiceCursor >= len(choices) {
+			m.configChoiceCursor = len(choices) - 1
+		}
+		choice := choices[m.configChoiceCursor]
+		row := configRow{key: m.configChoiceKey, label: configInputLabel(m.configChoiceKey), editable: true}
+		if choice == directInputChoice {
+			return m.startConfigEdit(row)
+		}
+		if err := m.applyConfigCategoryChoice(m.configChoiceKey, choice); err != nil {
+			m.err = err
+			return m, nil
+		}
+		m.err = nil
+		m.active = screenConfig
+		m.configChoiceKey = ""
+		m.configChoiceCursor = 0
+		m.refreshConfigContent()
+	}
+	return m, nil
+}
+
+func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c":
+		return m, tea.Quit
+	case key == "esc":
+		m.active = screenConfig
 		m.configEditing = ""
+		m.err = nil
 		return m, nil
-	case "enter":
+	case key == "enter":
 		value := strings.TrimSpace(m.configInput.Value())
 		var err error
 		switch m.configEditing {
@@ -1585,6 +1650,7 @@ func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.err = err
 		} else {
 			m.err = nil
+			m.active = screenConfig
 			m.configEditing = ""
 			m.refreshConfigContent()
 		}
@@ -1623,6 +1689,9 @@ func (m model) activateConfigCurrent() (tea.Model, tea.Cmd) {
 	if row.reset {
 		return m.resetConfigSettings()
 	}
+	if row.cycle {
+		return m.startConfigChoice(row)
+	}
 	if row.editable {
 		return m.startConfigEdit(row)
 	}
@@ -1636,41 +1705,11 @@ func (m model) adjustConfigCurrent(delta int) (tea.Model, tea.Cmd) {
 	}
 	switch row.key {
 	case "reminder.name":
-		next, useExisting, ok := boundedCategoryChoice(m.configOptions.Reminders, m.configSettings.Reminder.ListName, delta)
-		if !ok {
-			return m, nil
-		}
-		if next == directInputChoice {
-			return m.startConfigEdit(row)
-		}
-		if _, err := m.service.SetReminderConfig(next, useExisting); err != nil {
-			m.err = err
-			return m, nil
-		}
+		return m.startConfigChoice(row)
 	case "calendar.name":
-		next, useExisting, ok := boundedCategoryChoice(m.configOptions.Calendars, m.configSettings.Calendar.Name, delta)
-		if !ok {
-			return m, nil
-		}
-		if next == directInputChoice {
-			return m.startConfigEdit(row)
-		}
-		if _, err := m.service.SetAcademicCalendarConfig(next, useExisting); err != nil {
-			m.err = err
-			return m, nil
-		}
+		return m.startConfigChoice(row)
 	case "timetable-calendar.name":
-		next, useExisting, ok := boundedCategoryChoice(m.configOptions.Calendars, m.configSettings.Calendar.TimetableName, delta)
-		if !ok {
-			return m, nil
-		}
-		if next == directInputChoice {
-			return m.startConfigEdit(row)
-		}
-		if _, err := m.service.SetTimetableCalendarConfig(next, useExisting); err != nil {
-			m.err = err
-			return m, nil
-		}
+		return m.startConfigChoice(row)
 	case "reminder.alarm-before-min":
 		next := m.configSettings.Reminder.AlarmBeforeMin + delta*60
 		if next < 1 {
@@ -1693,6 +1732,14 @@ func (m model) adjustConfigCurrent(delta int) (tea.Model, tea.Cmd) {
 	}
 	m.err = nil
 	m.refreshConfigContent()
+	return m, nil
+}
+
+func (m model) startConfigChoice(row configRow) (tea.Model, tea.Cmd) {
+	m.active = screenConfigChoice
+	m.configChoiceKey = row.key
+	m.configChoiceCursor = m.currentConfigChoiceIndex()
+	m.err = nil
 	return m, nil
 }
 
@@ -1720,7 +1767,9 @@ func (m model) startConfigEdit(row configRow) (tea.Model, tea.Cmd) {
 	}
 	input.Prompt = row.key + " "
 	input.Focus()
+	m.active = screenConfigInput
 	m.configEditing = row.key
+	m.configChoiceKey = ""
 	m.configInput = input
 	return m, nil
 }
@@ -1835,6 +1884,63 @@ func (m model) currentConfigRows() []configRow {
 	return configRowsForPage(m.configSettings, m.configOptions, m.configPage)
 }
 
+func (m model) currentConfigChoices() []string {
+	switch m.configChoiceKey {
+	case "reminder.name":
+		return categoryChoices(m.configOptions.Reminders, m.configSettings.Reminder.ListName)
+	case "calendar.name":
+		return categoryChoices(m.configOptions.Calendars, m.configSettings.Calendar.Name)
+	case "timetable-calendar.name":
+		return categoryChoices(m.configOptions.Calendars, m.configSettings.Calendar.TimetableName)
+	default:
+		return nil
+	}
+}
+
+func (m model) currentConfigChoiceIndex() int {
+	current := ""
+	switch m.configChoiceKey {
+	case "reminder.name":
+		current = m.configSettings.Reminder.ListName
+	case "calendar.name":
+		current = m.configSettings.Calendar.Name
+	case "timetable-calendar.name":
+		current = m.configSettings.Calendar.TimetableName
+	default:
+		return 0
+	}
+	index, _ := categoryChoiceIndex(m.currentConfigOptionsForKey(), current)
+	return index
+}
+
+func (m model) currentConfigOptionsForKey() []string {
+	switch m.configChoiceKey {
+	case "reminder.name":
+		return m.configOptions.Reminders
+	case "calendar.name", "timetable-calendar.name":
+		return m.configOptions.Calendars
+	default:
+		return nil
+	}
+}
+
+func (m model) applyConfigCategoryChoice(key string, value string) error {
+	useExisting := containsString(uniqueStrings(m.currentConfigOptionsForKey()), value)
+	switch key {
+	case "reminder.name":
+		_, err := m.service.SetReminderConfig(value, useExisting)
+		return err
+	case "calendar.name":
+		_, err := m.service.SetAcademicCalendarConfig(value, useExisting)
+		return err
+	case "timetable-calendar.name":
+		_, err := m.service.SetTimetableCalendarConfig(value, useExisting)
+		return err
+	default:
+		return nil
+	}
+}
+
 func (m *model) clampConfigCursor() {
 	rows := m.currentConfigRows()
 	if len(rows) == 0 {
@@ -1881,6 +1987,10 @@ func (m model) View() string {
 			return appStyle.Render(errorStyle.Render("다운로드 상태가 없습니다"))
 		}
 		return m.downloadProgress.View()
+	case screenConfigChoice:
+		return appStyle.Render(m.renderConfigChoiceView(width))
+	case screenConfigInput:
+		return appStyle.Render(m.renderConfigInputView(width))
 	case screenRoomDay:
 		return appStyle.Render(m.renderRoomDayView(width))
 	case screenRoomPeriod:
@@ -1920,10 +2030,7 @@ func (m model) footerHelp() string {
 		return "←→ 과목  ↑↓ 스크롤  k KLAS  d 다운로드  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenConfig {
-		if m.configEditing != "" {
-			return "enter 저장  esc 취소  q 종료"
-		}
-		return "tab 페이지  ↑↓ 선택  ←→ 변경  enter 입력/실행  b/esc 뒤로  r 새로고침  q 종료"
+		return "←→ 페이지  ↑↓ 선택  [] 변경  enter 입력/실행  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.isCoursePagedScreen() {
 		if m.active == screenAssignments {
@@ -2155,6 +2262,71 @@ func (m model) renderDownloadLanguageView(width int) string {
 	return b.String()
 }
 
+func (m model) renderConfigChoiceView(width int) string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader(width))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString("\n\n")
+	b.WriteString(sectionStyle.Render(configInputLabel(m.configChoiceKey)))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render("하나만 선택할 수 있습니다."))
+	b.WriteString("\n\n")
+	if m.err != nil {
+		b.WriteString(errorStyle.Render("ERROR"))
+		b.WriteString(" ")
+		b.WriteString(m.err.Error())
+		b.WriteString("\n\n")
+	}
+	choices := m.currentConfigChoices()
+	if len(choices) == 0 {
+		b.WriteString(emptyStyle.Render("선택할 항목이 없습니다"))
+		b.WriteString("\n")
+		return b.String()
+	}
+	for index, choice := range choices {
+		marker := "  "
+		if index == m.configChoiceCursor {
+			marker = "› "
+		}
+		check := "( )"
+		if index == m.currentConfigChoiceIndex() && choice != directInputChoice {
+			check = "(*)"
+		}
+		line := fmt.Sprintf("%s%s  %s", marker, check, choice)
+		if index == m.configChoiceCursor {
+			line = menuSelectedStyle.Render(line)
+		} else if choice == directInputChoice {
+			line = mutedStyle.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(footerStyle.Render("↑↓ 선택  |  enter 적용  |  b 뒤로  |  q 종료"))
+	return b.String()
+}
+
+func (m model) renderConfigInputView(width int) string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader(width))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120)))))
+	b.WriteString("\n\n")
+	b.WriteString(sectionStyle.Render(configInputLabel(m.configEditing)))
+	b.WriteString("\n")
+	if m.err != nil {
+		b.WriteString(errorStyle.Render("ERROR"))
+		b.WriteString(" ")
+		b.WriteString(m.err.Error())
+		b.WriteString("\n\n")
+	}
+	b.WriteString(m.configInput.View())
+	b.WriteString("\n\n")
+	b.WriteString(footerStyle.Render("enter 저장  |  esc 뒤로  |  q 종료"))
+	return b.String()
+}
+
 func (m model) renderRoomDayView(width int) string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader(width))
@@ -2363,13 +2535,6 @@ func (m model) renderConfigPanel(width int) string {
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
-	if m.configEditing != "" {
-		b.WriteString("\n")
-		b.WriteString(m.configInput.View())
-		b.WriteString("\n")
-		b.WriteString(footerStyle.Render("enter 저장  esc 취소"))
-		b.WriteString("\n")
-	}
 	return b.String()
 }
 
@@ -2388,11 +2553,11 @@ func (m model) renderConfigPageTabs() string {
 func (m model) renderConfigHint(row configRow) string {
 	switch row.key {
 	case "reminder.name":
-		return categoryPickerHint("미리알림", m.configOptions.Reminders, m.configSettings.Reminder.ListName)
+		return mutedStyle.Render("enter 선택")
 	case "calendar.name":
-		return categoryPickerHint("캘린더", m.configOptions.Calendars, m.configSettings.Calendar.Name)
+		return mutedStyle.Render("enter 선택")
 	case "timetable-calendar.name":
-		return categoryPickerHint("캘린더", m.configOptions.Calendars, m.configSettings.Calendar.TimetableName)
+		return mutedStyle.Render("enter 선택")
 	default:
 		return mutedStyle.Render(row.hint)
 	}
@@ -3003,6 +3168,10 @@ func screenTitle(value screen) string {
 		return "Academic"
 	case screenConfig:
 		return "Config"
+	case screenConfigChoice:
+		return "Config"
+	case screenConfigInput:
+		return "Config"
 	case screenRoomDay, screenRoomPeriod, screenRoomResult:
 		return "Rooms"
 	case screenDownloadSelect:
@@ -3038,6 +3207,10 @@ func screenSubtitle(value screen) string {
 		return "학사일정 달력"
 	case screenConfig:
 		return "현재 유저 설정"
+	case screenConfigChoice:
+		return "설정 항목 선택"
+	case screenConfigInput:
+		return "설정 값 입력"
 	case screenRoomResult:
 		return "선택한 요일과 교시에 비어 있는 강의실"
 	default:
@@ -3412,6 +3585,13 @@ func configRowsForPage(settings app.ConfigSettings, options app.CategoryOptions,
 
 func categoryChoices(options []string, current string) []string {
 	values := uniqueStrings(options)
+	filtered := values[:0]
+	for _, value := range values {
+		if value != directInputChoice {
+			filtered = append(filtered, value)
+		}
+	}
+	values = filtered
 	current = strings.TrimSpace(current)
 	if current != "" && !containsString(values, current) {
 		values = append(values, current)
@@ -3431,27 +3611,21 @@ func categoryChoiceIndex(options []string, current string) (int, []string) {
 	return 0, choices
 }
 
-func boundedCategoryChoice(options []string, current string, delta int) (string, bool, bool) {
-	index, choices := categoryChoiceIndex(options, current)
-	next := index + delta
-	if next < 0 || next >= len(choices) {
-		return "", false, false
+func configInputLabel(key string) string {
+	switch key {
+	case "download.dir":
+		return "저장 폴더"
+	case "reminder.name":
+		return "미리알림 목록"
+	case "calendar.name":
+		return "학사일정 캘린더"
+	case "timetable-calendar.name":
+		return "시간표 캘린더"
+	case "reminder.alarm-before-min":
+		return "알림 시간"
+	default:
+		return "설정"
 	}
-	value := choices[next]
-	return value, containsString(uniqueStrings(options), value), true
-}
-
-func categoryPickerHint(label string, options []string, current string) string {
-	index, choices := categoryChoiceIndex(options, current)
-	left := "<"
-	right := ">"
-	if index <= 0 {
-		left = mutedStyle.Render(left)
-	}
-	if index >= len(choices)-1 {
-		right = mutedStyle.Render(right)
-	}
-	return fmt.Sprintf("%s %s %s  %s", left, label, right, mutedStyle.Render("enter 직접 입력"))
 }
 
 func enabledLabel(value bool) string {
