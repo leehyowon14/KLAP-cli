@@ -967,8 +967,13 @@ func noticeContentGroups(rows []app.NoticeRow, width int) []contentCourseGroup {
 	indexByName := make(map[string]int)
 	for _, row := range rows {
 		groupIndex := contentGroupIndex(&groups, indexByName, row.CourseName)
-		title := truncateText(row.Notice.Title, maxInt(12, width-19))
-		groups[groupIndex].lines = append(groups[groupIndex].lines, fmt.Sprintf("%s  %s",
+		pinned := fixedColumn("", 6)
+		if row.Notice.Top {
+			pinned = warnBadgeStyle.Render(fixedColumn("고정", 6))
+		}
+		title := truncateText(row.Notice.Title, maxInt(12, width-27))
+		groups[groupIndex].lines = append(groups[groupIndex].lines, fmt.Sprintf("%s %s  %s",
+			pinned,
 			mutedStyle.Render(formatTime(row.Notice.Registered)),
 			title,
 		))
@@ -979,12 +984,15 @@ func noticeContentGroups(rows []app.NoticeRow, width int) []contentCourseGroup {
 func lectureContentGroups(rows []app.LectureRow, width int) []contentCourseGroup {
 	groups := make([]contentCourseGroup, 0)
 	indexByName := make(map[string]int)
+	progressWidth := 9
+	moduleWidth := maxInt(18, minInt(34, width/3))
 	for _, row := range rows {
 		groupIndex := contentGroupIndex(&groups, indexByName, row.CourseName)
 		progressText := lectureProgress(row.Lecture)
-		progress := mutedStyle.Render(progressText)
+		progress := mutedStyle.Render(fixedColumn(progressText, progressWidth))
 		module := emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요")
-		titleWidth := maxInt(12, width-lipgloss.Width(progressText)-lipgloss.Width(module)-8)
+		module = fixedColumn(module, moduleWidth)
+		titleWidth := maxInt(12, width-progressWidth-moduleWidth-6)
 		title := truncateText(row.Lecture.Title, titleWidth)
 		groups[groupIndex].lines = append(groups[groupIndex].lines, fmt.Sprintf("%s  %s  %s",
 			progress,
@@ -1007,6 +1015,11 @@ func contentGroupIndex(groups *[]contentCourseGroup, indexByName map[string]int,
 		*groups = append(*groups, contentCourseGroup{name: name})
 	}
 	return index
+}
+
+func fixedColumn(value string, width int) string {
+	value = truncateText(value, width)
+	return lipgloss.NewStyle().Width(width).Render(value)
 }
 
 func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

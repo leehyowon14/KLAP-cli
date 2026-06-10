@@ -85,6 +85,48 @@ func TestNoticeItemAcceptsNumericIDs(t *testing.T) {
 	}
 }
 
+func TestParseNoticeListResponseReadsPaginationAndPinned(t *testing.T) {
+	notices, totalPages, err := parseNoticeListResponse([]byte(`{
+		"list": [
+			{
+				"boardNo": 1161280,
+				"masterNo": 1000000,
+				"title": "고정 공지",
+				"topAt": "Y",
+				"readCnt": 12,
+				"fileCnt": 1,
+				"userNm": "작성자",
+				"registDt": "2026-05-29T02:20:00.000+09:00"
+			}
+		],
+		"page": {
+			"currentPage": 0,
+			"pageSize": 10,
+			"totalElements": 12,
+			"totalPages": 2
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("parseNoticeListResponse() error = %v", err)
+	}
+	if totalPages != 2 {
+		t.Fatalf("totalPages = %d, want 2", totalPages)
+	}
+	if len(notices) != 1 || !notices[0].Top || notices[0].Title != "고정 공지" {
+		t.Fatalf("notices = %+v", notices)
+	}
+}
+
+func TestParseNoticeListResponseDefaultsMissingPage(t *testing.T) {
+	_, totalPages, err := parseNoticeListResponse([]byte(`{"list":[]}`))
+	if err != nil {
+		t.Fatalf("parseNoticeListResponse() error = %v", err)
+	}
+	if totalPages != 1 {
+		t.Fatalf("totalPages = %d, want 1", totalPages)
+	}
+}
+
 func TestParseTimetableEntries(t *testing.T) {
 	entries := parseTimetableEntries([]timetableRow{
 		{

@@ -394,7 +394,15 @@ type assignmentSubmission struct {
 }
 
 type noticeListResponse struct {
-	List []noticeItem `json:"list"`
+	List []noticeItem    `json:"list"`
+	Page *noticePageInfo `json:"page"`
+}
+
+type noticePageInfo struct {
+	CurrentPage   flexibleString `json:"currentPage"`
+	PageSize      flexibleString `json:"pageSize"`
+	TotalElements flexibleString `json:"totalElements"`
+	TotalPages    flexibleString `json:"totalPages"`
 }
 
 type noticeDetailResponse struct {
@@ -883,20 +891,43 @@ func (c *Client) Notices(ctx context.Context, yearHakgi string, course Course) (
 		return nil, err
 	}
 
-	body, err := c.do(ctx, http.MethodPost, "/std/lis/sport/d052b8f845784c639f036b102fdc3023/BoardStdList.do", map[string]any{
-		"selectYearhakgi": yearHakgi,
-		"selectSubj":      course.Value,
-		"currentPage":     0,
-		"searchCondition": "ALL",
-		"searchKeyword":   nil,
-	})
-	if err != nil {
-		return nil, err
-	}
+	allNotices := make([]Notice, 0)
+	seen := make(map[string]struct{})
+	for currentPage := 0; ; currentPage++ {
+		body, err := c.do(ctx, http.MethodPost, "/std/lis/sport/d052b8f845784c639f036b102fdc3023/BoardStdList.do", map[string]any{
+			"selectYearhakgi": yearHakgi,
+			"selectSubj":      course.Value,
+			"currentPage":     currentPage,
+			"searchCondition": "ALL",
+			"searchKeyword":   nil,
+		})
+		if err != nil {
+			return nil, err
+		}
 
+		notices, totalPages, err := parseNoticeListResponse(body)
+		if err != nil {
+			return nil, err
+		}
+		for _, notice := range notices {
+			key := notice.BoardNo + ":" + notice.MasterNo
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			allNotices = append(allNotices, notice)
+		}
+		if currentPage >= totalPages-1 {
+			break
+		}
+	}
+	return allNotices, nil
+}
+
+func parseNoticeListResponse(body []byte) ([]Notice, int, error) {
 	var response noticeListResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("공지 목록 응답 파싱 실패: %w", err)
+		return nil, 0, fmt.Errorf("공지 목록 응답 파싱 실패: %w", err)
 	}
 
 	notices := make([]Notice, 0, len(response.List))
@@ -922,7 +953,18 @@ func (c *Client) Notices(ctx context.Context, yearHakgi string, course Course) (
 			Raw:        item,
 		})
 	}
-	return notices, nil
+	return notices, noticeTotalPages(response.Page), nil
+}
+
+func noticeTotalPages(page *noticePageInfo) int {
+	if page == nil {
+		return 1
+	}
+	totalPages, err := strconv.Atoi(strings.TrimSpace(page.TotalPages.String()))
+	if err != nil || totalPages < 1 {
+		return 1
+	}
+	return totalPages
 }
 
 func (c *Client) NoticeDetail(ctx context.Context, yearHakgi string, course Course, boardNo string, masterNo string) (NoticeDetail, error) {

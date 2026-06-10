@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/kw-klap/klap-cli/internal/app"
 	"github.com/kw-klap/klap-cli/internal/klas"
 )
@@ -202,6 +203,65 @@ func TestCoursePagedRenderShowsCurrentCourseOnly(t *testing.T) {
 	}
 	if strings.Contains(view, "과제1") {
 		t.Fatalf("renderCoursePagedPanel() leaked other course: %q", view)
+	}
+}
+
+func TestNoticeContentGroupsMarksPinnedNotices(t *testing.T) {
+	registered := time.Date(2026, 6, 1, 10, 0, 0, 0, time.Local)
+	groups := noticeContentGroups([]app.NoticeRow{{
+		CourseName: "컴퓨터그래픽스",
+		Notice: klas.Notice{
+			Title:      "중요 공지",
+			Top:        true,
+			Registered: &registered,
+		},
+	}}, 96)
+
+	if len(groups) != 1 || len(groups[0].lines) != 1 {
+		t.Fatalf("noticeContentGroups() = %+v", groups)
+	}
+	if !strings.Contains(groups[0].lines[0], "고정") || !strings.Contains(groups[0].lines[0], "중요 공지") {
+		t.Fatalf("pinned notice line = %q", groups[0].lines[0])
+	}
+}
+
+func TestLectureContentGroupsAlignsTitleColumn(t *testing.T) {
+	groups := lectureContentGroups([]app.LectureRow{
+		{
+			CourseName: "Gen-AI",
+			Lecture: klas.Lecture{
+				Progress:    "100",
+				ContentID:   "a",
+				ModuleTitle: "Basics of Python I",
+				Title:       "Python Basics I",
+			},
+		},
+		{
+			CourseName: "Gen-AI",
+			Lecture: klas.Lecture{
+				Progress:    "100",
+				ContentID:   "b",
+				ModuleTitle: "Basics of Python II / Goal of Data Science and Data Storytelling",
+				Title:       "Python_Basics_II",
+			},
+		},
+	}, 80)
+
+	if len(groups) != 1 || len(groups[0].lines) != 2 {
+		t.Fatalf("lectureContentGroups() = %+v", groups)
+	}
+	firstTitleAt := strings.Index(groups[0].lines[0], "Python Basics I")
+	secondTitleAt := strings.Index(groups[0].lines[1], "Python_Basics_II")
+	if firstTitleAt < 0 || secondTitleAt < 0 {
+		t.Fatalf("title not found: %q / %q", groups[0].lines[0], groups[0].lines[1])
+	}
+	firstTitleWidth := lipgloss.Width(groups[0].lines[0][:firstTitleAt])
+	secondTitleWidth := lipgloss.Width(groups[0].lines[1][:secondTitleAt])
+	if firstTitleWidth != secondTitleWidth {
+		t.Fatalf("title columns not aligned: %q / %q", groups[0].lines[0], groups[0].lines[1])
+	}
+	if strings.Contains(groups[0].lines[1], "\n") {
+		t.Fatalf("lecture line contains newline: %q", groups[0].lines[1])
 	}
 }
 
