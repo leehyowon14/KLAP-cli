@@ -78,7 +78,7 @@ func prepareSpeechAssets(for locale: Locale) async throws {
         throw BridgeError.unsupportedLocale(requestedLocale)
     }
 
-    let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
+    let transcriber = makeSpeechTranscriber(locale: locale)
     let modules: [any SpeechModule] = [transcriber]
 
     let installedLocales = await SpeechTranscriber.installedLocales
@@ -87,6 +87,16 @@ func prepareSpeechAssets(for locale: Locale) async throws {
             try await request.downloadAndInstall()
         }
     }
+}
+
+@available(macOS 26.0, *)
+func makeSpeechTranscriber(locale: Locale) -> SpeechTranscriber {
+    SpeechTranscriber(
+        locale: locale,
+        transcriptionOptions: [],
+        reportingOptions: [.volatileResults],
+        attributeOptions: []
+    )
 }
 
 @available(macOS 26.0, *)
@@ -106,7 +116,7 @@ func transcribe(job: TranscribeJob, emitProgress: Bool) async throws -> Transcri
         throw CocoaError(.fileNoSuchFile)
     }
 
-    let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
+    let transcriber = makeSpeechTranscriber(locale: locale)
     let modules: [any SpeechModule] = [transcriber]
 
     let analyzer = SpeechAnalyzer(modules: modules)
@@ -123,7 +133,7 @@ func transcribe(job: TranscribeJob, emitProgress: Bool) async throws -> Transcri
     var transcript = AttributedString("")
     for try await result in transcriber.results {
         if emitProgress {
-            let endSeconds = CMTimeGetSeconds(CMTimeRangeGetEnd(result.range))
+            let endSeconds = CMTimeGetSeconds(result.resultsFinalizationTime)
             if endSeconds.isFinite && duration > 0 {
                 emitEvent(TranscribeEvent(
                     type: "progress",
