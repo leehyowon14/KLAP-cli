@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -985,7 +986,7 @@ func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 }
 
 func TestConfigRowsExposeCategorySelection(t *testing.T) {
-	rows := configRows(app.ConfigSettings{
+	settings := app.ConfigSettings{
 		Reminder: app.ReminderSettings{ListName: "To-do", UseExistingList: true, AlarmBeforeMin: 60},
 		Calendar: app.CalendarSettings{
 			Name:                     "학사일정",
@@ -1000,10 +1001,12 @@ func TestConfigRowsExposeCategorySelection(t *testing.T) {
 			KeepPartial: false,
 		},
 		Transcript: app.TranscriptSettings{Concurrency: 1},
-	}, app.CategoryOptions{
+	}
+	options := app.CategoryOptions{
 		Reminders: []string{"개인", "To-do"},
 		Calendars: []string{"개인", "학사일정", "시간표"},
-	})
+	}
+	rows := configRows(settings, options)
 
 	if len(rows) == 0 {
 		t.Fatal("configRows() returned no rows")
@@ -1011,13 +1014,14 @@ func TestConfigRowsExposeCategorySelection(t *testing.T) {
 	if rows[0].key != "reminder.name" || !rows[0].cycle || !rows[0].editable {
 		t.Fatalf("reminder row = %+v", rows[0])
 	}
+	scheduleRows := configRowsForPage(settings, options, configPageSchedule)
 	foundAcademicCalendar := false
 	foundTimetableCalendar := false
-	for _, row := range rows {
-		if row.key == "calendar.name" && row.value == "학사일정" && strings.Contains(row.hint, "기존 목록") {
+	for _, row := range scheduleRows {
+		if row.key == "calendar.name" && row.value == "학사일정" && row.page == configPageSchedule {
 			foundAcademicCalendar = true
 		}
-		if row.key == "timetable-calendar.name" && row.value == "시간표" && strings.Contains(row.hint, "기존 목록") {
+		if row.key == "timetable-calendar.name" && row.value == "시간표" && row.page == configPageSchedule {
 			foundTimetableCalendar = true
 		}
 	}
@@ -1035,9 +1039,10 @@ func TestConfigCursorWraps(t *testing.T) {
 			Transcript: app.TranscriptSettings{Concurrency: 1},
 		},
 		configOptions: app.CategoryOptions{Reminders: []string{"To-do"}, Calendars: []string{"시간표"}},
+		configPage:    configPageDownload,
 	}
 	m.moveConfigCursor(-1)
-	if m.configCursor != len(configRows(m.configSettings, m.configOptions))-1 {
+	if m.configCursor != len(configRowsForPage(m.configSettings, m.configOptions, configPageDownload))-1 {
 		t.Fatalf("configCursor after up wrap = %d", m.configCursor)
 	}
 	m.moveConfigCursor(1)
@@ -1046,13 +1051,37 @@ func TestConfigCursorWraps(t *testing.T) {
 	}
 }
 
-func TestCycleStringOptionIncludesCurrentValue(t *testing.T) {
-	got, ok := cycleStringOption([]string{"개인", "회사"}, "시간표", 1)
-	if !ok || got != "개인" {
-		t.Fatalf("cycleStringOption() = %q, %t", got, ok)
+func TestConfigPageNavigationResetsCursor(t *testing.T) {
+	m := model{
+		configSettings: app.ConfigSettings{
+			Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+			Calendar:   app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
+			Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
+			Transcript: app.TranscriptSettings{Concurrency: 1},
+		},
+		configOptions: app.CategoryOptions{Reminders: []string{"To-do"}, Calendars: []string{"시간표"}},
+		configCursor:  2,
 	}
-	got, ok = cycleStringOption([]string{"개인", "회사"}, "시간표", -1)
-	if !ok || got != "회사" {
-		t.Fatalf("cycleStringOption() reverse = %q, %t", got, ok)
+	m.moveConfigPage(1)
+	if m.configPage != configPageSchedule || m.configCursor != 0 {
+		t.Fatalf("config page/cursor = %d/%d", m.configPage, m.configCursor)
+	}
+}
+
+func TestCategoryChoicesAppendDirectInput(t *testing.T) {
+	got := categoryChoices([]string{"개인", "회사"}, "시간표")
+	want := []string{"개인", "회사", "시간표", directInputChoice}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("categoryChoices() = %#v, want %#v", got, want)
+	}
+}
+
+func TestBoundedCategoryChoiceStopsAtEdges(t *testing.T) {
+	if got, _, ok := boundedCategoryChoice([]string{"개인", "회사"}, "개인", -1); ok || got != "" {
+		t.Fatalf("boundedCategoryChoice left edge = %q, %t", got, ok)
+	}
+	got, useExisting, ok := boundedCategoryChoice([]string{"개인", "회사"}, "회사", 1)
+	if !ok || got != directInputChoice || useExisting {
+		t.Fatalf("boundedCategoryChoice direct input = %q, %t, %t", got, useExisting, ok)
 	}
 }
