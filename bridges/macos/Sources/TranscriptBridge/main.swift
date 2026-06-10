@@ -61,15 +61,13 @@ enum BridgeError: Error, LocalizedError {
 }
 
 @available(macOS 26.0, *)
-func transcribe(job: TranscribeJob, emitProgress: Bool) async throws -> TranscribeResult {
-    let inputURL = URL(fileURLWithPath: job.inputPath)
-    let outputURL = URL(fileURLWithPath: job.outputPath)
+func locale(for job: TranscribeJob) -> Locale {
     let localeIdentifier = job.locale?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let locale = Locale(identifier: localeIdentifier?.isEmpty == false ? localeIdentifier! : "ko-KR")
+    return Locale(identifier: localeIdentifier?.isEmpty == false ? localeIdentifier! : "ko-KR")
+}
 
-    guard FileManager.default.fileExists(atPath: inputURL.path) else {
-        throw CocoaError(.fileNoSuchFile)
-    }
+@available(macOS 26.0, *)
+func prepareSpeechAssets(for locale: Locale) async throws {
     guard SpeechTranscriber.isAvailable else {
         throw BridgeError.transcriberUnavailable
     }
@@ -78,10 +76,6 @@ func transcribe(job: TranscribeJob, emitProgress: Bool) async throws -> Transcri
     let supportedLocales = await SpeechTranscriber.supportedLocales
     guard supportedLocales.contains(where: { $0.identifier(.bcp47) == requestedLocale }) else {
         throw BridgeError.unsupportedLocale(requestedLocale)
-    }
-
-    for reservedLocale in await AssetInventory.reservedLocales {
-        await AssetInventory.release(reservedLocale: reservedLocale)
     }
 
     let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
@@ -93,6 +87,27 @@ func transcribe(job: TranscribeJob, emitProgress: Bool) async throws -> Transcri
             try await request.downloadAndInstall()
         }
     }
+}
+
+@available(macOS 26.0, *)
+func releaseReservedSpeechAssets() async {
+    for reservedLocale in await AssetInventory.reservedLocales {
+        await AssetInventory.release(reservedLocale: reservedLocale)
+    }
+}
+
+@available(macOS 26.0, *)
+func transcribe(job: TranscribeJob, emitProgress: Bool) async throws -> TranscribeResult {
+    let inputURL = URL(fileURLWithPath: job.inputPath)
+    let outputURL = URL(fileURLWithPath: job.outputPath)
+    let locale = locale(for: job)
+
+    guard FileManager.default.fileExists(atPath: inputURL.path) else {
+        throw CocoaError(.fileNoSuchFile)
+    }
+
+    let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
+    let modules: [any SpeechModule] = [transcriber]
 
     let analyzer = SpeechAnalyzer(modules: modules)
     let analysisContext = AnalysisContext()
@@ -136,9 +151,19 @@ let request = try JSONDecoder().decode(TranscribeRequest.self, from: input)
 let shouldEmitProgress = request.progress ?? false
 
 var results: [TranscribeResult] = []
+var preparedLocales: Set<String> = []
+if #available(macOS 26.0, *) {
+    await releaseReservedSpeechAssets()
+}
 for job in request.jobs {
     do {
         if #available(macOS 26.0, *) {
+            let locale = locale(for: job)
+            let localeKey = locale.identifier(.bcp47)
+            if !preparedLocales.contains(localeKey) {
+                try await prepareSpeechAssets(for: locale)
+                preparedLocales.insert(localeKey)
+            }
             results.append(try await transcribe(job: job, emitProgress: shouldEmitProgress))
         } else {
             throw BridgeError.unsupportedOS
