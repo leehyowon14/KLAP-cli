@@ -47,6 +47,9 @@ var (
 				Foreground(lipgloss.Color("#9ACD32"))
 	warnTextStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#D4A72C"))
+	selectedDayStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color("#0969DA"))
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#CF222E")).
 			Bold(true)
@@ -121,6 +124,7 @@ type model struct {
 	content             string
 	dashboardResult     app.DashboardResult
 	dashboardPage       int
+	dashboardCursor     int
 	assignmentRows      []app.AssignmentRow
 	noticeRows          []app.NoticeRow
 	lectureRows         []app.LectureRow
@@ -129,6 +133,7 @@ type model struct {
 	dueCursor           int
 	academicResult      app.AcademicListResult
 	academicMonth       int
+	academicCursor      int
 	assignmentDetail    app.AssignmentDetailResult
 	noticeDetail        app.NoticeDetailResult
 	detailBack          screen
@@ -343,8 +348,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveConfigCursor(-1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
+			} else if m.active == screenDashboard && !m.loading {
+				m.moveDashboardCursor(-1)
 			} else if m.active == screenDue && !m.loading {
 				m.moveDueCursor(-1)
+			} else if m.active == screenAcademic && !m.loading {
+				m.moveAcademicCursor(-1)
 			} else if m.isCoursePagedScreen() && !m.loading {
 				m.moveContentCursor(-1)
 			}
@@ -355,8 +364,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveConfigCursor(1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
+			} else if m.active == screenDashboard && !m.loading {
+				m.moveDashboardCursor(1)
 			} else if m.active == screenDue && !m.loading {
 				m.moveDueCursor(1)
+			} else if m.active == screenAcademic && !m.loading {
+				m.moveAcademicCursor(1)
 			} else if m.isCoursePagedScreen() && !m.loading {
 				m.moveContentCursor(1)
 			}
@@ -437,7 +450,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case keyMatches(key, "k", "ㅏ"):
 			if cmd := m.openCurrentKlasURL(); cmd != nil {
-				m.syncStatus = "KLAS 원문을 여는 중..."
+				m.err = nil
 				return m, cmd
 			}
 		case m.active == screenLectures && keyMatches(key, "d", "ㅇ"):
@@ -464,6 +477,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.configOptions = msg.categories
 		if msg.screen == screenDashboard {
 			m.dashboardPage = 0
+			m.dashboardCursor = 0
 		}
 		if msg.screen == screenDue {
 			m.duePage = 0
@@ -471,6 +485,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.screen == screenAcademic {
 			m.academicMonth = defaultAcademicMonth(msg.academic.Events, time.Now())
+			m.academicCursor = 0
 		}
 		if msg.screen == screenConfig {
 			m.clampConfigCursor()
@@ -501,8 +516,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 	case statusMsg:
 		m.loading = false
-		m.err = msg.err
-		m.syncStatus = msg.status
+		if msg.err != nil {
+			status := strings.TrimSpace(msg.status)
+			if status == "" {
+				status = "작업 실패"
+			}
+			m.err = fmt.Errorf("%s: %w", status, msg.err)
+			m.syncStatus = ""
+		} else {
+			m.err = nil
+			m.syncStatus = ""
+		}
 		m.loadedAt = time.Now()
 	case detailMsg:
 		if msg.screen != m.active {
@@ -624,7 +648,7 @@ func (m model) openCurrentKlasURL() tea.Cmd {
 					if err := openExternalURL(result.URL); err != nil {
 						return statusMsg{status: "KLAS 원문 열기 실패", err: err}
 					}
-					return statusMsg{status: "KLAS 원문을 열었습니다"}
+					return statusMsg{}
 				}
 			}
 			url = row.Lecture.PlayURL
@@ -641,7 +665,7 @@ func (m model) openCurrentKlasURL() tea.Cmd {
 		if err := openExternalURL(url); err != nil {
 			return statusMsg{status: "KLAS 원문 열기 실패", err: err}
 		}
-		return statusMsg{status: "KLAS 원문을 열었습니다"}
+		return statusMsg{}
 	}
 }
 
@@ -1404,12 +1428,14 @@ func (m *model) moveDetailCursor(delta int) {
 		m.detailCursor = 0
 		return
 	}
+	visibleRows := m.visibleBodyRows(0)
+	maxCursor := maxInt(0, len(lines)-visibleRows)
 	m.detailCursor += delta
 	if m.detailCursor < 0 {
-		m.detailCursor = len(lines) - 1
-	}
-	if m.detailCursor >= len(lines) {
 		m.detailCursor = 0
+	}
+	if m.detailCursor > maxCursor {
+		m.detailCursor = maxCursor
 	}
 }
 
@@ -1427,6 +1453,24 @@ func (m *model) moveDashboardPage(delta int) {
 	}
 	if m.dashboardPage >= total {
 		m.dashboardPage = 0
+	}
+	m.dashboardCursor = 0
+}
+
+func (m *model) moveDashboardCursor(delta int) {
+	lines := m.dashboardLines(m.width)
+	if len(lines) == 0 {
+		m.dashboardCursor = 0
+		return
+	}
+	visibleRows := m.visibleBodyRows(0)
+	maxCursor := maxInt(0, len(lines)-visibleRows)
+	m.dashboardCursor += delta
+	if m.dashboardCursor < 0 {
+		m.dashboardCursor = 0
+	}
+	if m.dashboardCursor > maxCursor {
+		m.dashboardCursor = maxCursor
 	}
 }
 
@@ -1463,6 +1507,22 @@ func (m *model) moveAcademicMonth(delta int) {
 	}
 	if m.academicMonth > 12 {
 		m.academicMonth = 1
+	}
+	m.academicCursor = 0
+}
+
+func (m *model) moveAcademicCursor(delta int) {
+	events := academicMonthEvents(m.academicResult, m.academicMonth)
+	if len(events) == 0 {
+		m.academicCursor = 0
+		return
+	}
+	m.academicCursor += delta
+	if m.academicCursor < 0 {
+		m.academicCursor = 0
+	}
+	if m.academicCursor >= len(events) {
+		m.academicCursor = len(events) - 1
 	}
 }
 
@@ -2003,7 +2063,7 @@ func (m model) View() string {
 	header := m.renderHeader(width)
 	rule := mutedStyle.Render(strings.Repeat("─", maxInt(24, minInt(width-2, 120))))
 	panel := panelStyle.Width(maxInt(48, width-4)).Render(m.renderPanel(width))
-	footer := footerStyle.Render(m.footerHelp())
+	footer := m.renderFooterHelp(width)
 	return appStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, rule, "", panel, "", footer))
 }
 
@@ -2012,34 +2072,34 @@ func (m model) footerHelp() string {
 		return "동기화 진행 중  q 종료"
 	}
 	if m.active == screenDashboard {
-		return "←→ 페이지  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+		return "←/→ 페이지  ↑↓ 스크롤  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenDue {
 		if m.duePage == 3 {
-			return "←→ 페이지  ↑↓ 스크롤  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+			return "←/→ 페이지  ↑↓ 스크롤  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 		}
-		return "←→ 페이지  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
+		return "←/→ 페이지  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenAcademic {
-		return "←→ 월 이동  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+		return "←/→ 월 이동  ↑↓ 일정  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.isDetailScreen() {
 		return "↑↓ 스크롤  k KLAS  b/esc 목록  q 종료"
 	}
 	if m.active == screenLectures {
-		return "←→ 과목  ↑↓ 스크롤  k KLAS  d 다운로드  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+		return "←/→ 과목  ↑↓ 스크롤  k KLAS  d 다운로드  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenConfig {
-		return "←→ 페이지  ↑↓ 선택  [] 변경  enter 입력/실행  b/esc 뒤로  r 새로고침  q 종료"
+		return "←/→ 페이지  ↑↓ 선택  enter 선택  [] 변경  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.isCoursePagedScreen() {
 		if m.active == screenAssignments {
-			return "←→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+			return "←/→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 		}
 		if m.active == screenNotices {
-			return "←→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  b/esc 뒤로  r 새로고침  q 종료"
+			return "←/→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  b/esc 뒤로  r 새로고침  q 종료"
 		}
-		return "←→ 과목  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
+		return "←/→ 과목  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenRoomResult {
 		return "b/esc 뒤로  r 새로고침  q 종료"
@@ -2047,23 +2107,47 @@ func (m model) footerHelp() string {
 	return "b/esc 뒤로  r 새로고침  q 종료"
 }
 
+func (m model) renderFooterHelp(width int) string {
+	return renderHelpText(m.footerHelp(), width)
+}
+
+func renderHelpText(help string, width int) string {
+	return footerStyle.Render(wrapHelp(help, maxInt(24, width-4)))
+}
+
+func wrapHelp(help string, width int) string {
+	parts := strings.Split(help, "  ")
+	lines := make([]string, 0, 2)
+	current := ""
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		candidate := part
+		if current != "" {
+			candidate = current + "  " + part
+		}
+		if current != "" && lipgloss.Width(candidate) > width {
+			lines = append(lines, current)
+			current = part
+			continue
+		}
+		current = candidate
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m model) renderHeader(width int) string {
-	title := "KLAP"
+	title := headerStyle.Render("KLAP") + mutedStyle.Render(" tui")
 	subtitle := screenTitle(m.active)
-	if m.active == screenHome {
-		subtitle = "Home"
-	}
-	left := headerStyle.Render(title) + mutedStyle.Render(" tui")
-	meta := subtitle
 	if !m.loadedAt.IsZero() && !m.loading && m.active != screenHome {
-		meta += " · " + m.loadedAt.Format("15:04:05")
+		subtitle += " · " + m.loadedAt.Format("15:04:05")
 	}
-	right := headerMetaStyle.Render(meta)
-	spacerWidth := width - lipgloss.Width(left) - lipgloss.Width(right) - 4
-	if spacerWidth < 1 {
-		spacerWidth = 1
-	}
-	return left + strings.Repeat(" ", spacerWidth) + right
+	return title + "\n" + headerMetaStyle.Render(subtitle)
 }
 
 func (m model) renderHomeView(width int) string {
@@ -2084,7 +2168,7 @@ func (m model) renderHomeView(width int) string {
 	b.WriteString("\n\n")
 	b.WriteString(m.renderHomeMenu(width))
 	b.WriteString("\n\n")
-	b.WriteString(footerStyle.Render("↑↓ 이동  |  enter 열기  |  r 새로고침  |  q 종료"))
+	b.WriteString(renderHelpText("↑↓ 이동  |  enter 열기  |  r 새로고침  |  q 종료", width))
 	return b.String()
 }
 
@@ -2148,7 +2232,7 @@ func (m model) renderDownloadSelectView(width int) string {
 	if page > len(groups) {
 		page = len(groups)
 	}
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 과목 이동  %d/%d  %s", page, len(groups), group.name)))
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("%d/%d  %s", page, len(groups), group.name)))
 	b.WriteString("\n\n")
 
 	visibleRows := maxInt(5, m.height-10)
@@ -2207,7 +2291,7 @@ func (m model) renderDownloadSelectView(width int) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("←→ 과목  |  space 선택  |  a 전체 과목  |  enter 다음  |  b 뒤로  |  q 종료"))
+	b.WriteString(renderHelpText("←/→ 과목  |  space 선택  |  a 전체 과목  |  enter 다음  |  b 뒤로  |  q 종료", width))
 	return b.String()
 }
 
@@ -2231,7 +2315,7 @@ func (m model) renderDownloadConfirmView(width int) string {
 	b.WriteString("    ")
 	b.WriteString(no)
 	b.WriteString("\n\n")
-	b.WriteString(footerStyle.Render("←→ 선택  |  y/n  |  enter 다운로드  |  b 뒤로  |  q 종료"))
+	b.WriteString(renderHelpText("←/→ 선택  |  y/n  |  enter 다운로드  |  b 뒤로  |  q 종료", width))
 	return b.String()
 }
 
@@ -2258,7 +2342,7 @@ func (m model) renderDownloadLanguageView(width int) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("↑↓ 선택  |  enter 다운로드  |  b 뒤로  |  q 종료"))
+	b.WriteString(renderHelpText("↑↓ 선택  |  enter 다운로드  |  b 뒤로  |  q 종료", width))
 	return b.String()
 }
 
@@ -2303,7 +2387,7 @@ func (m model) renderConfigChoiceView(width int) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("↑↓ 선택  |  enter 적용  |  b 뒤로  |  q 종료"))
+	b.WriteString(renderHelpText("↑↓ 선택  |  enter 적용  |  b 뒤로  |  q 종료", width))
 	return b.String()
 }
 
@@ -2323,7 +2407,7 @@ func (m model) renderConfigInputView(width int) string {
 	}
 	b.WriteString(m.configInput.View())
 	b.WriteString("\n\n")
-	b.WriteString(footerStyle.Render("enter 저장  |  esc 뒤로  |  q 종료"))
+	b.WriteString(renderHelpText("enter 저장  |  esc 뒤로  |  q 종료", width))
 	return b.String()
 }
 
@@ -2360,7 +2444,7 @@ func (m model) renderRoomDayView(width int) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("↑↓ 이동  |  space 선택  |  a 전체  |  enter 다음  |  b 뒤로  |  q 종료"))
+	b.WriteString(renderHelpText("↑↓ 이동  |  space 선택  |  a 전체  |  enter 다음  |  b 뒤로  |  q 종료", width))
 	return b.String()
 }
 
@@ -2400,7 +2484,7 @@ func (m model) renderRoomPeriodView(width int) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(footerStyle.Render("↑↓ 이동  |  space 선택  |  a 전체  |  enter 조회  |  b 뒤로  |  q 종료"))
+	b.WriteString(renderHelpText("↑↓ 이동  |  space 선택  |  a 전체  |  enter 조회  |  b 뒤로  |  q 종료", width))
 	return b.String()
 }
 
@@ -2497,8 +2581,26 @@ func (m model) renderSyncPanel() string {
 		if status == "" {
 			status = "동기화 완료"
 		}
-		return successBadgeStyle.Render("DONE") + " " + status + "\n"
+		return successBadgeStyle.Render("DONE") + " " + formatSyncPanelStatus(status) + "\n"
 	}
+}
+
+func formatSyncPanelStatus(status string) string {
+	status = strings.TrimSpace(status)
+	status = strings.TrimPrefix(status, "동기화 완료:")
+	status = strings.TrimSpace(status)
+	if status == "" || !strings.Contains(status, " / ") {
+		return status
+	}
+	parts := strings.Split(status, " / ")
+	lines := []string{"동기화 완료", ""}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			lines = append(lines, part)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m model) renderConfigPanel(width int) string {
@@ -2588,7 +2690,7 @@ func (m model) renderCoursePagedPanel(width int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 과목 이동  %d/%d  %s", page, len(groups), group.name)))
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("%d/%d  %s", page, len(groups), group.name)))
 	b.WriteString("\n\n")
 
 	visibleRows := maxInt(5, m.height-10)
@@ -2636,17 +2738,22 @@ func (m model) renderCoursePagedPanel(width int) string {
 }
 
 func (m model) renderDashboardPagedPanel(width int) string {
+	lines := m.dashboardLines(width)
+	if len(lines) == 0 {
+		return emptyStyle.Render("대시보드 데이터가 없습니다") + "\n"
+	}
+	return renderWindowedLines(lines, m.dashboardCursor, m.visibleBodyRows(0))
+}
+
+func (m model) dashboardLines(width int) []string {
 	pages := dashboardPageCount(m.dashboardResult)
 	if pages <= 1 || m.dashboardPage == 0 {
-		var b strings.Builder
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 페이지 이동  1/%d  전체", maxInt(1, pages))))
-		b.WriteString("\n\n")
-		b.WriteString(formatDashboard(m.dashboardResult))
+		lines := splitRenderedLines(formatDashboard(m.dashboardResult))
 		if !m.lastSyncAt.IsZero() {
-			b.WriteString("\n")
-			b.WriteString(renderSection("SYNC", []string{dashboardMetric("Last Syncing", m.lastSyncAt.Format("2006-01-02 15:04:05"))}))
+			lines = append(lines, "")
+			lines = append(lines, splitRenderedLines(renderSection("SYNC", []string{dashboardMetric("Last Syncing", m.lastSyncAt.Format("2006-01-02 15:04:05"))}))...)
 		}
-		return b.String()
+		return lines
 	}
 	courses := m.dashboardResult.Courses
 	index := m.dashboardPage - 1
@@ -2656,11 +2763,7 @@ func (m model) renderDashboardPagedPanel(width int) string {
 	if index >= len(courses) {
 		index = len(courses) - 1
 	}
-	var b strings.Builder
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 페이지 이동  %d/%d  %s", m.dashboardPage+1, pages, courses[index].Name)))
-	b.WriteString("\n\n")
-	b.WriteString(formatDashboardCourse(m.dashboardResult, courses[index]))
-	return b.String()
+	return splitRenderedLines(formatDashboardCourse(m.dashboardResult, courses[index]))
 }
 
 func (m model) renderDetailPanel(width int) string {
@@ -2668,41 +2771,48 @@ func (m model) renderDetailPanel(width int) string {
 	if len(lines) == 0 {
 		return emptyStyle.Render("상세 정보가 없습니다") + "\n"
 	}
-	visibleRows := maxInt(5, m.height-10)
+	var b strings.Builder
+	b.WriteString(renderWindowedLines(lines, m.detailCursor, m.visibleBodyRows(0)))
+	if m.syncStatus != "" {
+		b.WriteString("\n")
+		b.WriteString(footerStyle.Render(m.syncStatus))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func (m model) visibleBodyRows(reserved int) int {
 	if m.height <= 0 {
-		visibleRows = 18
+		return 16
+	}
+	return maxInt(4, m.height-11-reserved)
+}
+
+func renderWindowedLines(lines []string, offset int, visibleRows int) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	if visibleRows <= 0 {
+		visibleRows = 1
 	}
 	if visibleRows > len(lines) {
 		visibleRows = len(lines)
 	}
-	cursor := m.detailCursor
-	if cursor < 0 {
-		cursor = 0
+	maxOffset := maxInt(0, len(lines)-visibleRows)
+	if offset < 0 {
+		offset = 0
 	}
-	if cursor >= len(lines) {
-		cursor = len(lines) - 1
+	if offset > maxOffset {
+		offset = maxOffset
 	}
-	start := cursor - visibleRows/2
-	if start < 0 {
-		start = 0
-	}
-	if start+visibleRows > len(lines) {
-		start = maxInt(0, len(lines)-visibleRows)
-	}
-	end := start + visibleRows
-
+	end := offset + visibleRows
 	var b strings.Builder
-	for index := start; index < end; index++ {
+	for index := offset; index < end; index++ {
 		b.WriteString(lines[index])
 		b.WriteString("\n")
 	}
-	if start > 0 || end < len(lines) {
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(lines))))
-		b.WriteString("\n")
-	}
-	if m.syncStatus != "" {
-		b.WriteString("\n")
-		b.WriteString(footerStyle.Render(m.syncStatus))
+	if offset > 0 || end < len(lines) {
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", offset+1, end, len(lines))))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -2828,7 +2938,7 @@ func (m model) renderDuePagedPanel(width int) string {
 	var b strings.Builder
 	b.WriteString(mutedStyle.Render(fmt.Sprintf("%s ~ %s", m.dueResult.From.Format("2006-01-02"), m.dueResult.Until.Format("2006-01-02"))))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 페이지 이동  %d/%d  %s", page, len(duePageLabels), duePageLabels[page-1])))
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("%d/%d  %s", page, len(duePageLabels), duePageLabels[page-1])))
 	b.WriteString("\n\n")
 	if len(lines) == 0 {
 		b.WriteString(emptyStyle.Render("표시할 일정이 없습니다"))
@@ -2987,10 +3097,23 @@ func (m model) renderAcademicCalendarPanel(width int) string {
 	if month < 1 || month > 12 {
 		month = defaultAcademicMonth(m.academicResult.Events, time.Now())
 	}
+	events := academicMonthEvents(m.academicResult, month)
+	selected := app.AcademicEvent{}
+	if len(events) > 0 {
+		if m.academicCursor < 0 {
+			m.academicCursor = 0
+		}
+		if m.academicCursor >= len(events) {
+			m.academicCursor = len(events) - 1
+		}
+		selected = events[m.academicCursor]
+	}
 	var b strings.Builder
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("←/→ 월 이동  %s년 %d월", m.academicResult.Year, month)))
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("%s년 %d월", m.academicResult.Year, month)))
 	b.WriteString("\n\n")
-	b.WriteString(renderAcademicMonthCalendar(m.academicResult, month, width))
+	b.WriteString(renderAcademicMonthCalendar(m.academicResult, month, width, selected))
+	b.WriteString("\n")
+	b.WriteString(renderAcademicEventList(events, m.academicCursor, width, m.visibleBodyRows(10)))
 	if m.syncStatus != "" {
 		b.WriteString("\n")
 		b.WriteString(footerStyle.Render(m.syncStatus))
@@ -2999,7 +3122,7 @@ func (m model) renderAcademicCalendarPanel(width int) string {
 	return b.String()
 }
 
-func renderAcademicMonthCalendar(result app.AcademicListResult, month int, width int) string {
+func renderAcademicMonthCalendar(result app.AcademicListResult, month int, width int, selected app.AcademicEvent) string {
 	year, err := strconv.Atoi(strings.TrimSpace(result.Year))
 	if err != nil || month < 1 || month > 12 {
 		return emptyStyle.Render("학사일정 연도를 확인할 수 없습니다") + "\n"
@@ -3017,6 +3140,7 @@ func renderAcademicMonthCalendar(result app.AcademicListResult, month int, width
 			eventsByDay[dayAt.Day()] = append(eventsByDay[dayAt.Day()], event)
 		}
 	}
+	selectedDays := selectedAcademicDays(selected, year, month)
 
 	var b strings.Builder
 	b.WriteString("월  화  수  목  금  토  일\n")
@@ -3028,7 +3152,9 @@ func renderAcademicMonthCalendar(result app.AcademicListResult, month int, width
 	}
 	for day := 1; day <= days; day++ {
 		label := fmt.Sprintf("%2d", day)
-		if len(eventsByDay[day]) > 0 {
+		if selectedDays[day] {
+			label = selectedDayStyle.Render(label)
+		} else if len(eventsByDay[day]) > 0 {
 			label = warnTextStyle.Render(label)
 		}
 		b.WriteString(label)
@@ -3038,23 +3164,87 @@ func renderAcademicMonthCalendar(result app.AcademicListResult, month int, width
 			b.WriteString("  ")
 		}
 	}
-	b.WriteString("\n\n")
-	eventLines := make([]string, 0)
-	for day := 1; day <= days; day++ {
-		for _, event := range eventsByDay[day] {
-			eventLines = append(eventLines, fmt.Sprintf("%02d일  %s", day, truncateText(event.Title, maxInt(16, minInt(72, width-12)))))
+	b.WriteString("\n")
+	return b.String()
+}
+
+func academicMonthEvents(result app.AcademicListResult, month int) []app.AcademicEvent {
+	year, err := strconv.Atoi(strings.TrimSpace(result.Year))
+	if err != nil || month < 1 || month > 12 {
+		return nil
+	}
+	events := make([]app.AcademicEvent, 0)
+	for _, event := range result.Events {
+		startAt, endAt, ok := app.AcademicEventRange(event)
+		if !ok {
+			continue
+		}
+		monthStart := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
+		monthEnd := monthStart.AddDate(0, 1, 0)
+		if endAt.After(monthStart) && startAt.Before(monthEnd) {
+			events = append(events, event)
 		}
 	}
-	if len(eventLines) == 0 {
-		b.WriteString(emptyStyle.Render("이 달의 학사일정이 없습니다"))
-		b.WriteString("\n")
-		return b.String()
+	sort.SliceStable(events, func(i, j int) bool {
+		left, _, leftOK := app.AcademicEventRange(events[i])
+		right, _, rightOK := app.AcademicEventRange(events[j])
+		if !leftOK || !rightOK {
+			return events[i].Title < events[j].Title
+		}
+		if left.Equal(right) {
+			return events[i].Title < events[j].Title
+		}
+		return left.Before(right)
+	})
+	return events
+}
+
+func renderAcademicEventList(events []app.AcademicEvent, cursor int, width int, visibleRows int) string {
+	if len(events) == 0 {
+		return emptyStyle.Render("이 달의 학사일정이 없습니다") + "\n"
 	}
-	for _, line := range eventLines {
-		b.WriteString(line)
-		b.WriteString("\n")
+	lines := make([]string, 0, len(events))
+	for index, event := range events {
+		marker := "  "
+		if index == cursor {
+			marker = "› "
+		}
+		line := fmt.Sprintf("%s%s  %s", marker, academicEventRangeLabel(event), truncateText(event.Title, maxInt(16, minInt(72, width-18))))
+		if index == cursor {
+			line = menuSelectedStyle.Render(line)
+		}
+		lines = append(lines, line)
 	}
-	return b.String()
+	return renderWindowedLines(lines, cursor, visibleRows)
+}
+
+func academicEventRangeLabel(event app.AcademicEvent) string {
+	startAt, endAt, ok := app.AcademicEventRange(event)
+	if !ok {
+		return strings.TrimSpace(event.Date)
+	}
+	endInclusive := endAt.AddDate(0, 0, -1)
+	if startAt.Equal(endInclusive) {
+		return fmt.Sprintf("%d일", startAt.Day())
+	}
+	if startAt.Month() == endInclusive.Month() {
+		return fmt.Sprintf("%d일-%d일", startAt.Day(), endInclusive.Day())
+	}
+	return fmt.Sprintf("%d/%d-%d/%d", int(startAt.Month()), startAt.Day(), int(endInclusive.Month()), endInclusive.Day())
+}
+
+func selectedAcademicDays(event app.AcademicEvent, year int, month int) map[int]bool {
+	days := make(map[int]bool)
+	startAt, endAt, ok := app.AcademicEventRange(event)
+	if !ok {
+		return days
+	}
+	for dayAt := startAt; dayAt.Before(endAt); dayAt = dayAt.AddDate(0, 0, 1) {
+		if dayAt.Year() == year && int(dayAt.Month()) == month {
+			days[dayAt.Day()] = true
+		}
+	}
+	return days
 }
 
 func defaultAcademicMonth(events []app.AcademicEvent, now time.Time) int {
@@ -3498,7 +3688,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			section:  "Reminder",
 			label:    "알림 시간",
 			value:    fmt.Sprintf("마감 %s 전", formatMinutes(settings.Reminder.AlarmBeforeMin)),
-			hint:     "←→ 60분 단위  enter 직접 입력",
+			hint:     "[] 60분 단위  enter 입력",
 			editable: true,
 		},
 		{
@@ -3525,7 +3715,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			section:  "Download",
 			label:    "저장 폴더",
 			value:    settings.Download.Dir,
-			hint:     "enter 직접 입력",
+			hint:     "enter 입력",
 			editable: true,
 		},
 		{
@@ -3534,7 +3724,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			section: "Download",
 			label:   "동시 다운로드",
 			value:   fmt.Sprintf("%d workers", settings.Download.Concurrency),
-			hint:    "←→ 변경",
+			hint:    "[] 변경",
 		},
 		{
 			key:     "download.caffeinate",
@@ -3542,7 +3732,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			section: "Download",
 			label:   "절전 방지",
 			value:   enabledLabel(settings.Download.Caffeinate),
-			hint:    "←→ 전환",
+			hint:    "[] 전환",
 		},
 		{
 			key:     "download.keep-partial",
@@ -3550,7 +3740,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			section: "Download",
 			label:   "부분 파일 보존",
 			value:   enabledLabel(settings.Download.KeepPartial),
-			hint:    "←→ 전환",
+			hint:    "[] 전환",
 		},
 		{
 			key:     "transcript.concurrency",
@@ -3558,7 +3748,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			section: "Transcript",
 			label:   "전사 worker",
 			value:   fmt.Sprintf("%d workers", settings.Transcript.Concurrency),
-			hint:    fmt.Sprintf("←→ 1-%d", settingspkg.MaxTranscriptConcurrency),
+			hint:    fmt.Sprintf("[] 1-%d", settingspkg.MaxTranscriptConcurrency),
 		},
 		{
 			key:     "reset",

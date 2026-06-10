@@ -84,6 +84,6 @@ func (m confirmModel) View() string {
 	b.WriteString("    ")
 	b.WriteString(no)
 	b.WriteString("\n\n")
-	b.WriteString(footerStyle.Render("←→ 선택  |  y/n  |  enter 확인  |  q 취소"))
+	b.WriteString(footerStyle.Render("←/→ 선택  |  y/n  |  enter 확인  |  q 취소"))
 	return appStyle.Render(b.String())
 }

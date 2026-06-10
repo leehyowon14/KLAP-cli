@@ -375,14 +375,15 @@ func TestAcademicCalendarRendersMultiDayEvents(t *testing.T) {
 			Title: "보강주간",
 		}},
 	}
-	view := renderAcademicMonthCalendar(result, 6, 96)
-	for _, want := range []string{"22일  보강주간", "23일  보강주간", "24일  보강주간"} {
+	view := renderAcademicMonthCalendar(result, 6, 96, result.Events[0])
+	for _, want := range []string{"월  화  수", "22", "23", "24"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("renderAcademicMonthCalendar() missing %q: %q", want, view)
 		}
 	}
-	if strings.Count(view, "보강주간") < 3 {
-		t.Fatalf("renderAcademicMonthCalendar() should mark every range day: %q", view)
+	list := renderAcademicEventList(academicMonthEvents(result, 6), 0, 96, 8)
+	if !strings.Contains(list, "22일-24일  보강주간") {
+		t.Fatalf("renderAcademicEventList() should collapse range: %q", list)
 	}
 }
 
@@ -395,9 +396,9 @@ func TestAcademicCalendarRendersMonthEvents(t *testing.T) {
 		},
 	}
 
-	view := renderAcademicMonthCalendar(result, 3, 96)
+	view := renderAcademicEventList(academicMonthEvents(result, 3), 0, 96, 8)
 	if !strings.Contains(view, "개강") || strings.Contains(view, "다른 달") {
-		t.Fatalf("renderAcademicMonthCalendar() = %q", view)
+		t.Fatalf("renderAcademicEventList() = %q", view)
 	}
 }
 
@@ -417,6 +418,17 @@ func TestFooterUsesKoreanSyncLabel(t *testing.T) {
 	footer := m.footerHelp()
 	if strings.Contains(footer, "sync") || !strings.Contains(footer, "동기화") {
 		t.Fatalf("footerHelp() = %q", footer)
+	}
+	if strings.Contains(footer, "←→") || !strings.Contains(footer, "←/→") {
+		t.Fatalf("footerHelp() should use separated arrows: %q", footer)
+	}
+}
+
+func TestWrapHelpKeepsTrailingCommands(t *testing.T) {
+	help := "←/→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+	view := wrapHelp(help, 36)
+	if !strings.Contains(view, "\n") || !strings.Contains(view, "q 종료") {
+		t.Fatalf("wrapHelp() = %q", view)
 	}
 }
 
@@ -450,6 +462,33 @@ func TestDashboardShowsLastSyncing(t *testing.T) {
 	view := m.renderDashboardPagedPanel(96)
 	if !strings.Contains(view, "Last Syncing") || !strings.Contains(view, "2026-06-10 15:04:05") {
 		t.Fatalf("renderDashboardPagedPanel() missing last sync: %q", view)
+	}
+}
+
+func TestDetailScrollClampsAtEdges(t *testing.T) {
+	content := strings.Repeat("본문 줄\n", 40)
+	m := model{
+		active:       screenNoticeDetail,
+		width:        80,
+		height:       14,
+		noticeDetail: app.NoticeDetailResult{ID: "1", CourseName: "강의", DetailURL: "https://klas.kw.ac.kr", Detail: klas.NoticeDetail{Title: "공지", ContentText: content}},
+	}
+	m.moveDetailCursor(1)
+	if m.detailCursor != 1 {
+		t.Fatalf("detailCursor after first down = %d", m.detailCursor)
+	}
+	for i := 0; i < 100; i++ {
+		m.moveDetailCursor(1)
+	}
+	bottom := m.detailCursor
+	if bottom <= 1 {
+		t.Fatalf("detailCursor bottom = %d", bottom)
+	}
+	for i := 0; i < 100; i++ {
+		m.moveDetailCursor(-1)
+	}
+	if m.detailCursor != 0 {
+		t.Fatalf("detailCursor after up clamp = %d", m.detailCursor)
 	}
 }
 
@@ -517,7 +556,7 @@ func TestDashboardPagedPanelShowsCoursePages(t *testing.T) {
 	m := model{active: screenDashboard, dashboardResult: result, dashboardPage: 1}
 
 	view := m.renderDashboardPagedPanel(96)
-	for _, want := range []string{"2/2", "컴퓨터그래픽스", "과제1", "강의 공지", "STATUS"} {
+	for _, want := range []string{"컴퓨터그래픽스", "과제1", "강의 공지", "STATUS"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("renderDashboardPagedPanel() missing %q: %q", want, view)
 		}
