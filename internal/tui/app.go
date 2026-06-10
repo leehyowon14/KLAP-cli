@@ -78,11 +78,11 @@ var (
 			Foreground(lipgloss.Color("#9ACD32"))
 )
 
-const klapLogo = ` _  __ _      _    ____
-| |/ /| |    / \  |  _ \
-| ' / | |   / _ \ | |_) |
+const klapLogo = ` _  __ _       _    ____
+| |/ /| |     / \  |  _ \
+| ' / | |    / _ \ | |_) |
 | . \ | |__/ ___ \|  __/
-|_|\_\|____/_/   \_\_|`
+|_|\_\|____/_/   \_\_|      Kwangwoon Learning Automation Project`
 
 type screen int
 
@@ -2191,7 +2191,7 @@ func (m model) renderHomeView(width int) string {
 	logo := logoStyle.Render(klapLogo)
 	meta := lipgloss.JoinVertical(lipgloss.Left,
 		headerStyle.Render("https://github.com/leehyowon14/KLAP-GoLang"),
-		taglineStyle.Render("Kwangwoon KLAS in your terminal."),
+		taglineStyle.Render("Beyond KLAS in your terminal."),
 	)
 	top := logo
 	if width >= 82 {
