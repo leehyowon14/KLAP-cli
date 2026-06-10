@@ -3072,11 +3072,10 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOpt
 	events := make([]klapcalendar.Event, 0, len(result.Events))
 	now := time.Now()
 	for _, academicEvent := range result.Events {
-		startAt, ok := academicEventDueAt(academicEvent)
+		startAt, endAt, ok := academicEventRange(academicEvent)
 		if !ok || startAt.Before(now) {
 			continue
 		}
-		endAt := startAt.Add(24 * time.Hour)
 		events = append(events, klapcalendar.Event{
 			ID:      academicEventID(academicEvent),
 			Title:   academicEvent.Title,
@@ -3811,37 +3810,54 @@ func emptyStatusFallback(value string, fallback string) string {
 	return value
 }
 
-var academicDatePattern = regexp.MustCompile(`([0-9]{1,2})\s*[./]\s*([0-9]{1,2})|([0-9]{1,2})\s*일`)
+var academicDatePattern = regexp.MustCompile(`(?:(\d{1,2})\s*[./]\s*)?(\d{1,2})\s*(?:일|\([^)]*\))?`)
 
 func academicEventDueAt(event AcademicEvent) (time.Time, bool) {
+	startAt, _, ok := academicEventRange(event)
+	return startAt, ok
+}
+
+func AcademicEventRange(event AcademicEvent) (time.Time, time.Time, bool) {
+	return academicEventRange(event)
+}
+
+func academicEventRange(event AcademicEvent) (time.Time, time.Time, bool) {
 	year, err := strconv.Atoi(strings.TrimSpace(event.Year))
 	if err != nil {
-		return time.Time{}, false
+		return time.Time{}, time.Time{}, false
 	}
 	monthText := strings.TrimSuffix(strings.TrimSpace(event.Month), "월")
 	month, err := strconv.Atoi(monthText)
 	if err != nil {
-		return time.Time{}, false
+		return time.Time{}, time.Time{}, false
 	}
 	dateText := strings.TrimSpace(event.Date)
-	match := academicDatePattern.FindStringSubmatch(dateText)
-	if len(match) == 0 {
-		return time.Time{}, false
+	matches := academicDatePattern.FindAllStringSubmatch(dateText, -1)
+	if len(matches) == 0 {
+		return time.Time{}, time.Time{}, false
 	}
-	dayText := match[2]
-	if dayText == "" {
-		dayText = match[3]
-	}
-	if match[1] != "" && match[2] != "" {
-		if parsedMonth, monthErr := strconv.Atoi(match[1]); monthErr == nil {
-			month = parsedMonth
+	dates := make([]time.Time, 0, len(matches))
+	for _, match := range matches {
+		eventMonth := month
+		if strings.TrimSpace(match[1]) != "" {
+			parsedMonth, monthErr := strconv.Atoi(match[1])
+			if monthErr != nil {
+				return time.Time{}, time.Time{}, false
+			}
+			eventMonth = parsedMonth
 		}
+		day, dayErr := strconv.Atoi(match[2])
+		if dayErr != nil {
+			return time.Time{}, time.Time{}, false
+		}
+		dates = append(dates, time.Date(year, time.Month(eventMonth), day, 0, 0, 0, 0, time.Local))
 	}
-	day, err := strconv.Atoi(dayText)
-	if err != nil {
-		return time.Time{}, false
+	startAt := dates[0]
+	endAt := dates[len(dates)-1]
+	if endAt.Before(startAt) {
+		endAt = endAt.AddDate(1, 0, 0)
 	}
-	return time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.Local), true
+	return startAt, endAt.AddDate(0, 0, 1), true
 }
 
 func parseConfigBool(value string) (bool, error) {

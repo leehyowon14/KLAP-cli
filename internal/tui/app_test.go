@@ -351,7 +351,7 @@ func TestDuePageLinesSplitByKind(t *testing.T) {
 	}}
 
 	summary := strings.Join(duePageLines(result, 0, 96), "\n")
-	if !strings.Contains(summary, "전체") || !strings.Contains(summary, "3") {
+	if !strings.Contains(summary, "OVERVIEW") || !strings.Contains(summary, "FOCUS") || !strings.Contains(summary, "3 items") || !strings.Contains(summary, "HuggingFace") {
 		t.Fatalf("summary lines = %q", summary)
 	}
 	assignments := strings.Join(duePageLines(result, 1, 96), "\n")
@@ -361,6 +361,27 @@ func TestDuePageLinesSplitByKind(t *testing.T) {
 	academic := strings.Join(duePageLines(result, 3, 96), "\n")
 	if !strings.Contains(academic, "종강") || strings.Contains(academic, "과제1") {
 		t.Fatalf("academic due lines = %q", academic)
+	}
+}
+
+func TestAcademicCalendarRendersMultiDayEvents(t *testing.T) {
+	result := app.AcademicListResult{
+		Year: "2026",
+		Events: []app.AcademicEvent{{
+			Year:  "2026",
+			Month: "6월",
+			Date:  "06.22(월) ~ 06.24(수)",
+			Title: "보강주간",
+		}},
+	}
+	view := renderAcademicMonthCalendar(result, 6, 96)
+	for _, want := range []string{"22일  보강주간", "23일  보강주간", "24일  보강주간"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("renderAcademicMonthCalendar() missing %q: %q", want, view)
+		}
+	}
+	if strings.Count(view, "보강주간") < 3 {
+		t.Fatalf("renderAcademicMonthCalendar() should mark every range day: %q", view)
 	}
 }
 

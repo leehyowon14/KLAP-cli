@@ -496,6 +496,24 @@ func TestAcademicEventDueAt(t *testing.T) {
 	}
 }
 
+func TestAcademicEventRangeParsesMultiDayEvent(t *testing.T) {
+	startAt, endAt, ok := AcademicEventRange(AcademicEvent{
+		Year:  "2026",
+		Month: "6월",
+		Date:  "06.22(월) ~ 06.26(금)",
+		Title: "보강주간",
+	})
+	if !ok {
+		t.Fatal("AcademicEventRange() expected ok")
+	}
+	if startAt.Year() != 2026 || startAt.Month() != time.June || startAt.Day() != 22 {
+		t.Fatalf("startAt = %s", startAt)
+	}
+	if endAt.Year() != 2026 || endAt.Month() != time.June || endAt.Day() != 27 {
+		t.Fatalf("endAt = %s", endAt)
+	}
+}
+
 func TestParseConfigBool(t *testing.T) {
 	got, err := parseConfigBool("yes")
 	if err != nil {

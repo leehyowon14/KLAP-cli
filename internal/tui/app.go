@@ -2658,19 +2658,64 @@ func dueSummaryLines(result app.DueResult) []string {
 	for _, item := range result.Items {
 		counts[item.Kind]++
 	}
-	lines := []string{
-		fmt.Sprintf("%s  %d", badgeStyle.Render("전체"), len(result.Items)),
-		fmt.Sprintf("%s  %d", badgeStyle.Render("과제"), counts["과제"]),
-		fmt.Sprintf("%s  %d", badgeStyle.Render("온라인 강의"), counts["온라인 강의"]),
-		fmt.Sprintf("%s  %d", badgeStyle.Render("학사일정"), counts["학사일정"]),
-	}
+	lines := splitRenderedLines(renderSection("OVERVIEW", []string{
+		dashboardMetric("Range", fmt.Sprintf("%s ~ %s", result.From.Format("2006-01-02"), result.Until.Format("2006-01-02"))),
+		dashboardMetric("Total", fmt.Sprintf("%d items", len(result.Items))),
+		dashboardMetric("Assignments", fmt.Sprintf("%d", counts["과제"])),
+		dashboardMetric("Lectures", fmt.Sprintf("%d", counts["온라인 강의"])),
+		dashboardMetric("Academic", fmt.Sprintf("%d", counts["학사일정"])),
+	}))
+	lines = append(lines, "")
+	lines = append(lines, splitRenderedLines(renderSection("FOCUS", dueFocusLines(result.Items, 6)))...)
 	if len(result.Errors) > 0 {
-		lines = append(lines, "")
+		errorLines := make([]string, 0, len(result.Errors))
 		for _, sectionError := range result.Errors {
-			lines = append(lines, errorStyle.Render(sectionError.Section)+" "+sectionError.Err.Error())
+			errorLines = append(errorLines, errorStyle.Render(sectionError.Section)+" "+sectionError.Err.Error())
 		}
+		lines = append(lines, "")
+		lines = append(lines, splitRenderedLines(renderSection("ERRORS", errorLines))...)
 	}
 	return lines
+}
+
+func dueFocusLines(items []app.DueItem, limit int) []string {
+	if len(items) == 0 {
+		return []string{emptyStyle.Render("다가오는 일정이 없습니다")}
+	}
+	if limit <= 0 || limit > len(items) {
+		limit = len(items)
+	}
+	lines := make([]string, 0, limit)
+	for _, item := range items[:limit] {
+		course := strings.TrimSpace(item.CourseName)
+		if course != "" {
+			course += " · "
+		}
+		lines = append(lines, fmt.Sprintf("%s  %s  %s%s",
+			mutedStyle.Render(item.DueAt.Format("01-02 15:04")),
+			dueKindBadge(item.Kind),
+			course,
+			item.Title,
+		))
+	}
+	return lines
+}
+
+func dueKindBadge(kind string) string {
+	switch kind {
+	case "과제":
+		return warnBadgeStyle.Render(kind)
+	case "온라인 강의":
+		return badgeStyle.Render("강의")
+	case "학사일정":
+		return successBadgeStyle.Render("학사")
+	default:
+		return badgeStyle.Render(kind)
+	}
+}
+
+func splitRenderedLines(value string) []string {
+	return strings.Split(strings.TrimRight(value, "\n"), "\n")
 }
 
 func (m model) renderAcademicCalendarPanel(width int) string {
@@ -2697,11 +2742,16 @@ func renderAcademicMonthCalendar(result app.AcademicListResult, month int, width
 	}
 	eventsByDay := make(map[int][]app.AcademicEvent)
 	for _, event := range result.Events {
-		dueAt, ok := academicEventDate(event)
-		if !ok || dueAt.Year() != year || int(dueAt.Month()) != month {
+		startAt, endAt, ok := app.AcademicEventRange(event)
+		if !ok {
 			continue
 		}
-		eventsByDay[dueAt.Day()] = append(eventsByDay[dueAt.Day()], event)
+		for dayAt := startAt; dayAt.Before(endAt); dayAt = dayAt.AddDate(0, 0, 1) {
+			if dayAt.Year() != year || int(dayAt.Month()) != month {
+				continue
+			}
+			eventsByDay[dayAt.Day()] = append(eventsByDay[dayAt.Day()], event)
+		}
 	}
 
 	var b strings.Builder
