@@ -25,7 +25,7 @@ const appHorizontalPadding = 4
 
 var (
 	appStyle = lipgloss.NewStyle().
-			Padding(1, 2)
+			Padding(0, 2)
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#58A6FF"))
@@ -2524,10 +2524,10 @@ func (m model) renderRoomPeriodView(width int) string {
 
 func (m model) renderPanel(width int) string {
 	var b strings.Builder
-	b.WriteString(sectionStyle.Render(screenTitle(m.active)))
-	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(screenSubtitle(m.active)))
-	b.WriteString("\n\n")
+	if subtitle := strings.TrimSpace(screenSubtitle(m.active)); subtitle != "" {
+		b.WriteString(mutedStyle.Render(subtitle))
+		b.WriteString("\n\n")
+	}
 	if m.syncPhase != "" {
 		b.WriteString(m.renderSyncPanel())
 		return b.String()

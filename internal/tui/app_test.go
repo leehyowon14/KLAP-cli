@@ -470,6 +470,38 @@ func TestViewLinesFitTerminalWidth(t *testing.T) {
 	}
 }
 
+func TestViewStartsWithHeaderBeforeRule(t *testing.T) {
+	m := model{
+		active: screenDue,
+		width:  80,
+		height: 24,
+		dueResult: app.DueResult{
+			From:  time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local),
+			Until: time.Date(2026, 6, 24, 0, 0, 0, 0, time.Local),
+		},
+	}
+	lines := strings.Split(m.View(), "\n")
+	first := ""
+	second := ""
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if first == "" {
+			first = line
+			continue
+		}
+		second = line
+		break
+	}
+	if !strings.Contains(first, "KLAP") || !strings.Contains(first, "Due") {
+		t.Fatalf("first visible line should be header, got %q", first)
+	}
+	if strings.Contains(first, "─") || !strings.Contains(second, "─") {
+		t.Fatalf("rule order failed: first=%q second=%q", first, second)
+	}
+}
+
 func TestSyncPanelHidesDashboardStatus(t *testing.T) {
 	m := model{
 		active:     screenDashboard,
