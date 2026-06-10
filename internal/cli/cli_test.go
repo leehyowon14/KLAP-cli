@@ -9,6 +9,18 @@ import (
 	"github.com/kw-klap/klap-cli/internal/klas"
 )
 
+func TestModeForArgsStartsTUIWithoutSubcommand(t *testing.T) {
+	if got := modeForArgs(nil); got != commandModeTUI {
+		t.Fatalf("modeForArgs(nil) = %v, want TUI", got)
+	}
+	if got := modeForArgs([]string{"tui"}); got != commandModeTUI {
+		t.Fatalf("modeForArgs(tui) = %v, want TUI", got)
+	}
+	if got := modeForArgs([]string{"dashboard"}); got != commandModeCLI {
+		t.Fatalf("modeForArgs(dashboard) = %v, want CLI", got)
+	}
+}
+
 func TestCourseFilterRequiresValue(t *testing.T) {
 	_, err := courseFilter([]string{"--course"})
 	if err == nil {

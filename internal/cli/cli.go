@@ -20,6 +20,20 @@ import (
 	"github.com/kw-klap/klap-cli/internal/ui"
 )
 
+type commandMode int
+
+const (
+	commandModeTUI commandMode = iota
+	commandModeCLI
+)
+
+func modeForArgs(args []string) commandMode {
+	if len(args) == 0 || args[0] == "tui" {
+		return commandModeTUI
+	}
+	return commandModeCLI
+}
+
 func Run(ctx context.Context, args []string) error {
 	store, err := account.NewStore()
 	if err != nil {
@@ -27,9 +41,8 @@ func Run(ctx context.Context, args []string) error {
 	}
 	service := app.NewService(store)
 
-	if len(args) == 0 {
-		printHelp()
-		return nil
+	if modeForArgs(args) == commandModeTUI {
+		return tui.Run(ctx, service)
 	}
 
 	switch args[0] {
@@ -1660,6 +1673,7 @@ func printHelp() {
 	fmt.Println(`KLAP CLI
 
 Usage:
+  klap                   Bubble Tea 기반 TUI 실행
   klap auth              KLAS 로그인 검증 후 계정 저장
   klap user list         저장된 학번 목록 출력
   klap user select <학번> 현재 유저 선택
