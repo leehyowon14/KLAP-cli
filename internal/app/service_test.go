@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -236,6 +237,31 @@ func TestLectureDownloadItemNeedsTranscriptForSkippedVideo(t *testing.T) {
 	}
 	if LectureDownloadItemNeedsTranscript(item) {
 		t.Fatal("LectureDownloadItemNeedsTranscript() expected false with existing transcript")
+	}
+}
+
+func TestTranscribeDownloadedLecturesReturnsPreflightFailure(t *testing.T) {
+	root := t.TempDir()
+	blocker := filepath.Join(root, "컴퓨터그래픽스")
+	if err := os.WriteFile(blocker, []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("WriteFile(blocker) error = %v", err)
+	}
+	videoPath := filepath.Join(blocker, "video", "lecture.mp4")
+	row := LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", Title: "소개"}}
+
+	result := (&Service{}).TranscribeDownloadedLectures(context.Background(), []LectureDownloadItem{{
+		Lecture: row,
+		Path:    videoPath,
+	}}, LectureTranscriptOptions{})
+
+	if len(result.Items) != 1 {
+		t.Fatalf("Items length = %d, want 1", len(result.Items))
+	}
+	if result.Items[0].Err == nil {
+		t.Fatalf("Items[0].Err is nil")
+	}
+	if result.Items[0].InputPath != videoPath || result.Items[0].Lecture.CourseName != "컴퓨터그래픽스" {
+		t.Fatalf("Items[0] = %+v", result.Items[0])
 	}
 }
 

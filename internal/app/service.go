@@ -2557,12 +2557,19 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 
 	jobs := make([]transcript.Job, 0, len(items))
 	rows := make([]LectureRow, 0, len(items))
+	failedItems := make([]LectureTranscriptItem, 0)
 	for _, item := range items {
 		if !LectureDownloadItemNeedsTranscript(item) {
 			continue
 		}
 		outputPath := transcriptPath(item.Path)
 		if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+			failedItems = append(failedItems, LectureTranscriptItem{
+				Lecture:    item.Lecture,
+				InputPath:  item.Path,
+				OutputPath: outputPath,
+				Err:        err,
+			})
 			emitLectureTranscriptProgress(opts.OnProgress, LectureTranscriptProgress{
 				Lecture:    item.Lecture,
 				InputPath:  item.Path,
@@ -2587,12 +2594,12 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 		})
 	}
 	if len(jobs) == 0 {
-		return LectureTranscriptResult{}
+		return LectureTranscriptResult{Items: failedItems}
 	}
 
 	select {
 	case <-ctx.Done():
-		result := LectureTranscriptResult{Items: make([]LectureTranscriptItem, 0, len(jobs))}
+		result := LectureTranscriptResult{Items: append([]LectureTranscriptItem{}, failedItems...)}
 		for index, job := range jobs {
 			result.Items = append(result.Items, LectureTranscriptItem{
 				Lecture:    rows[index],
@@ -2620,7 +2627,7 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 		})
 	})
 	if err != nil {
-		result := LectureTranscriptResult{Items: make([]LectureTranscriptItem, 0, len(jobs))}
+		result := LectureTranscriptResult{Items: append([]LectureTranscriptItem{}, failedItems...)}
 		for index, job := range jobs {
 			item := LectureTranscriptItem{
 				Lecture:    rows[index],
@@ -2640,7 +2647,7 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 		return result
 	}
 
-	result := LectureTranscriptResult{Items: make([]LectureTranscriptItem, 0, len(response.Results))}
+	result := LectureTranscriptResult{Items: append([]LectureTranscriptItem{}, failedItems...)}
 	for index, bridgeResult := range response.Results {
 		row := LectureRow{}
 		if index < len(rows) {
