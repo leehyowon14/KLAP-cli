@@ -9,6 +9,8 @@ struct AcademicEvent: Codable {
     let allDay: Bool
     let notes: String
     let url: String
+    let recurrence: String?
+    let recurrenceEnd: Date?
 }
 
 struct SyncRequest: Codable {
@@ -111,6 +113,17 @@ for item in request.events {
     event.notes = item.notes
     if !item.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         event.url = URL(string: item.url)
+    }
+    if item.recurrence == "weekly", let recurrenceEnd = item.recurrenceEnd {
+        event.recurrenceRules = [
+            EKRecurrenceRule(
+                recurrenceWith: .weekly,
+                interval: 1,
+                end: EKRecurrenceEnd(end: recurrenceEnd)
+            )
+        ]
+    } else {
+        event.recurrenceRules = nil
     }
     try store.save(event, span: .thisEvent, commit: false)
     if isNew {

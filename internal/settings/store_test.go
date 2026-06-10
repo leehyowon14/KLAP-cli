@@ -13,8 +13,11 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if got.Reminder.AlarmBeforeMin != 1440 {
 		t.Fatalf("AlarmBeforeMin = %d", got.Reminder.AlarmBeforeMin)
 	}
-	if got.Calendar.Name != DefaultReminderListName {
+	if got.Calendar.Name != DefaultAcademicCalendarName {
 		t.Fatalf("Calendar.Name = %q", got.Calendar.Name)
+	}
+	if got.Calendar.TimetableName != DefaultTimetableCalendarName {
+		t.Fatalf("Calendar.TimetableName = %q", got.Calendar.TimetableName)
 	}
 	if got.Calendar.UseExistingList {
 		t.Fatal("Calendar.UseExistingList should default to false")
@@ -48,8 +51,11 @@ func TestNormalizeReminderSettings(t *testing.T) {
 	if settings.Reminder.AlarmBeforeMin != 1440 {
 		t.Fatalf("AlarmBeforeMin = %d", settings.Reminder.AlarmBeforeMin)
 	}
-	if settings.Calendar.Name != DefaultReminderListName {
+	if settings.Calendar.Name != DefaultAcademicCalendarName {
 		t.Fatalf("Calendar.Name = %q", settings.Calendar.Name)
+	}
+	if settings.Calendar.TimetableName != DefaultTimetableCalendarName {
+		t.Fatalf("Calendar.TimetableName = %q", settings.Calendar.TimetableName)
 	}
 	if settings.Download.Dir != DefaultDownloadDir() {
 		t.Fatalf("Download.Dir = %q", settings.Download.Dir)
@@ -65,6 +71,20 @@ func TestNormalizeReminderSettings(t *testing.T) {
 	}
 	if settings.Transcript.Concurrency != DefaultTranscriptConcurrency {
 		t.Fatalf("Transcript.Concurrency = %d", settings.Transcript.Concurrency)
+	}
+}
+
+func TestNormalizeMigratesLegacyCalendarName(t *testing.T) {
+	settings := Settings{Calendar: Calendar{Name: "기존 캘린더", UseExistingList: true}}
+	settings.Normalize()
+	if settings.Calendar.AcademicName != "기존 캘린더" || settings.Calendar.Name != "기존 캘린더" {
+		t.Fatalf("Calendar academic migration = %+v", settings.Calendar)
+	}
+	if !settings.Calendar.AcademicUseExistingList || !settings.Calendar.UseExistingList {
+		t.Fatalf("Calendar use-existing migration = %+v", settings.Calendar)
+	}
+	if settings.Calendar.TimetableName != DefaultTimetableCalendarName {
+		t.Fatalf("Calendar.TimetableName = %q", settings.Calendar.TimetableName)
 	}
 }
 

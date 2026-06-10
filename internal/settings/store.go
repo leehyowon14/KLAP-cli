@@ -9,6 +9,8 @@ import (
 )
 
 const DefaultReminderListName = "Kwangwoon Univ."
+const DefaultAcademicCalendarName = "학사일정"
+const DefaultTimetableCalendarName = "시간표"
 const DefaultDownloadConcurrency = 3
 const DefaultTranscriptConcurrency = 1
 const MaxTranscriptConcurrency = 3
@@ -28,8 +30,12 @@ type Reminder struct {
 }
 
 type Calendar struct {
-	Name            string `json:"name"`
-	UseExistingList bool   `json:"useExistingList"`
+	Name                     string `json:"name"`
+	UseExistingList          bool   `json:"useExistingList"`
+	AcademicName             string `json:"academicName"`
+	AcademicUseExistingList  bool   `json:"academicUseExistingList"`
+	TimetableName            string `json:"timetableName"`
+	TimetableUseExistingList bool   `json:"timetableUseExistingList"`
 }
 
 type Term struct {
@@ -98,7 +104,9 @@ func Default() Settings {
 			AlarmBeforeMin: 24 * 60,
 		},
 		Calendar: Calendar{
-			Name: DefaultReminderListName,
+			Name:          DefaultAcademicCalendarName,
+			AcademicName:  DefaultAcademicCalendarName,
+			TimetableName: DefaultTimetableCalendarName,
 		},
 		Download: Download{
 			Dir:         DefaultDownloadDir(),
@@ -118,11 +126,25 @@ func (s *Settings) Normalize() {
 	if s.Reminder.AlarmBeforeMin <= 0 {
 		s.Reminder.AlarmBeforeMin = 24 * 60
 	}
-	if s.Calendar.Name == "" {
-		s.Calendar.Name = DefaultReminderListName
-	}
+	s.Calendar.Normalize()
 	s.Download.Normalize()
 	s.Transcript.Normalize()
+}
+
+func (c *Calendar) Normalize() {
+	if c.AcademicName == "" {
+		if c.Name != "" {
+			c.AcademicName = c.Name
+			c.AcademicUseExistingList = c.UseExistingList
+		} else {
+			c.AcademicName = DefaultAcademicCalendarName
+		}
+	}
+	if c.TimetableName == "" {
+		c.TimetableName = DefaultTimetableCalendarName
+	}
+	c.Name = c.AcademicName
+	c.UseExistingList = c.AcademicUseExistingList
 }
 
 func DefaultDownloadDir() string {

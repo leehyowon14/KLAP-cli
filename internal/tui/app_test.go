@@ -957,12 +957,17 @@ func TestTranscriptLanguageDefaultsToKoreanWithoutWarning(t *testing.T) {
 
 func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	view := formatConfig(app.ConfigSettings{
-		Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
-		Calendar:   app.CalendarSettings{Name: "시간표", UseExistingList: true},
+		Reminder: app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+		Calendar: app.CalendarSettings{
+			Name:                     "학사일정",
+			UseExistingList:          true,
+			TimetableName:            "시간표",
+			TimetableUseExistingList: true,
+		},
 		Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 7, Caffeinate: true, KeepPartial: false},
 		Transcript: app.TranscriptSettings{Concurrency: 2},
 	})
-	if !strings.Contains(view, "Calendar") || !strings.Contains(view, "name  시간표") {
+	if !strings.Contains(view, "Calendar") || !strings.Contains(view, "academic-name  학사일정") || !strings.Contains(view, "timetable-name  시간표") {
 		t.Fatalf("formatConfig() missing calendar: %q", view)
 	}
 	if !strings.Contains(view, "concurrency  7") {
@@ -982,7 +987,12 @@ func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 func TestConfigRowsExposeCategorySelection(t *testing.T) {
 	rows := configRows(app.ConfigSettings{
 		Reminder: app.ReminderSettings{ListName: "To-do", UseExistingList: true, AlarmBeforeMin: 60},
-		Calendar: app.CalendarSettings{Name: "시간표", UseExistingList: true},
+		Calendar: app.CalendarSettings{
+			Name:                     "학사일정",
+			UseExistingList:          true,
+			TimetableName:            "시간표",
+			TimetableUseExistingList: true,
+		},
 		Download: app.DownloadSettings{
 			Dir:         "downloads",
 			Concurrency: 4,
@@ -992,7 +1002,7 @@ func TestConfigRowsExposeCategorySelection(t *testing.T) {
 		Transcript: app.TranscriptSettings{Concurrency: 1},
 	}, app.CategoryOptions{
 		Reminders: []string{"개인", "To-do"},
-		Calendars: []string{"개인", "시간표"},
+		Calendars: []string{"개인", "학사일정", "시간표"},
 	})
 
 	if len(rows) == 0 {
@@ -1001,13 +1011,17 @@ func TestConfigRowsExposeCategorySelection(t *testing.T) {
 	if rows[0].key != "reminder.name" || !rows[0].cycle || !rows[0].editable {
 		t.Fatalf("reminder row = %+v", rows[0])
 	}
-	foundCalendar := false
+	foundAcademicCalendar := false
+	foundTimetableCalendar := false
 	for _, row := range rows {
-		if row.key == "calendar.name" && row.value == "시간표" && strings.Contains(row.hint, "기존 목록") {
-			foundCalendar = true
+		if row.key == "calendar.name" && row.value == "학사일정" && strings.Contains(row.hint, "기존 목록") {
+			foundAcademicCalendar = true
+		}
+		if row.key == "timetable-calendar.name" && row.value == "시간표" && strings.Contains(row.hint, "기존 목록") {
+			foundTimetableCalendar = true
 		}
 	}
-	if !foundCalendar {
+	if !foundAcademicCalendar || !foundTimetableCalendar {
 		t.Fatalf("configRows() missing calendar category row: %+v", rows)
 	}
 }
@@ -1016,7 +1030,7 @@ func TestConfigCursorWraps(t *testing.T) {
 	m := model{
 		configSettings: app.ConfigSettings{
 			Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
-			Calendar:   app.CalendarSettings{Name: "시간표"},
+			Calendar:   app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
 			Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
 			Transcript: app.TranscriptSettings{Concurrency: 1},
 		},

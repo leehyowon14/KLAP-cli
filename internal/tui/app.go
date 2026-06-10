@@ -706,12 +706,14 @@ func (m model) syncDashboard() tea.Cmd {
 		assignments, assignmentErr := m.service.SyncAssignmentReminders(m.ctx, app.AssignmentListOptions{})
 		lectures, lectureErr := m.service.SyncLectureReminders(m.ctx, app.LectureListOptions{})
 		academic, academicErr := m.service.SyncAcademicCalendar(m.ctx, app.AcademicListOptions{})
+		timetable, timetableErr := m.service.SyncTimetableCalendar(m.ctx, app.TimetableOptions{})
 		parts := []string{
 			formatReminderSyncStatus("과제", assignments),
 			formatReminderSyncStatus("강의", lectures),
 			formatCalendarSyncStatus("학사일정", academic),
+			formatCalendarSyncStatus("시간표", timetable),
 		}
-		if err := firstErr(assignmentErr, lectureErr, academicErr); err != nil {
+		if err := firstErr(assignmentErr, lectureErr, academicErr, timetableErr); err != nil {
 			return syncMsg{status: strings.Join(parts, " / "), err: err}
 		}
 		return syncMsg{status: "동기화 완료: " + strings.Join(parts, " / ")}
@@ -1553,7 +1555,9 @@ func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "reminder.name":
 			_, err = m.service.SetReminderConfig(value, false)
 		case "calendar.name":
-			_, err = m.service.SetCalendarConfig(value, false)
+			_, err = m.service.SetAcademicCalendarConfig(value, false)
+		case "timetable-calendar.name":
+			_, err = m.service.SetTimetableCalendarConfig(value, false)
 		case "reminder.alarm-before-min":
 			_, err = m.service.SetConfigValue("reminder.alarm-before-min", value)
 		}
@@ -1614,7 +1618,16 @@ func (m model) adjustConfigCurrent(delta int) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m.startConfigEdit(row)
 		}
-		if _, err := m.service.SetCalendarConfig(next, true); err != nil {
+		if _, err := m.service.SetAcademicCalendarConfig(next, true); err != nil {
+			m.err = err
+			return m, nil
+		}
+	case "timetable-calendar.name":
+		next, ok := cycleStringOption(m.configOptions.Calendars, m.configSettings.Calendar.TimetableName, delta)
+		if !ok {
+			return m.startConfigEdit(row)
+		}
+		if _, err := m.service.SetTimetableCalendarConfig(next, true); err != nil {
 			m.err = err
 			return m, nil
 		}
@@ -1654,7 +1667,10 @@ func (m model) startConfigEdit(row configRow) (tea.Model, tea.Cmd) {
 		input.Placeholder = "미리알림 목록"
 	case "calendar.name":
 		input.SetValue(m.configSettings.Calendar.Name)
-		input.Placeholder = "캘린더"
+		input.Placeholder = "학사일정 캘린더"
+	case "timetable-calendar.name":
+		input.SetValue(m.configSettings.Calendar.TimetableName)
+		input.Placeholder = "시간표 캘린더"
 	case "reminder.alarm-before-min":
 		input.SetValue(strconv.Itoa(m.configSettings.Reminder.AlarmBeforeMin))
 		input.Placeholder = "분 단위 알림 시간"
@@ -3230,9 +3246,18 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 		{
 			key:      "calendar.name",
 			section:  "Calendar",
-			label:    "캘린더",
-			value:    emptyFallback(settings.Calendar.Name, settingspkg.DefaultReminderListName),
+			label:    "학사일정 캘린더",
+			value:    emptyFallback(settings.Calendar.Name, settingspkg.DefaultAcademicCalendarName),
 			hint:     categoryHint(options.Calendars, settings.Calendar.UseExistingList),
+			editable: true,
+			cycle:    true,
+		},
+		{
+			key:      "timetable-calendar.name",
+			section:  "Calendar",
+			label:    "시간표 캘린더",
+			value:    emptyFallback(settings.Calendar.TimetableName, settingspkg.DefaultTimetableCalendarName),
+			hint:     categoryHint(options.Calendars, settings.Calendar.TimetableUseExistingList),
 			editable: true,
 			cycle:    true,
 		},
@@ -3359,8 +3384,10 @@ func formatConfig(settings app.ConfigSettings) string {
 		fmt.Sprintf("use-existing-list  %t", settings.Reminder.UseExistingList),
 		fmt.Sprintf("alarm-before-min  %d", settings.Reminder.AlarmBeforeMin),
 	}) + "\n" + renderSection("Calendar", []string{
-		"name  " + settings.Calendar.Name,
-		fmt.Sprintf("use-existing-list  %t", settings.Calendar.UseExistingList),
+		"academic-name  " + settings.Calendar.Name,
+		fmt.Sprintf("academic-use-existing-list  %t", settings.Calendar.UseExistingList),
+		"timetable-name  " + settings.Calendar.TimetableName,
+		fmt.Sprintf("timetable-use-existing-list  %t", settings.Calendar.TimetableUseExistingList),
 	}) + "\n" + renderSection("Download", []string{
 		"dir  " + settings.Download.Dir,
 		fmt.Sprintf("concurrency  %d", settings.Download.Concurrency),

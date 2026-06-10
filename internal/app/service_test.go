@@ -205,6 +205,9 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	if _, err := service.SetConfigValue("calendar.name", "시간표"); err != nil {
 		t.Fatalf("SetConfigValue(calendar.name) error = %v", err)
 	}
+	if _, err := service.SetConfigValue("timetable-calendar.name", "수업시간표"); err != nil {
+		t.Fatalf("SetConfigValue(timetable-calendar.name) error = %v", err)
+	}
 	if _, err := service.SetConfigValue("reminder.alarm-before-min", "60"); err != nil {
 		t.Fatalf("SetConfigValue(reminder.alarm-before-min) error = %v", err)
 	}
@@ -231,8 +234,11 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	if got.Reminder.AlarmBeforeMin != 24*60 {
 		t.Fatalf("Reminder.AlarmBeforeMin = %d", got.Reminder.AlarmBeforeMin)
 	}
-	if got.Calendar.Name != settings.DefaultReminderListName {
+	if got.Calendar.Name != settings.DefaultAcademicCalendarName {
 		t.Fatalf("Calendar.Name = %q", got.Calendar.Name)
+	}
+	if got.Calendar.TimetableName != settings.DefaultTimetableCalendarName {
+		t.Fatalf("Calendar.TimetableName = %q", got.Calendar.TimetableName)
 	}
 	if got.Download.Dir != settings.DefaultDownloadDir() || got.Download.Concurrency != settings.DefaultDownloadConcurrency {
 		t.Fatalf("Download = %+v", got.Download)
@@ -511,6 +517,21 @@ func TestAcademicEventRangeParsesMultiDayEvent(t *testing.T) {
 	}
 	if endAt.Year() != 2026 || endAt.Month() != time.June || endAt.Day() != 27 {
 		t.Fatalf("endAt = %s", endAt)
+	}
+}
+
+func TestTimetablePeriodRangeUsesKwangwoonSlots(t *testing.T) {
+	start, end, ok := timetablePeriodRange(1, 1)
+	if !ok || start.Hour() != 9 || start.Minute() != 0 || end.Hour() != 10 || end.Minute() != 15 {
+		t.Fatalf("period 1 = %02d:%02d-%02d:%02d ok=%t", start.Hour(), start.Minute(), end.Hour(), end.Minute(), ok)
+	}
+	start, end, ok = timetablePeriodRange(8, 1)
+	if !ok || start.Hour() != 18 || start.Minute() != 50 || end.Hour() != 19 || end.Minute() != 35 {
+		t.Fatalf("period 8 = %02d:%02d-%02d:%02d ok=%t", start.Hour(), start.Minute(), end.Hour(), end.Minute(), ok)
+	}
+	start, end, ok = timetablePeriodRange(5, 4)
+	if !ok || start.Hour() != 15 || start.Minute() != 0 || end.Hour() != 18 || end.Minute() != 50 {
+		t.Fatalf("period 5 span 4 = %02d:%02d-%02d:%02d ok=%t", start.Hour(), start.Minute(), end.Hour(), end.Minute(), ok)
 	}
 }
 

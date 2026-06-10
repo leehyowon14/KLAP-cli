@@ -520,8 +520,10 @@ type ReminderSettings struct {
 }
 
 type CalendarSettings struct {
-	Name            string
-	UseExistingList bool
+	Name                     string
+	UseExistingList          bool
+	TimetableName            string
+	TimetableUseExistingList bool
 }
 
 type CategoryOptions struct {
@@ -647,6 +649,10 @@ func (s *Service) SetReminderConfig(name string, useExistingList bool) (Reminder
 }
 
 func (s *Service) SetCalendarConfig(name string, useExistingList bool) (CalendarSettings, error) {
+	return s.SetAcademicCalendarConfig(name, useExistingList)
+}
+
+func (s *Service) SetAcademicCalendarConfig(name string, useExistingList bool) (CalendarSettings, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return CalendarSettings{}, errors.New("캘린더 이름은 비워둘 수 없습니다")
@@ -655,15 +661,29 @@ func (s *Service) SetCalendarConfig(name string, useExistingList bool) (Calendar
 	if err != nil {
 		return CalendarSettings{}, err
 	}
-	current.Calendar.Name = name
-	current.Calendar.UseExistingList = useExistingList
+	current.Calendar.AcademicName = name
+	current.Calendar.AcademicUseExistingList = useExistingList
 	if err := s.saveSettings(current); err != nil {
 		return CalendarSettings{}, err
 	}
-	return CalendarSettings{
-		Name:            current.Calendar.Name,
-		UseExistingList: current.Calendar.UseExistingList,
-	}, nil
+	return calendarSettingsFrom(current), nil
+}
+
+func (s *Service) SetTimetableCalendarConfig(name string, useExistingList bool) (CalendarSettings, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return CalendarSettings{}, errors.New("시간표 캘린더 이름은 비워둘 수 없습니다")
+	}
+	current, err := s.loadSettings()
+	if err != nil {
+		return CalendarSettings{}, err
+	}
+	current.Calendar.TimetableName = name
+	current.Calendar.TimetableUseExistingList = useExistingList
+	if err := s.saveSettings(current); err != nil {
+		return CalendarSettings{}, err
+	}
+	return calendarSettingsFrom(current), nil
 }
 
 func (s *Service) DownloadSettings() (DownloadSettings, error) {
@@ -693,6 +713,16 @@ func downloadSettingsFrom(current settings.Settings) DownloadSettings {
 
 func transcriptSettingsFrom(current settings.Settings) TranscriptSettings {
 	return TranscriptSettings{Concurrency: current.Transcript.Concurrency}
+}
+
+func calendarSettingsFrom(current settings.Settings) CalendarSettings {
+	current.Normalize()
+	return CalendarSettings{
+		Name:                     current.Calendar.AcademicName,
+		UseExistingList:          current.Calendar.AcademicUseExistingList,
+		TimetableName:            current.Calendar.TimetableName,
+		TimetableUseExistingList: current.Calendar.TimetableUseExistingList,
+	}
 }
 
 func (s *Service) SetDownloadDir(dir string) (DownloadSettings, error) {
@@ -760,10 +790,7 @@ func (s *Service) ConfigSettings() (ConfigSettings, error) {
 			UseExistingList: current.Reminder.UseExistingList,
 			AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 		},
-		Calendar: CalendarSettings{
-			Name:            current.Calendar.Name,
-			UseExistingList: current.Calendar.UseExistingList,
-		},
+		Calendar:   calendarSettingsFrom(current),
 		Download:   downloadSettingsFrom(current),
 		Transcript: transcriptSettingsFrom(current),
 		Term:       TermSettings{Value: current.Term.Value, Label: termLabel(current.Term.Value)},
@@ -779,12 +806,12 @@ func (s *Service) CategoryOptions() (CategoryOptions, error) {
 	if err != nil {
 		return CategoryOptions{
 			Reminders: uniqueNonEmpty(current.Reminder.ListName, settings.DefaultReminderListName),
-			Calendars: uniqueNonEmpty(current.Calendar.Name, settings.DefaultReminderListName),
+			Calendars: uniqueNonEmpty(current.Calendar.AcademicName, current.Calendar.TimetableName, settings.DefaultAcademicCalendarName, settings.DefaultTimetableCalendarName),
 		}, nil
 	}
 	return CategoryOptions{
 		Reminders: uniqueNonEmpty(append([]string{current.Reminder.ListName}, options.Reminders...)...),
-		Calendars: uniqueNonEmpty(append([]string{current.Calendar.Name}, options.Calendars...)...),
+		Calendars: uniqueNonEmpty(append([]string{current.Calendar.AcademicName, current.Calendar.TimetableName}, options.Calendars...)...),
 	}, nil
 }
 
@@ -827,13 +854,35 @@ func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, erro
 		if value == "" {
 			return ConfigSettings{}, errors.New("캘린더 이름은 비워둘 수 없습니다")
 		}
-		current.Calendar.Name = value
+		current.Calendar.AcademicName = value
 	case "calendar.use-existing-list":
 		parsed, err := parseConfigBool(value)
 		if err != nil {
 			return ConfigSettings{}, err
 		}
-		current.Calendar.UseExistingList = parsed
+		current.Calendar.AcademicUseExistingList = parsed
+	case "calendar.academic.name", "academic-calendar.name", "academic-calendar.list":
+		if value == "" {
+			return ConfigSettings{}, errors.New("학사일정 캘린더 이름은 비워둘 수 없습니다")
+		}
+		current.Calendar.AcademicName = value
+	case "calendar.academic.use-existing-list", "academic-calendar.use-existing-list":
+		parsed, err := parseConfigBool(value)
+		if err != nil {
+			return ConfigSettings{}, err
+		}
+		current.Calendar.AcademicUseExistingList = parsed
+	case "calendar.timetable.name", "timetable-calendar.name", "timetable-calendar.list":
+		if value == "" {
+			return ConfigSettings{}, errors.New("시간표 캘린더 이름은 비워둘 수 없습니다")
+		}
+		current.Calendar.TimetableName = value
+	case "calendar.timetable.use-existing-list", "timetable-calendar.use-existing-list":
+		parsed, err := parseConfigBool(value)
+		if err != nil {
+			return ConfigSettings{}, err
+		}
+		current.Calendar.TimetableUseExistingList = parsed
 	case "download.dir", "download.path":
 		if value == "" {
 			return ConfigSettings{}, errors.New("다운로드 폴더 경로가 필요합니다")
@@ -3101,6 +3150,61 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOpt
 	return CalendarSyncResult{Result: syncResult, EligibleCount: len(events)}, nil
 }
 
+func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableOptions) (CalendarSyncResult, error) {
+	currentSettings, err := s.loadSettings()
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+	result, err := s.Timetable(ctx, opts)
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+	startAt, endAt := timetableTermRange(result.Term.Value)
+	if academic, academicErr := s.AcademicList(ctx, AcademicListOptions{Year: timetableTermYear(result.Term.Value), Refresh: opts.Refresh}); academicErr == nil {
+		startAt, endAt = timetableTermRangeFromAcademic(result.Term.Value, academic.Events, startAt, endAt)
+	}
+
+	events := make([]klapcalendar.Event, 0, len(result.Entries))
+	for _, entry := range result.Entries {
+		if entry.Online || strings.TrimSpace(entry.Room) == "" {
+			continue
+		}
+		startClock, endClock, ok := timetablePeriodRange(entry.Period, entry.Span)
+		if !ok {
+			continue
+		}
+		firstDay := firstWeekdayOnOrAfter(startAt, entry.Weekday)
+		eventStart := time.Date(firstDay.Year(), firstDay.Month(), firstDay.Day(), startClock.Hour(), startClock.Minute(), 0, 0, time.Local)
+		eventEnd := time.Date(firstDay.Year(), firstDay.Month(), firstDay.Day(), endClock.Hour(), endClock.Minute(), 0, 0, time.Local)
+		if !eventEnd.After(eventStart) {
+			continue
+		}
+		events = append(events, klapcalendar.Event{
+			ID:            timetableCalendarEventID(result.Term.Value, entry),
+			Title:         entry.SubjectName,
+			StartAt:       eventStart,
+			EndAt:         eventEnd,
+			AllDay:        false,
+			Notes:         buildTimetableCalendarNotes(result.Term.Value, entry),
+			Recurrence:    "weekly",
+			RecurrenceEnd: &endAt,
+		})
+	}
+	if len(events) == 0 {
+		return CalendarSyncResult{}, nil
+	}
+
+	syncResult, err := klapcalendar.NewMacOSBridge(s.calendarBridgePath).Sync(klapcalendar.SyncRequest{
+		CalendarName:    currentSettings.Calendar.TimetableName,
+		UseExistingList: currentSettings.Calendar.TimetableUseExistingList,
+		Events:          events,
+	})
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+	return CalendarSyncResult{Result: syncResult, EligibleCount: len(events)}, nil
+}
+
 func (s *Service) loadSettings() (settings.Settings, error) {
 	if s.settingsStore == nil {
 		return settings.Default(), nil
@@ -3276,6 +3380,51 @@ func academicEventID(event AcademicEvent) string {
 		parts[index] = strings.TrimSpace(part)
 	}
 	return "academic:" + strings.Join(parts, ":")
+}
+
+func buildTimetableCalendarNotes(termValue string, entry klas.TimetableEntry) string {
+	var builder strings.Builder
+	builder.WriteString("--- KLAP ---\n\n")
+	builder.WriteString("ID: ")
+	builder.WriteString(timetableCalendarEventID(termValue, entry))
+	builder.WriteString("\n")
+	builder.WriteString("학기: ")
+	builder.WriteString(termLabel(termValue))
+	builder.WriteString("\n")
+	builder.WriteString("과목: ")
+	builder.WriteString(entry.SubjectName)
+	builder.WriteString("\n")
+	builder.WriteString("교시: ")
+	builder.WriteString(fmt.Sprintf("%s %d교시", RoomWeekdayLabel(entry.Weekday), entry.Period))
+	if entry.Span > 1 {
+		builder.WriteString(fmt.Sprintf(" (%d교시 연강)", entry.Span))
+	}
+	builder.WriteString("\n")
+	if strings.TrimSpace(entry.Room) != "" {
+		builder.WriteString("강의실: ")
+		builder.WriteString(entry.Room)
+		builder.WriteString("\n")
+	}
+	if strings.TrimSpace(entry.Professor) != "" {
+		builder.WriteString("교수: ")
+		builder.WriteString(entry.Professor)
+		builder.WriteString("\n")
+	}
+	builder.WriteString("[This calendar event is created by KLAP.]")
+	return builder.String()
+}
+
+func timetableCalendarEventID(termValue string, entry klas.TimetableEntry) string {
+	parts := []string{
+		"timetable",
+		strings.TrimSpace(termValue),
+		strings.TrimSpace(entry.SubjectID),
+		strconv.Itoa(entry.Weekday),
+		strconv.Itoa(entry.Period),
+		strconv.Itoa(entry.Span),
+		strings.TrimSpace(entry.Room),
+	}
+	return strings.Join(compactNonEmpty(parts), ":")
 }
 
 func reminderHashtags(termValue string, courseName string) string {
@@ -3860,6 +4009,149 @@ func academicEventRange(event AcademicEvent) (time.Time, time.Time, bool) {
 	return startAt, endAt.AddDate(0, 0, 1), true
 }
 
+type dayClock struct {
+	hour   int
+	minute int
+}
+
+func (c dayClock) Hour() int {
+	return c.hour
+}
+
+func (c dayClock) Minute() int {
+	return c.minute
+}
+
+var timetableSinglePeriodTimes = map[int][2]dayClock{
+	0:  {dayClock{8, 0}, dayClock{10, 45}},
+	1:  {dayClock{9, 0}, dayClock{10, 15}},
+	2:  {dayClock{10, 30}, dayClock{11, 45}},
+	3:  {dayClock{12, 0}, dayClock{13, 15}},
+	4:  {dayClock{13, 30}, dayClock{14, 45}},
+	5:  {dayClock{15, 0}, dayClock{16, 15}},
+	6:  {dayClock{16, 30}, dayClock{17, 45}},
+	7:  {dayClock{18, 0}, dayClock{18, 45}},
+	8:  {dayClock{18, 50}, dayClock{19, 35}},
+	9:  {dayClock{19, 40}, dayClock{20, 25}},
+	10: {dayClock{20, 30}, dayClock{21, 15}},
+	11: {dayClock{21, 20}, dayClock{22, 5}},
+}
+
+var timetableConsecutiveTimes = map[int]map[int][2]dayClock{
+	2: {
+		0: {dayClock{8, 0}, dayClock{9, 50}},
+		1: {dayClock{9, 0}, dayClock{10, 50}},
+		3: {dayClock{12, 0}, dayClock{13, 50}},
+		5: {dayClock{15, 0}, dayClock{16, 50}},
+	},
+	3: {
+		0: {dayClock{8, 0}, dayClock{10, 45}},
+		6: {dayClock{16, 30}, dayClock{19, 15}},
+	},
+	4: {
+		0: {dayClock{8, 0}, dayClock{11, 50}},
+		5: {dayClock{15, 0}, dayClock{18, 50}},
+	},
+}
+
+func timetablePeriodRange(period int, span int) (dayClock, dayClock, bool) {
+	if span <= 1 {
+		times, ok := timetableSinglePeriodTimes[period]
+		return times[0], times[1], ok
+	}
+	if byPeriod, ok := timetableConsecutiveTimes[span]; ok {
+		if times, ok := byPeriod[period]; ok {
+			return times[0], times[1], true
+		}
+	}
+	start, ok := timetableSinglePeriodTimes[period]
+	if !ok {
+		return dayClock{}, dayClock{}, false
+	}
+	end, ok := timetableSinglePeriodTimes[period+span-1]
+	if !ok {
+		return dayClock{}, dayClock{}, false
+	}
+	return start[0], end[1], true
+}
+
+func timetableTermYear(termValue string) string {
+	parts := strings.FieldsFunc(strings.TrimSpace(termValue), func(r rune) bool { return r == ',' || r == '-' })
+	if len(parts) == 0 {
+		return time.Now().Format("2006")
+	}
+	return parts[0]
+}
+
+func timetableTermRange(termValue string) (time.Time, time.Time) {
+	year, _ := strconv.Atoi(timetableTermYear(termValue))
+	if year <= 0 {
+		year = time.Now().Year()
+	}
+	semester := "1"
+	parts := strings.FieldsFunc(strings.TrimSpace(termValue), func(r rune) bool { return r == ',' || r == '-' })
+	if len(parts) > 1 {
+		semester = strings.TrimSpace(parts[1])
+	}
+	switch semester {
+	case "2":
+		return time.Date(year, time.September, 1, 0, 0, 0, 0, time.Local), time.Date(year, time.December, 31, 23, 59, 59, 0, time.Local)
+	case "3":
+		return time.Date(year, time.June, 22, 0, 0, 0, 0, time.Local), time.Date(year, time.August, 31, 23, 59, 59, 0, time.Local)
+	case "4":
+		return time.Date(year, time.December, 22, 0, 0, 0, 0, time.Local), time.Date(year+1, time.February, 28, 23, 59, 59, 0, time.Local)
+	default:
+		return time.Date(year, time.March, 1, 0, 0, 0, 0, time.Local), time.Date(year, time.June, 30, 23, 59, 59, 0, time.Local)
+	}
+}
+
+func timetableTermRangeFromAcademic(termValue string, events []AcademicEvent, fallbackStart time.Time, fallbackEnd time.Time) (time.Time, time.Time) {
+	start := fallbackStart
+	end := fallbackEnd
+	startMonth, endMonth := timetableTermMonths(termValue)
+	for _, event := range events {
+		eventStart, eventEnd, ok := academicEventRange(event)
+		if !ok {
+			continue
+		}
+		title := strings.TrimSpace(event.Title)
+		if strings.Contains(title, "개강") && int(eventStart.Month()) == startMonth {
+			start = eventStart
+		}
+		if strings.Contains(title, "종강") && int(eventStart.Month()) == endMonth {
+			end = eventEnd.Add(-time.Second)
+		}
+	}
+	if end.Before(start) {
+		return fallbackStart, fallbackEnd
+	}
+	return start, end
+}
+
+func timetableTermMonths(termValue string) (int, int) {
+	parts := strings.FieldsFunc(strings.TrimSpace(termValue), func(r rune) bool { return r == ',' || r == '-' })
+	if len(parts) > 1 {
+		switch strings.TrimSpace(parts[1]) {
+		case "2":
+			return 9, 12
+		case "3":
+			return 6, 8
+		case "4":
+			return 12, 2
+		}
+	}
+	return 3, 6
+}
+
+func firstWeekdayOnOrAfter(startAt time.Time, weekday int) time.Time {
+	target := time.Weekday(weekday % 7)
+	for day := startAt; ; day = day.AddDate(0, 0, 1) {
+		if day.Weekday() == target {
+			return day
+		}
+	}
+}
+
 func parseConfigBool(value string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "true", "t", "1", "yes", "y", "on":
@@ -3914,6 +4206,17 @@ func uniqueNonEmpty(values ...string) []string {
 		}
 		seen[value] = struct{}{}
 		result = append(result, value)
+	}
+	return result
+}
+
+func compactNonEmpty(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
 	}
 	return result
 }
