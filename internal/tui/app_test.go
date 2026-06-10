@@ -432,6 +432,20 @@ func TestWrapHelpKeepsTrailingCommands(t *testing.T) {
 	}
 }
 
+func TestHeaderRendersSingleLineWithoutTUI(t *testing.T) {
+	m := model{active: screenDashboard}
+	header := m.renderHeader(48)
+	if strings.Contains(header, "\n") || strings.Contains(header, "tui") {
+		t.Fatalf("renderHeader() = %q", header)
+	}
+	if !strings.Contains(header, "KLAP") || !strings.Contains(header, "Dashboard") {
+		t.Fatalf("renderHeader() missing labels: %q", header)
+	}
+	if lipgloss.Width(header) > 48 {
+		t.Fatalf("renderHeader() width = %d: %q", lipgloss.Width(header), header)
+	}
+}
+
 func TestSyncPanelHidesDashboardStatus(t *testing.T) {
 	m := model{
 		active:     screenDashboard,

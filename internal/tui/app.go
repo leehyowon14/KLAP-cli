@@ -2142,12 +2142,30 @@ func wrapHelp(help string, width int) string {
 }
 
 func (m model) renderHeader(width int) string {
-	title := headerStyle.Render("KLAP") + mutedStyle.Render(" tui")
+	if width <= 0 {
+		width = 96
+	}
+	title := headerStyle.Render("KLAP")
 	subtitle := screenTitle(m.active)
 	if !m.loadedAt.IsZero() && !m.loading && m.active != screenHome {
 		subtitle += " · " + m.loadedAt.Format("15:04:05")
 	}
-	return title + "\n" + headerMetaStyle.Render(subtitle)
+	titleWidth := lipgloss.Width("KLAP")
+	gap := 2
+	available := width - titleWidth - gap
+	if available < 0 {
+		available = 0
+	}
+	if available > 0 {
+		subtitle = truncateText(subtitle, available)
+	} else {
+		subtitle = ""
+	}
+	if strings.TrimSpace(subtitle) == "" {
+		return title
+	}
+	spacer := strings.Repeat(" ", maxInt(1, width-titleWidth-lipgloss.Width(subtitle)))
+	return title + spacer + headerMetaStyle.Render(subtitle)
 }
 
 func (m model) renderHomeView(width int) string {
