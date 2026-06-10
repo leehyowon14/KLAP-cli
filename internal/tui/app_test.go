@@ -206,6 +206,65 @@ func TestCoursePagedRenderShowsCurrentCourseOnly(t *testing.T) {
 	}
 }
 
+func TestCoursePagedSelectionUsesCurrentCourseAndCursor(t *testing.T) {
+	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	m := model{
+		active:        screenAssignments,
+		width:         96,
+		contentCourse: 1,
+		contentCursor: 1,
+		assignmentRows: []app.AssignmentRow{
+			{ID: "1:1", CourseName: "컴퓨터그래픽스", Assignment: klas.Assignment{Title: "과제1", DueAt: &due}},
+			{ID: "2:1", CourseName: "오픈소스소프트웨어실습", Assignment: klas.Assignment{Title: "과제A", DueAt: &due}},
+			{ID: "2:2", CourseName: "오픈소스소프트웨어실습", Assignment: klas.Assignment{Title: "과제B", DueAt: &due}},
+		},
+	}
+
+	row, ok := m.selectedAssignmentRow()
+	if !ok || row.ID != "2:2" {
+		t.Fatalf("selectedAssignmentRow() = %+v, %t", row, ok)
+	}
+}
+
+func TestKlasShortcutDoesNotMoveListCursor(t *testing.T) {
+	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	m := model{
+		active:        screenAssignments,
+		width:         96,
+		contentCursor: 1,
+		assignmentRows: []app.AssignmentRow{
+			{ID: "1:1", CourseName: "컴퓨터그래픽스", DetailURL: "https://klas.example/1", Assignment: klas.Assignment{Title: "과제1", DueAt: &due}},
+			{ID: "1:2", CourseName: "컴퓨터그래픽스", DetailURL: "https://klas.example/2", Assignment: klas.Assignment{Title: "과제2", DueAt: &due}},
+		},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	got := updated.(model)
+	if got.contentCursor != 1 {
+		t.Fatalf("contentCursor after k = %d, want 1", got.contentCursor)
+	}
+}
+
+func TestDetailLinesIncludeKlasURLAndBody(t *testing.T) {
+	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	lines := assignmentDetailLines(app.AssignmentDetailResult{
+		ID:         "7:1",
+		CourseName: "오픈소스소프트웨어실습",
+		DetailURL:  "https://klas.kw.ac.kr/assignment",
+		Detail: klas.AssignmentDetail{
+			Title:       "기말고사 대체 과제",
+			ContentText: "GitHub repository 주소",
+			DueAt:       &due,
+		},
+	}, 96)
+	view := strings.Join(lines, "\n")
+	for _, want := range []string{"기말고사 대체 과제", "오픈소스소프트웨어실습", "https://klas.kw.ac.kr/assignment", "GitHub repository 주소"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("assignmentDetailLines() missing %q: %q", want, view)
+		}
+	}
+}
+
 func TestNoticeContentGroupsMarksPinnedNotices(t *testing.T) {
 	registered := time.Date(2026, 6, 1, 10, 0, 0, 0, time.Local)
 	groups := noticeContentGroups([]app.NoticeRow{{

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -87,6 +89,8 @@ const (
 	screenAssignments
 	screenNotices
 	screenLectures
+	screenAssignmentDetail
+	screenNoticeDetail
 	screenAcademic
 	screenConfig
 	screenRoomDay
@@ -121,6 +125,10 @@ type model struct {
 	dueCursor           int
 	academicResult      app.AcademicListResult
 	academicMonth       int
+	assignmentDetail    app.AssignmentDetailResult
+	noticeDetail        app.NoticeDetailResult
+	detailBack          screen
+	detailCursor        int
 	contentCourse       int
 	contentCursor       int
 	syncStatus          string
@@ -189,6 +197,13 @@ type downloadRowsMsg struct {
 type syncMsg struct {
 	status string
 	err    error
+}
+
+type detailMsg struct {
+	screen     screen
+	assignment app.AssignmentDetailResult
+	notice     app.NoticeDetailResult
+	err        error
 }
 
 type roomAvailableResultsMsg struct {
@@ -263,15 +278,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 				m.content = ""
 				m.loading = false
+			} else if m.isDetailScreen() {
+				m.active = m.detailBack
+				m.err = nil
+				m.loading = false
+				m.detailCursor = 0
 			} else if m.active != screenHome {
 				m.active = screenHome
 				m.err = nil
 				m.content = ""
 				m.loading = false
 			}
-		case key == "up" || keyMatches(key, "k", "ㅏ"):
+		case key == "up" || (keyMatches(key, "k", "ㅏ") && !m.canOpenKlasURL()):
 			if m.active == screenHome && m.cursor > 0 {
 				m.cursor--
+			} else if m.isDetailScreen() && !m.loading {
+				m.moveDetailCursor(-1)
 			} else if m.active == screenDue && !m.loading {
 				m.moveDueCursor(-1)
 			} else if m.isCoursePagedScreen() && !m.loading {
@@ -280,6 +302,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "down" || keyMatches(key, "j", "ㅓ"):
 			if m.active == screenHome && m.cursor < len(m.menu)-1 {
 				m.cursor++
+			} else if m.isDetailScreen() && !m.loading {
+				m.moveDetailCursor(1)
 			} else if m.active == screenDue && !m.loading {
 				m.moveDueCursor(1)
 			} else if m.isCoursePagedScreen() && !m.loading {
@@ -313,6 +337,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.content = ""
 				return m, m.load(target, false)
 			}
+			if m.active == screenAssignments && !m.loading {
+				return m.openAssignmentDetail()
+			}
+			if m.active == screenNotices && !m.loading {
+				return m.openNoticeDetail()
+			}
 		case keyMatches(key, "r", "ㄱ"):
 			if m.active == screenRoomResult {
 				m.loading = true
@@ -332,6 +362,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loading = true
 				m.err = nil
 				m.syncStatus = "동기화 중..."
+				return m, cmd
+			}
+		case keyMatches(key, "k", "ㅏ"):
+			if cmd := m.openCurrentKlasURL(); cmd != nil {
+				m.syncStatus = "KLAS 원문을 여는 중..."
 				return m, cmd
 			}
 		case m.active == screenConfig && keyMatches(key, "d", "ㅇ"):
@@ -385,6 +420,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.syncStatus = msg.status
 		m.loadedAt = time.Now()
+	case detailMsg:
+		if msg.screen != m.active {
+			return m, nil
+		}
+		m.loading = false
+		m.err = msg.err
+		m.assignmentDetail = msg.assignment
+		m.noticeDetail = msg.notice
+		m.detailCursor = 0
+		m.syncStatus = ""
+		m.loadedAt = time.Now()
 	case downloadRowsMsg:
 		if m.active != screenDownloadSelect {
 			return m, nil
@@ -414,6 +460,168 @@ func keyMatches(value string, keys ...string) bool {
 		}
 	}
 	return false
+}
+
+func (m model) isDetailScreen() bool {
+	return m.active == screenAssignmentDetail || m.active == screenNoticeDetail
+}
+
+func (m model) canOpenKlasURL() bool {
+	switch m.active {
+	case screenAssignments, screenNotices, screenLectures, screenAssignmentDetail, screenNoticeDetail:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m model) openAssignmentDetail() (tea.Model, tea.Cmd) {
+	row, ok := m.selectedAssignmentRow()
+	if !ok {
+		m.syncStatus = "선택된 과제가 없습니다"
+		return m, nil
+	}
+	m.active = screenAssignmentDetail
+	m.detailBack = screenAssignments
+	m.loading = true
+	m.err = nil
+	m.syncStatus = ""
+	return m, m.loadAssignmentDetail(row.ID)
+}
+
+func (m model) openNoticeDetail() (tea.Model, tea.Cmd) {
+	row, ok := m.selectedNoticeRow()
+	if !ok {
+		m.syncStatus = "선택된 공지가 없습니다"
+		return m, nil
+	}
+	m.active = screenNoticeDetail
+	m.detailBack = screenNotices
+	m.loading = true
+	m.err = nil
+	m.syncStatus = ""
+	return m, m.loadNoticeDetail(row.ID)
+}
+
+func (m model) loadAssignmentDetail(id string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.service.AssignmentDetail(m.ctx, id, app.UserOption{})
+		return detailMsg{screen: screenAssignmentDetail, assignment: result, err: err}
+	}
+}
+
+func (m model) loadNoticeDetail(id string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.service.NoticeDetail(m.ctx, id, app.UserOption{})
+		return detailMsg{screen: screenNoticeDetail, notice: result, err: err}
+	}
+}
+
+func (m model) openCurrentKlasURL() tea.Cmd {
+	url := ""
+	switch m.active {
+	case screenAssignments:
+		if row, ok := m.selectedAssignmentRow(); ok {
+			url = row.DetailURL
+		}
+	case screenNotices:
+		if row, ok := m.selectedNoticeRow(); ok {
+			url = row.DetailURL
+		}
+	case screenLectures:
+		if row, ok := m.selectedLectureRow(); ok {
+			if strings.TrimSpace(row.Lecture.PlayURL) == "" {
+				id := row.ID
+				return func() tea.Msg {
+					result, err := m.service.LectureOpenURL(m.ctx, id, app.UserOption{})
+					if err != nil {
+						return syncMsg{status: "KLAS 원문 열기 실패", err: err}
+					}
+					if err := openExternalURL(result.URL); err != nil {
+						return syncMsg{status: "KLAS 원문 열기 실패", err: err}
+					}
+					return syncMsg{status: "KLAS 원문을 열었습니다"}
+				}
+			}
+			url = row.Lecture.PlayURL
+		}
+	case screenAssignmentDetail:
+		url = m.assignmentDetail.DetailURL
+	case screenNoticeDetail:
+		url = m.noticeDetail.DetailURL
+	}
+	if strings.TrimSpace(url) == "" {
+		return nil
+	}
+	return func() tea.Msg {
+		if err := openExternalURL(url); err != nil {
+			return syncMsg{status: "KLAS 원문 열기 실패", err: err}
+		}
+		return syncMsg{status: "KLAS 원문을 열었습니다"}
+	}
+}
+
+func openExternalURL(target string) error {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return errors.New("열 URL이 없습니다")
+	}
+	var command *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		command = exec.Command("open", target)
+	case "windows":
+		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
+	default:
+		command = exec.Command("xdg-open", target)
+	}
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("KLAS URL 열기 실패: %w", err)
+	}
+	return nil
+}
+
+func (m model) selectedAssignmentRow() (app.AssignmentRow, bool) {
+	group := m.currentContentGroup(m.width)
+	return selectedRowByCourse(m.assignmentRows, group.name, m.contentCursor, func(row app.AssignmentRow) string {
+		return row.CourseName
+	})
+}
+
+func (m model) selectedNoticeRow() (app.NoticeRow, bool) {
+	group := m.currentContentGroup(m.width)
+	return selectedRowByCourse(m.noticeRows, group.name, m.contentCursor, func(row app.NoticeRow) string {
+		return row.CourseName
+	})
+}
+
+func (m model) selectedLectureRow() (app.LectureRow, bool) {
+	group := m.currentContentGroup(m.width)
+	return selectedRowByCourse(m.lectureRows, group.name, m.contentCursor, func(row app.LectureRow) string {
+		return row.CourseName
+	})
+}
+
+func selectedRowByCourse[T any](rows []T, courseName string, cursor int, course func(T) string) (T, bool) {
+	var zero T
+	if strings.TrimSpace(courseName) == "" || cursor < 0 {
+		return zero, false
+	}
+	seen := 0
+	for _, row := range rows {
+		name := strings.TrimSpace(course(row))
+		if name == "" {
+			name = "과목 확인 필요"
+		}
+		if name != courseName {
+			continue
+		}
+		if seen == cursor {
+			return row, true
+		}
+		seen++
+	}
+	return zero, false
 }
 
 func (m model) syncCurrentScreen() tea.Cmd {
@@ -1098,6 +1306,21 @@ func (m *model) moveContentCursor(delta int) {
 	}
 }
 
+func (m *model) moveDetailCursor(delta int) {
+	lines := m.detailLines(m.width)
+	if len(lines) == 0 {
+		m.detailCursor = 0
+		return
+	}
+	m.detailCursor += delta
+	if m.detailCursor < 0 {
+		m.detailCursor = len(lines) - 1
+	}
+	if m.detailCursor >= len(lines) {
+		m.detailCursor = 0
+	}
+}
+
 var duePageLabels = []string{"Summary", "과제", "온라인 강의", "학사일정"}
 
 func (m *model) moveDuePage(delta int) {
@@ -1416,12 +1639,18 @@ func (m model) footerHelp() string {
 	if m.active == screenAcademic {
 		return "←→ 월 이동  s sync  b/esc 뒤로  r 새로고침  q 종료"
 	}
+	if m.isDetailScreen() {
+		return "↑↓ 스크롤  k KLAS  b/esc 목록  q 종료"
+	}
 	if m.active == screenLectures {
-		return "←→ 과목  ↑↓ 스크롤  d 다운로드  s sync  b/esc 뒤로  r 새로고침  q 종료"
+		return "←→ 과목  ↑↓ 스크롤  k KLAS  d 다운로드  s sync  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.isCoursePagedScreen() {
 		if m.active == screenAssignments {
-			return "←→ 과목  ↑↓ 스크롤  s sync  b/esc 뒤로  r 새로고침  q 종료"
+			return "←→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  s sync  b/esc 뒤로  r 새로고침  q 종료"
+		}
+		if m.active == screenNotices {
+			return "←→ 과목  ↑↓ 스크롤  enter 상세  k KLAS  b/esc 뒤로  r 새로고침  q 종료"
 		}
 		return "←→ 과목  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
 	}
@@ -1745,6 +1974,10 @@ func (m model) renderPanel(width int) string {
 		b.WriteString(m.renderDuePagedPanel(width))
 		return b.String()
 	}
+	if m.isDetailScreen() {
+		b.WriteString(m.renderDetailPanel(width))
+		return b.String()
+	}
 	if m.active == screenAcademic {
 		b.WriteString(m.renderAcademicCalendarPanel(width))
 		return b.String()
@@ -1856,6 +2089,158 @@ func (m model) renderCoursePagedPanel(width int) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+func (m model) renderDetailPanel(width int) string {
+	lines := m.detailLines(width)
+	if len(lines) == 0 {
+		return emptyStyle.Render("상세 정보가 없습니다") + "\n"
+	}
+	visibleRows := maxInt(5, m.height-10)
+	if m.height <= 0 {
+		visibleRows = 18
+	}
+	if visibleRows > len(lines) {
+		visibleRows = len(lines)
+	}
+	cursor := m.detailCursor
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= len(lines) {
+		cursor = len(lines) - 1
+	}
+	start := cursor - visibleRows/2
+	if start < 0 {
+		start = 0
+	}
+	if start+visibleRows > len(lines) {
+		start = maxInt(0, len(lines)-visibleRows)
+	}
+	end := start + visibleRows
+
+	var b strings.Builder
+	for index := start; index < end; index++ {
+		b.WriteString(lines[index])
+		b.WriteString("\n")
+	}
+	if start > 0 || end < len(lines) {
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(lines))))
+		b.WriteString("\n")
+	}
+	if m.syncStatus != "" {
+		b.WriteString("\n")
+		b.WriteString(footerStyle.Render(m.syncStatus))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func (m model) detailLines(width int) []string {
+	switch m.active {
+	case screenAssignmentDetail:
+		return assignmentDetailLines(m.assignmentDetail, width)
+	case screenNoticeDetail:
+		return noticeDetailLines(m.noticeDetail, width)
+	default:
+		return nil
+	}
+}
+
+func assignmentDetailLines(result app.AssignmentDetailResult, width int) []string {
+	if strings.TrimSpace(result.ID) == "" {
+		return nil
+	}
+	detail := result.Detail
+	status := "미제출"
+	if detail.Submitted {
+		status = "제출"
+	}
+	lines := []string{
+		sectionStyle.Render(detail.Title),
+		mutedStyle.Render(result.CourseName),
+		"",
+		"마감  " + formatTime(detail.DueAt),
+		"상태  " + status,
+	}
+	if detail.ReportType != "" {
+		lines = append(lines, "제출 방식  "+detail.ReportType)
+	}
+	if detail.SubmitFileType != "" {
+		lines = append(lines, "파일 형식  "+detail.SubmitFileType)
+	}
+	if detail.FileLimitMB != "" {
+		lines = append(lines, "파일 제한  "+detail.FileLimitMB+"MB")
+	}
+	lines = append(lines, "", mutedStyle.Render("KLAS  "+result.DetailURL))
+	if strings.TrimSpace(detail.ContentText) != "" {
+		lines = append(lines, "", sectionStyle.Render("본문"))
+		lines = appendWrappedLines(lines, detail.ContentText, width)
+	}
+	if strings.TrimSpace(detail.SubmittedTitle+detail.SubmittedText) != "" {
+		lines = append(lines, "", sectionStyle.Render("내 제출"))
+		if detail.SubmittedTitle != "" {
+			lines = append(lines, "제목  "+detail.SubmittedTitle)
+		}
+		lines = appendWrappedLines(lines, detail.SubmittedText, width)
+	}
+	if detail.FinalScore != "" && detail.FinalScore != "<nil>" {
+		lines = append(lines, "", "점수  "+detail.FinalScore)
+	}
+	if strings.TrimSpace(detail.TutorText) != "" {
+		lines = append(lines, "", sectionStyle.Render("피드백"))
+		lines = appendWrappedLines(lines, detail.TutorText, width)
+	}
+	return lines
+}
+
+func noticeDetailLines(result app.NoticeDetailResult, width int) []string {
+	if strings.TrimSpace(result.ID) == "" {
+		return nil
+	}
+	detail := result.Detail
+	lines := []string{
+		sectionStyle.Render(detail.Title),
+		mutedStyle.Render(result.CourseName),
+		"",
+		"작성일  " + formatTime(detail.Registered),
+	}
+	if detail.Author != "" {
+		lines = append(lines, "작성자  "+detail.Author)
+	}
+	if detail.Top {
+		lines = append(lines, "중요  예")
+	}
+	if detail.ReadCount != "" {
+		lines = append(lines, "조회수  "+detail.ReadCount)
+	}
+	if detail.Attachment != "" {
+		lines = append(lines, "첨부 묶음  "+detail.Attachment)
+	}
+	lines = append(lines, "", mutedStyle.Render("KLAS  "+result.DetailURL))
+	if strings.TrimSpace(detail.ContentText) != "" {
+		lines = append(lines, "", sectionStyle.Render("본문"))
+		lines = appendWrappedLines(lines, detail.ContentText, width)
+	}
+	return lines
+}
+
+func appendWrappedLines(lines []string, text string, width int) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return lines
+	}
+	wrapWidth := maxInt(24, minInt(100, width-6))
+	for _, paragraph := range strings.Split(text, "\n") {
+		paragraph = strings.TrimSpace(paragraph)
+		if paragraph == "" {
+			lines = append(lines, "")
+			continue
+		}
+		rendered := lipgloss.NewStyle().Width(wrapWidth).Render(paragraph)
+		lines = append(lines, strings.Split(rendered, "\n")...)
+	}
+	return lines
 }
 
 func (m model) renderDuePagedPanel(width int) string {
@@ -2153,6 +2538,10 @@ func screenTitle(value screen) string {
 		return "Notices"
 	case screenLectures:
 		return "Lectures"
+	case screenAssignmentDetail:
+		return "Assignment"
+	case screenNoticeDetail:
+		return "Notice"
 	case screenAcademic:
 		return "Academic"
 	case screenConfig:
@@ -2184,6 +2573,10 @@ func screenSubtitle(value screen) string {
 		return "최근 강의 공지"
 	case screenLectures:
 		return "온라인 강의와 학습활동 상태"
+	case screenAssignmentDetail:
+		return "과제 상세"
+	case screenNoticeDetail:
+		return "공지 상세"
 	case screenAcademic:
 		return "학사일정 달력"
 	case screenConfig:
