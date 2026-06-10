@@ -121,6 +121,9 @@ type model struct {
 	cursor              int
 	active              screen
 	loading             bool
+	loadedScreens       map[screen]bool
+	loadingScreens      map[screen]bool
+	screenErrors        map[screen]error
 	err                 error
 	content             string
 	dashboardResult     app.DashboardResult
@@ -265,9 +268,17 @@ func Run(ctx context.Context, service *app.Service) error {
 	if service == nil {
 		return errors.New("TUI service가 없습니다")
 	}
+	prefetchTargets := mainPrefetchScreens()
+	loadingScreens := make(map[screen]bool, len(prefetchTargets))
+	for _, target := range prefetchTargets {
+		loadingScreens[target] = true
+	}
 	initial := model{
-		ctx:     ctx,
-		service: service,
+		ctx:            ctx,
+		service:        service,
+		loadedScreens:  map[screen]bool{},
+		loadingScreens: loadingScreens,
+		screenErrors:   map[screen]error{},
 		menu: []menuItem{
 			{title: "Dashboard", help: "현재 학기 요약", screen: screenDashboard},
 			{title: "Due", help: "다가오는 일정", screen: screenDue},
@@ -284,7 +295,7 @@ func Run(ctx context.Context, service *app.Service) error {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return m.prefetchMainScreens()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -412,11 +423,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if target == screenRoomDay {
 					return m.startRoomFlow()
 				}
-				m.active = target
-				m.loading = true
-				m.err = nil
-				m.content = ""
-				return m, m.load(target, false)
+				return m.enterScreen(target)
 			}
 			if m.active == screenAssignments && !m.loading {
 				return m.openAssignmentDetail()
@@ -439,6 +446,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 				m.content = ""
 				m.syncStatus = ""
+				m.markScreenLoading(m.active)
 				return m, m.load(m.active, true)
 			}
 		case keyMatches(key, "s", "ㄴ"):
@@ -462,41 +470,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadDownloadRows()
 		}
 	case loadMsg:
-		if msg.screen != m.active {
-			return m, nil
-		}
-		m.loading = false
-		m.err = msg.err
-		m.content = msg.content
-		m.dashboardResult = msg.dashboard
-		m.assignmentRows = msg.assignments
-		m.noticeRows = msg.notices
-		m.lectureRows = msg.lectures
-		m.dueResult = msg.due
-		m.academicResult = msg.academic
-		m.configSettings = msg.config
-		m.configOptions = msg.categories
-		if msg.screen == screenDashboard {
-			m.dashboardPage = 0
-			m.dashboardCursor = 0
-		}
-		if msg.screen == screenDue {
-			m.duePage = 0
-			m.dueCursor = 0
-		}
-		if msg.screen == screenAcademic {
-			m.academicMonth = defaultAcademicMonth(msg.academic.Events, time.Now())
-			m.academicCursor = 0
-		}
-		if msg.screen == screenConfig {
-			m.clampConfigCursor()
-		}
-		m.contentCourse = 0
-		m.contentCursor = 0
-		if m.syncPhase == "" {
-			m.syncStatus = ""
-		}
-		m.loadedAt = time.Now()
+		m.applyLoadMsg(msg)
 	case syncMsg:
 		m.loading = false
 		m.active = screenDashboard
@@ -569,6 +543,143 @@ func keyMatches(value string, keys ...string) bool {
 		}
 	}
 	return false
+}
+
+func mainPrefetchScreens() []screen {
+	return []screen{
+		screenDashboard,
+		screenDue,
+		screenAssignments,
+		screenNotices,
+		screenLectures,
+		screenAcademic,
+		screenConfig,
+	}
+}
+
+func (m model) prefetchMainScreens() tea.Cmd {
+	targets := mainPrefetchScreens()
+	cmds := make([]tea.Cmd, 0, len(targets))
+	for _, target := range targets {
+		cmds = append(cmds, m.load(target, false))
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m model) enterScreen(target screen) (tea.Model, tea.Cmd) {
+	m.active = target
+	m.err = nil
+	m.content = ""
+	if m.isScreenLoaded(target) {
+		m.loading = false
+		if err := m.screenError(target); err != nil {
+			m.err = err
+		}
+		return m, nil
+	}
+	m.loading = true
+	if m.isScreenLoading(target) {
+		return m, nil
+	}
+	m.markScreenLoading(target)
+	return m, m.load(target, false)
+}
+
+func (m *model) applyLoadMsg(msg loadMsg) {
+	m.markScreenLoaded(msg.screen, msg.err)
+	switch msg.screen {
+	case screenDashboard:
+		m.dashboardResult = msg.dashboard
+	case screenDue:
+		m.dueResult = msg.due
+	case screenAssignments:
+		m.assignmentRows = msg.assignments
+	case screenNotices:
+		m.noticeRows = msg.notices
+	case screenLectures:
+		m.lectureRows = msg.lectures
+	case screenAcademic:
+		m.academicResult = msg.academic
+	case screenConfig:
+		m.configSettings = msg.config
+		m.configOptions = msg.categories
+	}
+
+	active := msg.screen == m.active
+	if active {
+		m.loading = false
+		m.err = msg.err
+		m.content = msg.content
+		if msg.screen == screenDashboard {
+			m.dashboardPage = 0
+			m.dashboardCursor = 0
+		}
+		if msg.screen == screenDue {
+			m.duePage = 0
+			m.dueCursor = 0
+		}
+		if msg.screen == screenAcademic {
+			m.academicMonth = defaultAcademicMonth(msg.academic.Events, time.Now())
+			m.academicCursor = 0
+		}
+		if msg.screen == screenConfig {
+			m.clampConfigCursor()
+		}
+		m.contentCourse = 0
+		m.contentCursor = 0
+		if m.syncPhase == "" {
+			m.syncStatus = ""
+		}
+		m.loadedAt = time.Now()
+		return
+	}
+
+	if msg.screen == screenAcademic && m.academicMonth == 0 {
+		m.academicMonth = defaultAcademicMonth(msg.academic.Events, time.Now())
+	}
+	if msg.screen == screenConfig {
+		m.clampConfigCursor()
+	}
+	if msg.err == nil {
+		m.loadedAt = time.Now()
+	}
+}
+
+func (m model) isScreenLoaded(target screen) bool {
+	return m.loadedScreens != nil && m.loadedScreens[target]
+}
+
+func (m model) isScreenLoading(target screen) bool {
+	return m.loadingScreens != nil && m.loadingScreens[target]
+}
+
+func (m model) screenError(target screen) error {
+	if m.screenErrors == nil {
+		return nil
+	}
+	return m.screenErrors[target]
+}
+
+func (m *model) markScreenLoading(target screen) {
+	if m.loadingScreens == nil {
+		m.loadingScreens = map[screen]bool{}
+	}
+	m.loadingScreens[target] = true
+}
+
+func (m *model) markScreenLoaded(target screen, err error) {
+	if m.loadingScreens == nil {
+		m.loadingScreens = map[screen]bool{}
+	}
+	if m.loadedScreens == nil {
+		m.loadedScreens = map[screen]bool{}
+	}
+	if m.screenErrors == nil {
+		m.screenErrors = map[screen]error{}
+	}
+	delete(m.loadingScreens, target)
+	m.screenErrors[target] = err
+	m.loadedScreens[target] = err == nil
 }
 
 func (m model) isDetailScreen() bool {
@@ -1026,6 +1137,7 @@ func (m model) updateDownloadSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.active = screenLectures
 		m.loading = true
 		m.err = nil
+		m.markScreenLoading(screenLectures)
 		return m, m.load(screenLectures, false)
 	case m.loading:
 		return m, nil

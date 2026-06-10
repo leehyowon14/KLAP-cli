@@ -46,6 +46,64 @@ func TestHomeViewLinesFitWidth(t *testing.T) {
 	}
 }
 
+func TestEnterScreenUsesPrefetchedData(t *testing.T) {
+	m := model{
+		loadedScreens: map[screen]bool{screenAssignments: true},
+		assignmentRows: []app.AssignmentRow{
+			{ID: "1", CourseName: "오픈소스소프트웨어실습"},
+		},
+	}
+	updated, cmd := m.enterScreen(screenAssignments)
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("enterScreen() returned load command for prefetched screen")
+	}
+	if got.active != screenAssignments || got.loading {
+		t.Fatalf("active=%v loading=%t", got.active, got.loading)
+	}
+	if len(got.assignmentRows) != 1 {
+		t.Fatalf("assignmentRows = %+v", got.assignmentRows)
+	}
+}
+
+func TestEnterScreenShowsLoadingForPendingPrefetch(t *testing.T) {
+	m := model{
+		loadingScreens: map[screen]bool{screenLectures: true},
+	}
+	updated, cmd := m.enterScreen(screenLectures)
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("enterScreen() started duplicate load for pending prefetch")
+	}
+	if got.active != screenLectures || !got.loading {
+		t.Fatalf("active=%v loading=%t", got.active, got.loading)
+	}
+}
+
+func TestInactiveLoadMsgCachesWithoutClobberingOtherScreens(t *testing.T) {
+	m := model{
+		active: screenHome,
+		assignmentRows: []app.AssignmentRow{
+			{ID: "1", CourseName: "컴퓨터그래픽스"},
+		},
+	}
+	m.applyLoadMsg(loadMsg{
+		screen: screenLectures,
+		lectures: []app.LectureRow{
+			{ID: "lecture-1", CourseName: "오픈소스소프트웨어실습"},
+		},
+	})
+	if !m.loadedScreens[screenLectures] || m.loading {
+		t.Fatalf("loadedScreens=%+v loading=%t", m.loadedScreens, m.loading)
+	}
+	if len(m.lectureRows) != 1 {
+		t.Fatalf("lectureRows = %+v", m.lectureRows)
+	}
+	if len(m.assignmentRows) != 1 || m.assignmentRows[0].ID != "1" {
+		t.Fatalf("assignmentRows clobbered: %+v", m.assignmentRows)
+	}
+}
+
 func TestHomeNavigation(t *testing.T) {
 	m := model{
 		ctx: context.Background(),
