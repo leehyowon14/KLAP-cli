@@ -285,20 +285,19 @@ func TestLectureDownloadTranscriptQueueRespectsConcurrency(t *testing.T) {
 	}
 
 	cmds := m.enqueueTranscriptForDownloadProgress(app.LectureDownloadProgress{Lecture: rowA, Path: "a.mp4", Stage: "done"})
-	if len(cmds) != 1 || m.transcriptActive != 1 || len(m.transcriptQueue) != 0 {
-		t.Fatalf("first enqueue cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
+	if len(cmds) != 1 || m.transcriptActive != 0 || len(m.transcriptQueue) != 1 || !m.transcriptStartScheduled {
+		t.Fatalf("first enqueue cmds=%d active=%d queue=%d scheduled=%t", len(cmds), m.transcriptActive, len(m.transcriptQueue), m.transcriptStartScheduled)
 	}
 
 	cmds = m.enqueueTranscriptForDownloadProgress(app.LectureDownloadProgress{Lecture: rowB, Path: "b.mp4", Stage: "done"})
-	if len(cmds) != 0 || m.transcriptActive != 1 || len(m.transcriptQueue) != 1 {
+	if len(cmds) != 0 || m.transcriptActive != 0 || len(m.transcriptQueue) != 2 {
 		t.Fatalf("second enqueue cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
 	}
 
-	delete(m.transcriptRunning, rowA.ID)
-	m.transcriptActive--
+	m.transcriptStartScheduled = false
 	cmds = m.startTranscriptWorkers()
-	if len(cmds) != 1 || m.transcriptActive != 1 || len(m.transcriptQueue) != 0 {
-		t.Fatalf("next worker cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
+	if len(cmds) != 1 || m.transcriptActive != 1 || len(m.transcriptQueue) != 0 || len(m.transcriptRunning) != 2 {
+		t.Fatalf("batch worker cmds=%d active=%d queue=%d running=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue), len(m.transcriptRunning))
 	}
 }
 
@@ -326,8 +325,8 @@ func TestLectureDownloadTranscribesSkippedVideoWhenTranscriptMissing(t *testing.
 		Path:    videoPath,
 		Skipped: true,
 	}}}})
-	if len(cmds) != 1 || m.transcriptActive != 1 {
-		t.Fatalf("missing transcript cmds=%d active=%d", len(cmds), m.transcriptActive)
+	if len(cmds) != 1 || m.transcriptActive != 0 || len(m.transcriptQueue) != 1 {
+		t.Fatalf("missing transcript cmds=%d active=%d queue=%d", len(cmds), m.transcriptActive, len(m.transcriptQueue))
 	}
 	if len(m.items) != 1 || m.items[0].status != "transcribe" || m.items[0].skipped {
 		t.Fatalf("missing transcript status = %+v", m.items)

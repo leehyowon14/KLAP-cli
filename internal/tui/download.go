@@ -28,25 +28,26 @@ type LectureDownloadRequest struct {
 }
 
 type lectureDownloadModel struct {
-	ctx               context.Context
-	cancel            context.CancelFunc
-	service           *app.Service
-	request           LectureDownloadRequest
-	updates           chan tea.Msg
-	width             int
-	height            int
-	startedAt         time.Time
-	items             []downloadStatusLine
-	cursor            int
-	downloadsDone     bool
-	done              bool
-	canceling         bool
-	err               error
-	quitOnDone        bool
-	transcriptStarted map[string]bool
-	transcriptRunning map[string]bool
-	transcriptQueue   []app.LectureDownloadItem
-	transcriptActive  int
+	ctx                      context.Context
+	cancel                   context.CancelFunc
+	service                  *app.Service
+	request                  LectureDownloadRequest
+	updates                  chan tea.Msg
+	width                    int
+	height                   int
+	startedAt                time.Time
+	items                    []downloadStatusLine
+	cursor                   int
+	downloadsDone            bool
+	done                     bool
+	canceling                bool
+	err                      error
+	quitOnDone               bool
+	transcriptStarted        map[string]bool
+	transcriptRunning        map[string]bool
+	transcriptQueue          []app.LectureDownloadItem
+	transcriptActive         int
+	transcriptStartScheduled bool
 }
 
 type downloadStatusLine struct {
@@ -79,9 +80,11 @@ type lectureDownloadDoneMsg struct {
 }
 
 type lectureTranscriptDoneMsg struct {
-	key    string
+	keys   []string
 	result app.LectureTranscriptResult
 }
+
+type lectureTranscriptStartMsg struct{}
 
 func RunLectureDownload(ctx context.Context, service *app.Service, request LectureDownloadRequest) error {
 	if service == nil {
@@ -157,6 +160,13 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case lectureTranscriptProgressMsg:
 		m.upsertTranscriptStatusLine(msg.progress)
 		return m, waitLectureDownloadProgress(m.updates)
+	case lectureTranscriptStartMsg:
+		m.transcriptStartScheduled = false
+		cmds := m.startTranscriptWorkers()
+		if len(cmds) == 0 && len(m.transcriptQueue) > 0 {
+			cmds = m.scheduleTranscriptWorkers()
+		}
+		return m, tea.Batch(cmds...)
 	case lectureDownloadDoneMsg:
 		m.downloadsDone = true
 		m.err = msg.err
@@ -168,7 +178,9 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 	case lectureTranscriptDoneMsg:
-		delete(m.transcriptRunning, msg.key)
+		for _, key := range msg.keys {
+			delete(m.transcriptRunning, key)
+		}
 		if m.transcriptActive > 0 {
 			m.transcriptActive--
 		}
@@ -277,7 +289,7 @@ func (m *lectureDownloadModel) enqueueTranscriptItem(item app.LectureDownloadIte
 		Stage:      "transcribe",
 	})
 	m.transcriptQueue = append(m.transcriptQueue, item)
-	return m.startTranscriptWorkers()
+	return m.scheduleTranscriptWorkers()
 }
 
 func (m *lectureDownloadModel) startTranscriptWorkers() []tea.Cmd {
@@ -293,20 +305,53 @@ func (m *lectureDownloadModel) startTranscriptWorkers() []tea.Cmd {
 	}
 	cmds := make([]tea.Cmd, 0)
 	for m.transcriptActive < limit && len(m.transcriptQueue) > 0 {
-		item := m.transcriptQueue[0]
-		m.transcriptQueue = m.transcriptQueue[1:]
-		key := lectureDownloadKey(item.Lecture)
-		if key == "" {
+		slots := maxInt(1, limit-m.transcriptActive)
+		batchSize := len(m.transcriptQueue)
+		if len(m.transcriptQueue) > limit {
+			batchSize = (len(m.transcriptQueue) + slots - 1) / slots
+		}
+		if batchSize < 1 {
+			batchSize = 1
+		}
+		batch := m.transcriptQueue[:batchSize]
+		m.transcriptQueue = m.transcriptQueue[batchSize:]
+		keys := make([]string, 0, len(batch))
+		items := make([]app.LectureDownloadItem, 0, len(batch))
+		for _, item := range batch {
+			key := lectureDownloadKey(item.Lecture)
+			if key == "" {
+				continue
+			}
+			m.transcriptRunning[key] = true
+			keys = append(keys, key)
+			items = append(items, item)
+		}
+		if len(items) == 0 {
 			continue
 		}
-		m.transcriptRunning[key] = true
 		m.transcriptActive++
-		cmds = append(cmds, m.transcriptCommandForItem(key, item))
+		cmds = append(cmds, m.transcriptCommandForItems(keys, items))
 	}
 	return cmds
 }
 
-func (m lectureDownloadModel) transcriptCommandForItem(key string, item app.LectureDownloadItem) tea.Cmd {
+func (m *lectureDownloadModel) scheduleTranscriptWorkers() []tea.Cmd {
+	if m.transcriptStartScheduled || len(m.transcriptQueue) == 0 {
+		return nil
+	}
+	if m.request.TranscriptConcurrency <= 0 {
+		m.request.TranscriptConcurrency = 1
+	}
+	if m.transcriptActive >= m.request.TranscriptConcurrency {
+		return nil
+	}
+	m.transcriptStartScheduled = true
+	return []tea.Cmd{tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
+		return lectureTranscriptStartMsg{}
+	})}
+}
+
+func (m lectureDownloadModel) transcriptCommandForItems(keys []string, items []app.LectureDownloadItem) tea.Cmd {
 	return func() tea.Msg {
 		onProgress := func(transcriptProgress app.LectureTranscriptProgress) {
 			select {
@@ -314,8 +359,8 @@ func (m lectureDownloadModel) transcriptCommandForItem(key string, item app.Lect
 			default:
 			}
 		}
-		result := m.service.TranscribeDownloadedLectures(m.ctx, []app.LectureDownloadItem{item}, app.LectureTranscriptOptions{Locale: m.request.TranscriptLocale, OnProgress: onProgress})
-		return lectureTranscriptDoneMsg{key: key, result: result}
+		result := m.service.TranscribeDownloadedLectures(m.ctx, items, app.LectureTranscriptOptions{Locale: m.request.TranscriptLocale, OnProgress: onProgress})
+		return lectureTranscriptDoneMsg{keys: keys, result: result}
 	}
 }
 
