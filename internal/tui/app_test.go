@@ -853,9 +853,14 @@ func TestTranscriptLanguageDefaultsToKoreanWithoutWarning(t *testing.T) {
 
 func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	view := formatConfig(app.ConfigSettings{
+		Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+		Calendar:   app.CalendarSettings{Name: "시간표", UseExistingList: true},
 		Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 7, Caffeinate: true, KeepPartial: false},
 		Transcript: app.TranscriptSettings{Concurrency: 2},
 	})
+	if !strings.Contains(view, "Calendar") || !strings.Contains(view, "name  시간표") {
+		t.Fatalf("formatConfig() missing calendar: %q", view)
+	}
 	if !strings.Contains(view, "concurrency  7") {
 		t.Fatalf("formatConfig() missing concurrency: %q", view)
 	}
@@ -867,5 +872,69 @@ func TestFormatConfigShowsDownloadConcurrency(t *testing.T) {
 	}
 	if !strings.Contains(view, "Transcript") || !strings.Contains(view, "concurrency  2") {
 		t.Fatalf("formatConfig() missing transcript concurrency: %q", view)
+	}
+}
+
+func TestConfigRowsExposeCategorySelection(t *testing.T) {
+	rows := configRows(app.ConfigSettings{
+		Reminder: app.ReminderSettings{ListName: "To-do", UseExistingList: true, AlarmBeforeMin: 60},
+		Calendar: app.CalendarSettings{Name: "시간표", UseExistingList: true},
+		Download: app.DownloadSettings{
+			Dir:         "downloads",
+			Concurrency: 4,
+			Caffeinate:  true,
+			KeepPartial: false,
+		},
+		Transcript: app.TranscriptSettings{Concurrency: 1},
+	}, app.CategoryOptions{
+		Reminders: []string{"개인", "To-do"},
+		Calendars: []string{"개인", "시간표"},
+	})
+
+	if len(rows) == 0 {
+		t.Fatal("configRows() returned no rows")
+	}
+	if rows[0].key != "reminder.name" || !rows[0].cycle || !rows[0].editable {
+		t.Fatalf("reminder row = %+v", rows[0])
+	}
+	foundCalendar := false
+	for _, row := range rows {
+		if row.key == "calendar.name" && row.value == "시간표" && strings.Contains(row.hint, "기존 목록") {
+			foundCalendar = true
+		}
+	}
+	if !foundCalendar {
+		t.Fatalf("configRows() missing calendar category row: %+v", rows)
+	}
+}
+
+func TestConfigCursorWraps(t *testing.T) {
+	m := model{
+		configSettings: app.ConfigSettings{
+			Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+			Calendar:   app.CalendarSettings{Name: "시간표"},
+			Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
+			Transcript: app.TranscriptSettings{Concurrency: 1},
+		},
+		configOptions: app.CategoryOptions{Reminders: []string{"To-do"}, Calendars: []string{"시간표"}},
+	}
+	m.moveConfigCursor(-1)
+	if m.configCursor != len(configRows(m.configSettings, m.configOptions))-1 {
+		t.Fatalf("configCursor after up wrap = %d", m.configCursor)
+	}
+	m.moveConfigCursor(1)
+	if m.configCursor != 0 {
+		t.Fatalf("configCursor after down wrap = %d", m.configCursor)
+	}
+}
+
+func TestCycleStringOptionIncludesCurrentValue(t *testing.T) {
+	got, ok := cycleStringOption([]string{"개인", "회사"}, "시간표", 1)
+	if !ok || got != "개인" {
+		t.Fatalf("cycleStringOption() = %q, %t", got, ok)
+	}
+	got, ok = cycleStringOption([]string{"개인", "회사"}, "시간표", -1)
+	if !ok || got != "회사" {
+		t.Fatalf("cycleStringOption() reverse = %q, %t", got, ok)
 	}
 }

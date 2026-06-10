@@ -13,6 +13,12 @@ func TestDefaultReminderSettings(t *testing.T) {
 	if got.Reminder.AlarmBeforeMin != 1440 {
 		t.Fatalf("AlarmBeforeMin = %d", got.Reminder.AlarmBeforeMin)
 	}
+	if got.Calendar.Name != DefaultReminderListName {
+		t.Fatalf("Calendar.Name = %q", got.Calendar.Name)
+	}
+	if got.Calendar.UseExistingList {
+		t.Fatal("Calendar.UseExistingList should default to false")
+	}
 	if got.Term.Value != "" {
 		t.Fatalf("Term.Value = %q", got.Term.Value)
 	}
@@ -41,6 +47,9 @@ func TestNormalizeReminderSettings(t *testing.T) {
 	}
 	if settings.Reminder.AlarmBeforeMin != 1440 {
 		t.Fatalf("AlarmBeforeMin = %d", settings.Reminder.AlarmBeforeMin)
+	}
+	if settings.Calendar.Name != DefaultReminderListName {
+		t.Fatalf("Calendar.Name = %q", settings.Calendar.Name)
 	}
 	if settings.Download.Dir != DefaultDownloadDir() {
 		t.Fatalf("Download.Dir = %q", settings.Download.Dir)

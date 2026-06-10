@@ -15,6 +15,7 @@ const MaxTranscriptConcurrency = 3
 
 type Settings struct {
 	Reminder   Reminder   `json:"reminder"`
+	Calendar   Calendar   `json:"calendar"`
 	Term       Term       `json:"term"`
 	Download   Download   `json:"download"`
 	Transcript Transcript `json:"transcript"`
@@ -24,6 +25,11 @@ type Reminder struct {
 	ListName        string `json:"listName"`
 	UseExistingList bool   `json:"useExistingList"`
 	AlarmBeforeMin  int    `json:"alarmBeforeMin"`
+}
+
+type Calendar struct {
+	Name            string `json:"name"`
+	UseExistingList bool   `json:"useExistingList"`
 }
 
 type Term struct {
@@ -91,6 +97,9 @@ func Default() Settings {
 			ListName:       DefaultReminderListName,
 			AlarmBeforeMin: 24 * 60,
 		},
+		Calendar: Calendar{
+			Name: DefaultReminderListName,
+		},
 		Download: Download{
 			Dir:         DefaultDownloadDir(),
 			Concurrency: DefaultDownloadConcurrency,
@@ -108,6 +117,9 @@ func (s *Settings) Normalize() {
 	}
 	if s.Reminder.AlarmBeforeMin <= 0 {
 		s.Reminder.AlarmBeforeMin = 24 * 60
+	}
+	if s.Calendar.Name == "" {
+		s.Calendar.Name = DefaultReminderListName
 	}
 	s.Download.Normalize()
 	s.Transcript.Normalize()

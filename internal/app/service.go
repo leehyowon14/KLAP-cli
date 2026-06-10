@@ -21,6 +21,7 @@ import (
 	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/cache"
 	klapcalendar "github.com/kw-klap/klap-cli/internal/calendar"
+	"github.com/kw-klap/klap-cli/internal/category"
 	"github.com/kw-klap/klap-cli/internal/klas"
 	"github.com/kw-klap/klap-cli/internal/reminder"
 	"github.com/kw-klap/klap-cli/internal/settings"
@@ -33,6 +34,7 @@ type Service struct {
 	cacheStore           *cache.Store
 	reminderBridgePath   string
 	calendarBridgePath   string
+	categoryBridgePath   string
 	transcriptBridgePath string
 }
 
@@ -409,6 +411,7 @@ type TranscriptSettings struct {
 
 type ConfigSettings struct {
 	Reminder   ReminderSettings
+	Calendar   CalendarSettings
 	Download   DownloadSettings
 	Transcript TranscriptSettings
 	Term       TermSettings
@@ -505,6 +508,16 @@ type ReminderSettings struct {
 	AlarmBeforeMin  int
 }
 
+type CalendarSettings struct {
+	Name            string
+	UseExistingList bool
+}
+
+type CategoryOptions struct {
+	Reminders []string
+	Calendars []string
+}
+
 type CacheStatusResult struct {
 	Dir   string
 	Files int
@@ -534,6 +547,7 @@ func NewService(store *account.Store) *Service {
 		cacheStore:           cacheStore,
 		reminderBridgePath:   defaultReminderBridgePath(),
 		calendarBridgePath:   defaultCalendarBridgePath(),
+		categoryBridgePath:   defaultCategoryBridgePath(),
 		transcriptBridgePath: defaultTranscriptBridgePath(),
 	}
 }
@@ -618,6 +632,26 @@ func (s *Service) SetReminderConfig(name string, useExistingList bool) (Reminder
 		ListName:        current.Reminder.ListName,
 		UseExistingList: current.Reminder.UseExistingList,
 		AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
+	}, nil
+}
+
+func (s *Service) SetCalendarConfig(name string, useExistingList bool) (CalendarSettings, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return CalendarSettings{}, errors.New("캘린더 이름은 비워둘 수 없습니다")
+	}
+	current, err := s.loadSettings()
+	if err != nil {
+		return CalendarSettings{}, err
+	}
+	current.Calendar.Name = name
+	current.Calendar.UseExistingList = useExistingList
+	if err := s.saveSettings(current); err != nil {
+		return CalendarSettings{}, err
+	}
+	return CalendarSettings{
+		Name:            current.Calendar.Name,
+		UseExistingList: current.Calendar.UseExistingList,
 	}, nil
 }
 
@@ -715,9 +749,31 @@ func (s *Service) ConfigSettings() (ConfigSettings, error) {
 			UseExistingList: current.Reminder.UseExistingList,
 			AlarmBeforeMin:  current.Reminder.AlarmBeforeMin,
 		},
+		Calendar: CalendarSettings{
+			Name:            current.Calendar.Name,
+			UseExistingList: current.Calendar.UseExistingList,
+		},
 		Download:   downloadSettingsFrom(current),
 		Transcript: transcriptSettingsFrom(current),
 		Term:       TermSettings{Value: current.Term.Value, Label: termLabel(current.Term.Value)},
+	}, nil
+}
+
+func (s *Service) CategoryOptions() (CategoryOptions, error) {
+	current, err := s.loadSettings()
+	if err != nil {
+		return CategoryOptions{}, err
+	}
+	options, err := category.NewMacOSBridge(s.categoryBridgePath).List()
+	if err != nil {
+		return CategoryOptions{
+			Reminders: uniqueNonEmpty(current.Reminder.ListName, settings.DefaultReminderListName),
+			Calendars: uniqueNonEmpty(current.Calendar.Name, settings.DefaultReminderListName),
+		}, nil
+	}
+	return CategoryOptions{
+		Reminders: uniqueNonEmpty(append([]string{current.Reminder.ListName}, options.Reminders...)...),
+		Calendars: uniqueNonEmpty(append([]string{current.Calendar.Name}, options.Calendars...)...),
 	}, nil
 }
 
@@ -750,6 +806,23 @@ func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, erro
 			return ConfigSettings{}, err
 		}
 		current.Reminder.UseExistingList = parsed
+	case "reminder.alarm-before-min", "reminder.alarm-before":
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed <= 0 {
+			return ConfigSettings{}, errors.New("reminder.alarm-before-min에는 1 이상의 정수가 필요합니다")
+		}
+		current.Reminder.AlarmBeforeMin = parsed
+	case "calendar.name", "calendar.list", "calendar.list-name":
+		if value == "" {
+			return ConfigSettings{}, errors.New("캘린더 이름은 비워둘 수 없습니다")
+		}
+		current.Calendar.Name = value
+	case "calendar.use-existing-list":
+		parsed, err := parseConfigBool(value)
+		if err != nil {
+			return ConfigSettings{}, err
+		}
+		current.Calendar.UseExistingList = parsed
 	case "download.dir", "download.path":
 		if value == "" {
 			return ConfigSettings{}, errors.New("다운로드 폴더 경로가 필요합니다")
@@ -3001,8 +3074,8 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOpt
 	}
 
 	syncResult, err := klapcalendar.NewMacOSBridge(s.calendarBridgePath).Sync(klapcalendar.SyncRequest{
-		CalendarName:    currentSettings.Reminder.ListName,
-		UseExistingList: currentSettings.Reminder.UseExistingList,
+		CalendarName:    currentSettings.Calendar.Name,
+		UseExistingList: currentSettings.Calendar.UseExistingList,
 		Events:          events,
 	})
 	if err != nil {
@@ -3740,6 +3813,23 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func uniqueNonEmpty(values ...string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
 func (s *Service) selectedStudentID(ctx context.Context, user UserOption) (string, error) {
 	if strings.TrimSpace(user.StudentID) != "" {
 		return strings.TrimSpace(user.StudentID), nil
@@ -4384,6 +4474,30 @@ func defaultCalendarBridgePath() string {
 	}
 	if executable, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "calendar.swift"))
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
+func defaultCategoryBridgePath() string {
+	if override := os.Getenv("KLAP_CATEGORY_BRIDGE"); override != "" {
+		return override
+	}
+
+	candidates := []string{
+		filepath.Join("bridges", "macos", "categories.swift"),
+	}
+	if _, currentFile, _, ok := runtime.Caller(0); ok {
+		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "categories.swift"))
+	}
+	if executable, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "categories.swift"))
 	}
 
 	for _, candidate := range candidates {

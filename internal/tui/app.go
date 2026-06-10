@@ -137,6 +137,9 @@ type model struct {
 	loadedAt            time.Time
 	configEditing       string
 	configInput         textinput.Model
+	configSettings      app.ConfigSettings
+	configOptions       app.CategoryOptions
+	configCursor        int
 	downloadRows        []app.LectureRow
 	downloadSelected    map[string]bool
 	downloadCourse      int
@@ -153,6 +156,17 @@ type model struct {
 type transcriptLanguage struct {
 	label  string
 	locale string
+}
+
+type configRow struct {
+	key      string
+	section  string
+	label    string
+	value    string
+	hint     string
+	editable bool
+	cycle    bool
+	reset    bool
 }
 
 var transcriptLanguages = []transcriptLanguage{
@@ -187,6 +201,8 @@ type loadMsg struct {
 	lectures    []app.LectureRow
 	due         app.DueResult
 	academic    app.AcademicListResult
+	config      app.ConfigSettings
+	categories  app.CategoryOptions
 }
 
 type downloadRowsMsg struct {
@@ -292,6 +308,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "up" || (keyMatches(key, "k", "ㅏ") && !m.canOpenKlasURL()):
 			if m.active == screenHome && m.cursor > 0 {
 				m.cursor--
+			} else if m.active == screenConfig && !m.loading {
+				m.moveConfigCursor(-1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
 			} else if m.active == screenDue && !m.loading {
@@ -302,6 +320,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key == "down" || keyMatches(key, "j", "ㅓ"):
 			if m.active == screenHome && m.cursor < len(m.menu)-1 {
 				m.cursor++
+			} else if m.active == screenConfig && !m.loading {
+				m.moveConfigCursor(1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
 			} else if m.active == screenDue && !m.loading {
@@ -310,7 +330,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveContentCursor(1)
 			}
 		case key == "left":
-			if m.active == screenDue && !m.loading {
+			if m.active == screenConfig && !m.loading {
+				return m.adjustConfigCurrent(-1)
+			} else if m.active == screenDue && !m.loading {
 				m.moveDuePage(-1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicMonth(-1)
@@ -318,7 +340,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveContentCourse(-1)
 			}
 		case key == "right":
-			if m.active == screenDue && !m.loading {
+			if m.active == screenConfig && !m.loading {
+				return m.adjustConfigCurrent(1)
+			} else if m.active == screenDue && !m.loading {
 				m.moveDuePage(1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicMonth(1)
@@ -342,6 +366,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.active == screenNotices && !m.loading {
 				return m.openNoticeDetail()
+			}
+			if m.active == screenConfig && !m.loading {
+				return m.activateConfigCurrent()
 			}
 		case keyMatches(key, "r", "ㄱ"):
 			if m.active == screenRoomResult {
@@ -369,22 +396,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncStatus = "KLAS 원문을 여는 중..."
 				return m, cmd
 			}
-		case m.active == screenConfig && keyMatches(key, "d", "ㅇ"):
-			return m.startDownloadDirEdit()
-		case m.active == screenConfig && (key == "+" || key == "="):
-			return m.adjustDownloadConcurrency(1)
-		case m.active == screenConfig && key == "-":
-			return m.adjustDownloadConcurrency(-1)
-		case m.active == screenConfig && key == "]":
-			return m.adjustTranscriptConcurrency(1)
-		case m.active == screenConfig && key == "[":
-			return m.adjustTranscriptConcurrency(-1)
-		case m.active == screenConfig && keyMatches(key, "c", "ㅊ"):
-			return m.toggleDownloadCaffeinate()
-		case m.active == screenConfig && keyMatches(key, "p", "ㅔ"):
-			return m.toggleDownloadKeepPartial()
-		case m.active == screenConfig && keyMatches(key, "x", "ㅌ"):
-			return m.resetConfigSettings()
 		case m.active == screenLectures && keyMatches(key, "d", "ㅇ"):
 			m.active = screenDownloadSelect
 			m.loading = true
@@ -404,12 +415,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lectureRows = msg.lectures
 		m.dueResult = msg.due
 		m.academicResult = msg.academic
+		m.configSettings = msg.config
+		m.configOptions = msg.categories
 		if msg.screen == screenDue {
 			m.duePage = 0
 			m.dueCursor = 0
 		}
 		if msg.screen == screenAcademic {
 			m.academicMonth = defaultAcademicMonth(msg.academic.Events, time.Now())
+		}
+		if msg.screen == screenConfig && m.configCursor >= len(configRows(msg.config, msg.categories)) {
+			m.configCursor = maxInt(0, len(configRows(msg.config, msg.categories))-1)
 		}
 		m.contentCourse = 0
 		m.contentCursor = 0
@@ -1468,14 +1484,23 @@ func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		value := strings.TrimSpace(m.configInput.Value())
-		if m.configEditing == "download.dir" {
-			if _, err := m.service.SetDownloadConfig(value, 0, nil, nil); err != nil {
-				m.err = err
-			} else {
-				m.err = nil
-				m.configEditing = ""
-				m.refreshConfigContent()
-			}
+		var err error
+		switch m.configEditing {
+		case "download.dir":
+			_, err = m.service.SetDownloadConfig(value, 0, nil, nil)
+		case "reminder.name":
+			_, err = m.service.SetReminderConfig(value, false)
+		case "calendar.name":
+			_, err = m.service.SetCalendarConfig(value, false)
+		case "reminder.alarm-before-min":
+			_, err = m.service.SetConfigValue("reminder.alarm-before-min", value)
+		}
+		if err != nil {
+			m.err = err
+		} else {
+			m.err = nil
+			m.configEditing = ""
+			m.refreshConfigContent()
 		}
 		return m, nil
 	}
@@ -1484,20 +1509,107 @@ func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) startDownloadDirEdit() (tea.Model, tea.Cmd) {
-	settings, err := m.service.DownloadSettings()
-	if err != nil {
-		m.err = err
+func (m *model) moveConfigCursor(delta int) {
+	rows := configRows(m.configSettings, m.configOptions)
+	if len(rows) == 0 {
+		m.configCursor = 0
+		return
+	}
+	m.configCursor = (m.configCursor + delta + len(rows)) % len(rows)
+}
+
+func (m model) activateConfigCurrent() (tea.Model, tea.Cmd) {
+	row, ok := m.currentConfigRow()
+	if !ok {
 		return m, nil
 	}
+	if row.reset {
+		return m.resetConfigSettings()
+	}
+	if row.editable {
+		return m.startConfigEdit(row)
+	}
+	return m.adjustConfigCurrent(1)
+}
+
+func (m model) adjustConfigCurrent(delta int) (tea.Model, tea.Cmd) {
+	row, ok := m.currentConfigRow()
+	if !ok {
+		return m, nil
+	}
+	switch row.key {
+	case "reminder.name":
+		next, ok := cycleStringOption(m.configOptions.Reminders, m.configSettings.Reminder.ListName, delta)
+		if !ok {
+			return m.startConfigEdit(row)
+		}
+		if _, err := m.service.SetReminderConfig(next, true); err != nil {
+			m.err = err
+			return m, nil
+		}
+	case "calendar.name":
+		next, ok := cycleStringOption(m.configOptions.Calendars, m.configSettings.Calendar.Name, delta)
+		if !ok {
+			return m.startConfigEdit(row)
+		}
+		if _, err := m.service.SetCalendarConfig(next, true); err != nil {
+			m.err = err
+			return m, nil
+		}
+	case "reminder.alarm-before-min":
+		next := m.configSettings.Reminder.AlarmBeforeMin + delta*60
+		if next < 1 {
+			next = 1
+		}
+		if _, err := m.service.SetConfigValue("reminder.alarm-before-min", strconv.Itoa(next)); err != nil {
+			m.err = err
+			return m, nil
+		}
+	case "download.concurrency":
+		return m.adjustDownloadConcurrency(delta)
+	case "download.caffeinate":
+		return m.toggleDownloadCaffeinate()
+	case "download.keep-partial":
+		return m.toggleDownloadKeepPartial()
+	case "transcript.concurrency":
+		return m.adjustTranscriptConcurrency(delta)
+	default:
+		return m, nil
+	}
+	m.err = nil
+	m.refreshConfigContent()
+	return m, nil
+}
+
+func (m model) startConfigEdit(row configRow) (tea.Model, tea.Cmd) {
 	input := textinput.New()
-	input.SetValue(settings.Dir)
-	input.Placeholder = "다운로드 폴더"
-	input.Prompt = "download.dir "
+	switch row.key {
+	case "download.dir":
+		input.SetValue(m.configSettings.Download.Dir)
+		input.Placeholder = "다운로드 폴더"
+	case "reminder.name":
+		input.SetValue(m.configSettings.Reminder.ListName)
+		input.Placeholder = "미리알림 목록"
+	case "calendar.name":
+		input.SetValue(m.configSettings.Calendar.Name)
+		input.Placeholder = "캘린더"
+	case "reminder.alarm-before-min":
+		input.SetValue(strconv.Itoa(m.configSettings.Reminder.AlarmBeforeMin))
+		input.Placeholder = "분 단위 알림 시간"
+	default:
+		input.SetValue(row.value)
+		input.Placeholder = row.label
+	}
+	input.Prompt = row.key + " "
 	input.Focus()
-	m.configEditing = "download.dir"
+	m.configEditing = row.key
 	m.configInput = input
 	return m, nil
+}
+
+func (m model) startDownloadDirEdit() (tea.Model, tea.Cmd) {
+	row := configRow{key: "download.dir", label: "다운로드 폴더", editable: true}
+	return m.startConfigEdit(row)
 }
 
 func (m model) adjustDownloadConcurrency(delta int) (tea.Model, tea.Cmd) {
@@ -1589,8 +1701,33 @@ func (m *model) refreshConfigContent() {
 		m.err = err
 		return
 	}
+	options, err := m.service.CategoryOptions()
+	if err != nil {
+		m.err = err
+		return
+	}
+	m.configSettings = settings
+	m.configOptions = options
+	rows := configRows(settings, options)
+	if m.configCursor >= len(rows) {
+		m.configCursor = maxInt(0, len(rows)-1)
+	}
 	m.content = formatConfig(settings)
 	m.loadedAt = time.Now()
+}
+
+func (m model) currentConfigRow() (configRow, bool) {
+	rows := configRows(m.configSettings, m.configOptions)
+	if len(rows) == 0 {
+		return configRow{}, false
+	}
+	if m.configCursor < 0 {
+		return rows[0], true
+	}
+	if m.configCursor >= len(rows) {
+		return rows[len(rows)-1], true
+	}
+	return rows[m.configCursor], true
 }
 
 func (m model) View() string {
@@ -1644,6 +1781,12 @@ func (m model) footerHelp() string {
 	}
 	if m.active == screenLectures {
 		return "←→ 과목  ↑↓ 스크롤  k KLAS  d 다운로드  s sync  b/esc 뒤로  r 새로고침  q 종료"
+	}
+	if m.active == screenConfig {
+		if m.configEditing != "" {
+			return "enter 저장  esc 취소  q 종료"
+		}
+		return "↑↓ 선택  ←→ 변경  enter 입력/실행  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.isCoursePagedScreen() {
 		if m.active == screenAssignments {
@@ -1982,6 +2125,15 @@ func (m model) renderPanel(width int) string {
 		b.WriteString(m.renderAcademicCalendarPanel(width))
 		return b.String()
 	}
+	if m.active == screenConfig {
+		b.WriteString(m.renderConfigPanel(width))
+		if m.syncStatus != "" {
+			b.WriteString("\n")
+			b.WriteString(footerStyle.Render(m.syncStatus))
+			b.WriteString("\n")
+		}
+		return b.String()
+	}
 	if m.isCoursePagedScreen() {
 		b.WriteString(m.renderCoursePagedPanel(width))
 		if m.syncStatus != "" {
@@ -2000,20 +2152,51 @@ func (m model) renderPanel(width int) string {
 	if !strings.HasSuffix(m.content, "\n") {
 		b.WriteString("\n")
 	}
-	if m.active == screenConfig {
-		b.WriteString("\n")
-		if m.configEditing != "" {
-			b.WriteString(m.configInput.View())
-			b.WriteString("\n")
-			b.WriteString(footerStyle.Render("enter 저장  esc 취소"))
-		} else {
-			b.WriteString(footerStyle.Render("d download.dir  +/- 다운로드  [] 전사 worker  c 절전  p 부분파일  x 초기화"))
-		}
-		b.WriteString("\n")
-	}
 	if m.syncStatus != "" {
 		b.WriteString("\n")
 		b.WriteString(footerStyle.Render(m.syncStatus))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func (m model) renderConfigPanel(width int) string {
+	rows := configRows(m.configSettings, m.configOptions)
+	if len(rows) == 0 {
+		return emptyStyle.Render("설정 항목이 없습니다") + "\n"
+	}
+	valueWidth := maxInt(16, minInt(42, width-44))
+	var b strings.Builder
+	lastSection := ""
+	for index, row := range rows {
+		if row.section != lastSection {
+			if index > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(mutedStyle.Render(row.section))
+			b.WriteString("\n")
+			lastSection = row.section
+		}
+		marker := "  "
+		if index == m.configCursor {
+			marker = "› "
+		}
+		label := lipgloss.NewStyle().Width(18).Render(row.label)
+		value := truncateText(row.value, valueWidth)
+		valueText := lipgloss.NewStyle().Width(valueWidth).Render(value)
+		hint := mutedStyle.Render(row.hint)
+		line := fmt.Sprintf("%s%s  %s  %s", marker, label, valueText, hint)
+		if index == m.configCursor {
+			line = menuSelectedStyle.Render(line)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	if m.configEditing != "" {
+		b.WriteString("\n")
+		b.WriteString(m.configInput.View())
+		b.WriteString("\n")
+		b.WriteString(footerStyle.Render("enter 저장  esc 취소"))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -2501,6 +2684,13 @@ func (m model) load(target screen, refresh bool) tea.Cmd {
 		case screenAcademic:
 			result, err := m.service.AcademicList(m.ctx, app.AcademicListOptions{Refresh: refresh})
 			return loadMsg{screen: target, academic: result, err: err}
+		case screenConfig:
+			settings, err := m.service.ConfigSettings()
+			if err != nil {
+				return loadMsg{screen: target, err: err}
+			}
+			categories, err := m.service.CategoryOptions()
+			return loadMsg{screen: target, content: formatConfig(settings), config: settings, categories: categories, err: err}
 		}
 		content, err := m.loadContent(target, refresh)
 		return loadMsg{screen: target, content: content, err: err}
@@ -2515,12 +2705,6 @@ func (m model) loadContent(target screen, refresh bool) (string, error) {
 			return "", err
 		}
 		return formatDashboard(result), nil
-	case screenConfig:
-		settings, err := m.service.ConfigSettings()
-		if err != nil {
-			return "", err
-		}
-		return formatConfig(settings), nil
 	default:
 		return "", errors.New("지원하지 않는 TUI 화면입니다")
 	}
@@ -2766,6 +2950,145 @@ func formatLectures(rows []app.LectureRow) string {
 	return b.String()
 }
 
+func configRows(settings app.ConfigSettings, options app.CategoryOptions) []configRow {
+	return []configRow{
+		{
+			key:      "reminder.name",
+			section:  "Reminder",
+			label:    "미리알림 목록",
+			value:    emptyFallback(settings.Reminder.ListName, settingspkg.DefaultReminderListName),
+			hint:     categoryHint(options.Reminders, settings.Reminder.UseExistingList),
+			editable: true,
+			cycle:    true,
+		},
+		{
+			key:      "reminder.alarm-before-min",
+			section:  "Reminder",
+			label:    "알림 시간",
+			value:    fmt.Sprintf("마감 %s 전", formatMinutes(settings.Reminder.AlarmBeforeMin)),
+			hint:     "←→ 60분 단위  enter 직접 입력",
+			editable: true,
+		},
+		{
+			key:      "calendar.name",
+			section:  "Calendar",
+			label:    "캘린더",
+			value:    emptyFallback(settings.Calendar.Name, settingspkg.DefaultReminderListName),
+			hint:     categoryHint(options.Calendars, settings.Calendar.UseExistingList),
+			editable: true,
+			cycle:    true,
+		},
+		{
+			key:      "download.dir",
+			section:  "Download",
+			label:    "저장 폴더",
+			value:    settings.Download.Dir,
+			hint:     "enter 직접 입력",
+			editable: true,
+		},
+		{
+			key:     "download.concurrency",
+			section: "Download",
+			label:   "동시 다운로드",
+			value:   fmt.Sprintf("%d workers", settings.Download.Concurrency),
+			hint:    "←→ 변경",
+		},
+		{
+			key:     "download.caffeinate",
+			section: "Download",
+			label:   "절전 방지",
+			value:   enabledLabel(settings.Download.Caffeinate),
+			hint:    "←→ 전환",
+		},
+		{
+			key:     "download.keep-partial",
+			section: "Download",
+			label:   "부분 파일 보존",
+			value:   enabledLabel(settings.Download.KeepPartial),
+			hint:    "←→ 전환",
+		},
+		{
+			key:     "transcript.concurrency",
+			section: "Transcript",
+			label:   "전사 worker",
+			value:   fmt.Sprintf("%d workers", settings.Transcript.Concurrency),
+			hint:    fmt.Sprintf("←→ 1-%d", settingspkg.MaxTranscriptConcurrency),
+		},
+		{
+			key:     "reset",
+			section: "General",
+			label:   "설정 초기화",
+			value:   "기본값으로 복원",
+			hint:    "enter 실행",
+			reset:   true,
+		},
+	}
+}
+
+func categoryHint(options []string, useExisting bool) string {
+	if len(options) == 0 {
+		return "enter 직접 입력"
+	}
+	if useExisting {
+		return "←→ 기존 목록  enter 직접 입력"
+	}
+	return "←→ 기존 목록  enter 새 카테고리"
+}
+
+func enabledLabel(value bool) string {
+	if value {
+		return "켜짐"
+	}
+	return "꺼짐"
+}
+
+func formatMinutes(minutes int) string {
+	if minutes%1440 == 0 {
+		days := minutes / 1440
+		if days == 1 {
+			return "1일"
+		}
+		return fmt.Sprintf("%d일", days)
+	}
+	if minutes%60 == 0 {
+		return fmt.Sprintf("%d시간", minutes/60)
+	}
+	return fmt.Sprintf("%d분", minutes)
+}
+
+func cycleStringOption(options []string, current string, delta int) (string, bool) {
+	values := uniqueStrings(append([]string{current}, options...))
+	if len(values) < 2 {
+		return "", false
+	}
+	index := 0
+	for i, value := range values {
+		if value == current {
+			index = i
+			break
+		}
+	}
+	next := (index + delta + len(values)) % len(values)
+	return values[next], true
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
 func formatConfig(settings app.ConfigSettings) string {
 	term := strings.TrimSpace(settings.Term.Value)
 	if term == "" {
@@ -2777,6 +3100,9 @@ func formatConfig(settings app.ConfigSettings) string {
 		"name  " + settings.Reminder.ListName,
 		fmt.Sprintf("use-existing-list  %t", settings.Reminder.UseExistingList),
 		fmt.Sprintf("alarm-before-min  %d", settings.Reminder.AlarmBeforeMin),
+	}) + "\n" + renderSection("Calendar", []string{
+		"name  " + settings.Calendar.Name,
+		fmt.Sprintf("use-existing-list  %t", settings.Calendar.UseExistingList),
 	}) + "\n" + renderSection("Download", []string{
 		"dir  " + settings.Download.Dir,
 		fmt.Sprintf("concurrency  %d", settings.Download.Concurrency),

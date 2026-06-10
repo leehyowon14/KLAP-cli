@@ -172,6 +172,12 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	if _, err := service.SetConfigValue("reminder.name", "To-do"); err != nil {
 		t.Fatalf("SetConfigValue(reminder.name) error = %v", err)
 	}
+	if _, err := service.SetConfigValue("calendar.name", "시간표"); err != nil {
+		t.Fatalf("SetConfigValue(calendar.name) error = %v", err)
+	}
+	if _, err := service.SetConfigValue("reminder.alarm-before-min", "60"); err != nil {
+		t.Fatalf("SetConfigValue(reminder.alarm-before-min) error = %v", err)
+	}
 	if _, err := service.SetConfigValue("download.concurrency", "9"); err != nil {
 		t.Fatalf("SetConfigValue(download.concurrency) error = %v", err)
 	}
@@ -191,6 +197,12 @@ func TestResetConfigSettingsRestoresDefaults(t *testing.T) {
 	}
 	if got.Reminder.ListName != settings.DefaultReminderListName {
 		t.Fatalf("Reminder.ListName = %q", got.Reminder.ListName)
+	}
+	if got.Reminder.AlarmBeforeMin != 24*60 {
+		t.Fatalf("Reminder.AlarmBeforeMin = %d", got.Reminder.AlarmBeforeMin)
+	}
+	if got.Calendar.Name != settings.DefaultReminderListName {
+		t.Fatalf("Calendar.Name = %q", got.Calendar.Name)
 	}
 	if got.Download.Dir != settings.DefaultDownloadDir() || got.Download.Concurrency != settings.DefaultDownloadConcurrency {
 		t.Fatalf("Download = %+v", got.Download)
