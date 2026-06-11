@@ -88,6 +88,7 @@ type screen int
 
 const (
 	screenHome screen = iota
+	screenAuth
 	screenDashboard
 	screenDue
 	screenAssignments
@@ -177,6 +178,9 @@ type model struct {
 	roomResults         []app.RoomAvailableResult
 	roomResultPage      int
 	roomResultCursor    int
+	authInputs          []textinput.Model
+	authFocus           int
+	authSubmitting      bool
 }
 
 type transcriptLanguage struct {
@@ -246,6 +250,15 @@ type loadMsg struct {
 	terms       []app.TermRow
 }
 
+type authCheckMsg struct {
+	users []app.UserRow
+	err   error
+}
+
+type authSubmitMsg struct {
+	err error
+}
+
 type downloadRowsMsg struct {
 	rows []app.LectureRow
 	err  error
@@ -282,9 +295,12 @@ func Run(ctx context.Context, service *app.Service) error {
 	initial := model{
 		ctx:            ctx,
 		service:        service,
+		active:         screenAuth,
+		loading:        true,
 		loadedScreens:  map[screen]bool{},
 		loadingScreens: map[screen]bool{},
 		screenErrors:   map[screen]error{},
+		authInputs:     newAuthInputs(),
 		menu: []menuItem{
 			{title: "Dashboard", help: "현재 학기 요약", screen: screenDashboard},
 			{title: "Due", help: "다가오는 일정", screen: screenDue},
@@ -296,16 +312,12 @@ func Run(ctx context.Context, service *app.Service) error {
 			{title: "Config", help: "설정", screen: screenConfig},
 		},
 	}
-	initial = initial.preparePrefetch(mainPrefetchScreens())
 	_, err := tea.NewProgram(initial, tea.WithAltScreen()).Run()
 	return err
 }
 
 func (m model) Init() tea.Cmd {
-	if !m.prefetchActive {
-		return nil
-	}
-	return m.loadPrefetch(m.prefetchCurrent, false)
+	return m.checkAuthUsers()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -317,6 +329,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tea.KeyMsg:
+		if m.active == screenAuth {
+			return m.updateAuth(msg)
+		}
 		if m.active == screenDownloadSelect {
 			return m.updateDownloadSelect(msg)
 		}
@@ -494,6 +509,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prefetchCurrent = 0
 			return m.startNextPrefetch()
 		}
+	case authCheckMsg:
+		m.loading = false
+		if msg.err != nil {
+			m.active = screenAuth
+			m.err = msg.err
+			m.authInputs = newAuthInputs()
+			return m, textinput.Blink
+		}
+		if len(msg.users) == 0 {
+			m.active = screenAuth
+			m.err = nil
+			m.authInputs = newAuthInputs()
+			return m, textinput.Blink
+		}
+		m.configUsers = msg.users
+		m.active = screenHome
+		m = m.preparePrefetch(mainPrefetchScreens())
+		if !m.prefetchActive {
+			return m, nil
+		}
+		return m, m.loadPrefetch(m.prefetchCurrent, false)
+	case authSubmitMsg:
+		m.authSubmitting = false
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.err = nil
+		m.active = screenHome
+		m.authInputs = nil
+		m.authFocus = 0
+		m = m.preparePrefetch(mainPrefetchScreens())
+		if !m.prefetchActive {
+			return m, nil
+		}
+		return m, m.loadPrefetch(m.prefetchCurrent, false)
 	case syncMsg:
 		m.loading = false
 		m.active = screenDashboard
@@ -2262,6 +2313,8 @@ func (m model) View() string {
 	}
 	contentWidth := tuiContentWidth(width)
 	switch m.active {
+	case screenAuth:
+		return appStyle.Render(m.renderAuthView(contentWidth))
 	case screenDownloadSelect:
 		return appStyle.Render(m.renderDownloadSelectView(contentWidth))
 	case screenDownloadConfirm:
@@ -2434,6 +2487,140 @@ func (m model) renderHomeView(width int) string {
 	b.WriteString(m.renderHomeMenu(width))
 	b.WriteString("\n\n")
 	b.WriteString(renderHelpText("↑↓ 이동  |  enter 열기  |  r 새로고침  |  q 종료", width))
+	return b.String()
+}
+
+func newAuthInputs() []textinput.Model {
+	studentID := textinput.New()
+	studentID.Placeholder = "학번"
+	studentID.Prompt = "학번 "
+	studentID.Focus()
+	studentID.CharLimit = 32
+	studentID.Width = 32
+
+	password := textinput.New()
+	password.Placeholder = "비밀번호"
+	password.Prompt = "비밀번호 "
+	password.EchoMode = textinput.EchoPassword
+	password.EchoCharacter = '*'
+	password.CharLimit = 128
+	password.Width = 32
+
+	return []textinput.Model{studentID, password}
+}
+
+func (m model) updateAuth(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if len(m.authInputs) == 0 {
+		m.authInputs = newAuthInputs()
+	}
+	key := msg.String()
+	switch key {
+	case "ctrl+c", "esc":
+		return m, tea.Quit
+	case "enter":
+		if m.authSubmitting {
+			return m, nil
+		}
+		if m.authFocus < len(m.authInputs)-1 {
+			m.authFocus++
+			return m.updateAuthFocus(), nil
+		}
+		studentID := strings.TrimSpace(m.authInputs[0].Value())
+		password := strings.TrimSpace(m.authInputs[1].Value())
+		if studentID == "" || password == "" {
+			m.err = errors.New("학번과 비밀번호를 모두 입력하세요")
+			return m, nil
+		}
+		m.err = nil
+		m.authSubmitting = true
+		return m, m.submitAuth(studentID, password)
+	case "up", "shift+tab", "backtab":
+		if !m.authSubmitting && m.authFocus > 0 {
+			m.authFocus--
+		}
+		return m.updateAuthFocus(), nil
+	case "down", "tab":
+		if !m.authSubmitting && m.authFocus < len(m.authInputs)-1 {
+			m.authFocus++
+		}
+		return m.updateAuthFocus(), nil
+	}
+	if m.authSubmitting {
+		return m, nil
+	}
+	var cmds []tea.Cmd
+	for index := range m.authInputs {
+		var cmd tea.Cmd
+		m.authInputs[index], cmd = m.authInputs[index].Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m model) updateAuthFocus() model {
+	for index := range m.authInputs {
+		if index == m.authFocus {
+			m.authInputs[index].Focus()
+			continue
+		}
+		m.authInputs[index].Blur()
+	}
+	return m
+}
+
+func (m model) checkAuthUsers() tea.Cmd {
+	return func() tea.Msg {
+		users, err := m.service.Users(m.ctx)
+		return authCheckMsg{users: users, err: err}
+	}
+}
+
+func (m model) submitAuth(studentID string, password string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.service.Authenticate(m.ctx, studentID, password)
+		return authSubmitMsg{err: err}
+	}
+}
+
+func (m model) renderAuthView(width int) string {
+	var b strings.Builder
+	b.WriteString(m.renderHeader(width))
+	b.WriteString("\n")
+	b.WriteString(renderRule(width))
+	b.WriteString("\n\n")
+	b.WriteString(sectionStyle.Render("Account Setup"))
+	b.WriteString("\n")
+	b.WriteString(mutedStyle.Render("저장된 계정이 없습니다. KLAS 로그인 검증 후 계정을 저장합니다."))
+	b.WriteString("\n\n")
+	if m.loading {
+		b.WriteString(warnBadgeStyle.Render("LOADING"))
+		b.WriteString(" 계정 상태를 확인하는 중입니다")
+		b.WriteString("\n\n")
+		b.WriteString(renderHelpText("esc 종료", width))
+		return b.String()
+	}
+	if m.err != nil {
+		b.WriteString(errorStyle.Render("ERROR"))
+		b.WriteString(" ")
+		b.WriteString(m.err.Error())
+		b.WriteString("\n\n")
+	}
+	if len(m.authInputs) == 0 {
+		m.authInputs = newAuthInputs()
+	}
+	for index, input := range m.authInputs {
+		b.WriteString(input.View())
+		if index < len(m.authInputs)-1 {
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("\n\n")
+	if m.authSubmitting {
+		b.WriteString(warnBadgeStyle.Render("AUTHENTICATING"))
+		b.WriteString(" KLAS에 로그인 요청을 보내는 중입니다")
+		b.WriteString("\n\n")
+	}
+	b.WriteString(renderHelpText("enter 다음/저장  tab 이동  esc 종료", width))
 	return b.String()
 }
 
@@ -3718,6 +3905,8 @@ func (m model) loadConfigMsg() loadMsg {
 
 func screenTitle(value screen) string {
 	switch value {
+	case screenAuth:
+		return "Account"
 	case screenDashboard:
 		return "Dashboard"
 	case screenDue:

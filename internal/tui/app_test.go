@@ -49,6 +49,46 @@ func TestHomeViewLinesFitWidth(t *testing.T) {
 	}
 }
 
+func TestAuthCheckShowsSetupWhenNoUsers(t *testing.T) {
+	t.Setenv("KLAP_CONFIG_DIR", t.TempDir())
+	store, err := account.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	m := model{
+		ctx:        context.Background(),
+		service:    app.NewService(store),
+		active:     screenAuth,
+		loading:    true,
+		authInputs: newAuthInputs(),
+	}
+
+	msg := m.checkAuthUsers()().(authCheckMsg)
+	updated, cmd := m.Update(msg)
+	got := updated.(model)
+	if cmd == nil {
+		t.Fatal("Update(authCheckMsg) should start text input blink")
+	}
+	if got.active != screenAuth || got.loading {
+		t.Fatalf("active=%v loading=%t", got.active, got.loading)
+	}
+	if len(got.authInputs) != 2 {
+		t.Fatalf("authInputs len = %d", len(got.authInputs))
+	}
+}
+
+func TestAuthEnterValidatesEmptyFieldsWithoutSubmit(t *testing.T) {
+	m := model{active: screenAuth, authInputs: newAuthInputs(), authFocus: 1}
+	updated, cmd := m.updateAuth(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("empty auth form should not submit")
+	}
+	if got.err == nil || got.authSubmitting {
+		t.Fatalf("err=%v authSubmitting=%t", got.err, got.authSubmitting)
+	}
+}
+
 func TestEnterScreenUsesPrefetchedData(t *testing.T) {
 	m := model{
 		loadedScreens: map[screen]bool{screenAssignments: true},
@@ -607,6 +647,7 @@ func TestViewStartsWithHeaderBeforeRule(t *testing.T) {
 		view string
 	}{
 		{name: "dashboard", view: testChromeModel(screenDashboard).View()},
+		{name: "auth", view: testChromeModel(screenAuth).View()},
 		{name: "due", view: testChromeModel(screenDue).View()},
 		{name: "assignments", view: testChromeModel(screenAssignments).View()},
 		{name: "notices", view: testChromeModel(screenNotices).View()},
