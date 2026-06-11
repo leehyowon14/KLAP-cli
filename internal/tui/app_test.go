@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/app"
 	"github.com/kw-klap/klap-cli/internal/klas"
 )
@@ -1432,8 +1433,15 @@ func TestConfigRowsExposeCategorySelection(t *testing.T) {
 	if len(rows) == 0 {
 		t.Fatal("configRows() returned no rows")
 	}
-	if rows[0].key != "reminder.name" || !rows[0].cycle || !rows[0].editable {
-		t.Fatalf("reminder row = %+v", rows[0])
+	var reminderRow configRow
+	for _, row := range rows {
+		if row.key == "reminder.name" {
+			reminderRow = row
+			break
+		}
+	}
+	if reminderRow.key != "reminder.name" || !reminderRow.cycle || !reminderRow.editable {
+		t.Fatalf("reminder row = %+v", reminderRow)
 	}
 	scheduleRows := configRowsForPage(settings, options, configPageSchedule)
 	foundAcademicCalendar := false
@@ -1448,6 +1456,64 @@ func TestConfigRowsExposeCategorySelection(t *testing.T) {
 	}
 	if !foundAcademicCalendar || !foundTimetableCalendar {
 		t.Fatalf("configRows() missing calendar category row: %+v", rows)
+	}
+}
+
+func TestConfigRowsShowCurrentUserAndTerm(t *testing.T) {
+	m := model{
+		configSettings: app.ConfigSettings{
+			Term: app.TermSettings{Value: "2026-1", Label: "2026년도 1학기"},
+		},
+		configUsers: []app.UserRow{
+			{User: account.User{StudentID: "20250001"}},
+			{User: account.User{StudentID: "20250002"}, Current: true},
+		},
+		configTerms: []app.TermRow{
+			{Term: klas.Term{Value: "2025-2", Label: "2025년도 2학기"}},
+			{Term: klas.Term{Value: "2026-1", Label: "2026년도 1학기"}, Current: true},
+		},
+	}
+	rows := m.currentConfigRows()
+	if len(rows) < 2 || rows[0].key != "user.current" || rows[0].value != "20250002" {
+		t.Fatalf("user config row = %+v", rows)
+	}
+	if rows[1].key != "term.current" || rows[1].value != "2026-1  2026년도 1학기" {
+		t.Fatalf("term config row = %+v", rows[1])
+	}
+	m.configSettings.Term = app.TermSettings{Value: "2024-1", Label: "2024년도 1학기"}
+	m.configTerms[1].Current = false
+	if got := currentTermLabel(m.configTerms, m.configSettings.Term); got != "선택 필요" {
+		t.Fatalf("currentTermLabel(unmatched) = %q", got)
+	}
+}
+
+func TestConfigChoicesUseRegisteredUsersAndTerms(t *testing.T) {
+	m := model{
+		configUsers: []app.UserRow{
+			{User: account.User{StudentID: "20250001"}},
+			{User: account.User{StudentID: "20250002"}, Current: true},
+		},
+		configTerms: []app.TermRow{
+			{Term: klas.Term{Value: "2025-2", Label: "2025년도 2학기"}},
+			{Term: klas.Term{Value: "2026-1", Label: "2026년도 1학기"}, Current: true},
+		},
+	}
+	m.configChoiceKey = "user.current"
+	if got := m.currentConfigChoices(); !reflect.DeepEqual(got, []string{"20250001", "20250002"}) {
+		t.Fatalf("user choices = %#v", got)
+	}
+	if got := m.currentConfigChoiceIndex(); got != 1 {
+		t.Fatalf("user choice index = %d", got)
+	}
+	m.configChoiceKey = "term.current"
+	if got := m.currentConfigChoices(); !reflect.DeepEqual(got, []string{"2025-2  2025년도 2학기", "2026-1  2026년도 1학기"}) {
+		t.Fatalf("term choices = %#v", got)
+	}
+	if got := m.currentConfigChoiceIndex(); got != 1 {
+		t.Fatalf("term choice index = %d", got)
+	}
+	if got := termSelectorFromChoice("2026-1  2026년도 1학기"); got != "2026-1" {
+		t.Fatalf("termSelectorFromChoice() = %q", got)
 	}
 }
 
@@ -1528,6 +1594,7 @@ func TestConfigEnterOpensChoiceViewForCategories(t *testing.T) {
 			Reminder: app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
 		},
 		configOptions: app.CategoryOptions{Reminders: []string{"개인", "To-do"}},
+		configCursor:  2,
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})

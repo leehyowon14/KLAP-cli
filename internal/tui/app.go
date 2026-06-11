@@ -157,6 +157,8 @@ type model struct {
 	configInput         textinput.Model
 	configSettings      app.ConfigSettings
 	configOptions       app.CategoryOptions
+	configUsers         []app.UserRow
+	configTerms         []app.TermRow
 	configCursor        int
 	configPage          int
 	configChoiceKey     string
@@ -240,6 +242,8 @@ type loadMsg struct {
 	dashboard   app.DashboardResult
 	config      app.ConfigSettings
 	categories  app.CategoryOptions
+	users       []app.UserRow
+	terms       []app.TermRow
 }
 
 type downloadRowsMsg struct {
@@ -642,6 +646,8 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 	case screenConfig:
 		m.configSettings = msg.config
 		m.configOptions = msg.categories
+		m.configUsers = msg.users
+		m.configTerms = msg.terms
 	}
 
 	active := msg.screen == m.active
@@ -2081,29 +2087,39 @@ func (m model) resetConfigSettings() (tea.Model, tea.Cmd) {
 }
 
 func (m *model) refreshConfigContent() {
-	settings, err := m.service.ConfigSettings()
-	if err != nil {
-		m.err = err
+	msg := m.loadConfigMsg()
+	if msg.err != nil {
+		m.err = msg.err
 		return
 	}
-	options, err := m.service.CategoryOptions()
-	if err != nil {
-		m.err = err
-		return
-	}
-	m.configSettings = settings
-	m.configOptions = options
+	m.configSettings = msg.config
+	m.configOptions = msg.categories
+	m.configUsers = msg.users
+	m.configTerms = msg.terms
 	m.clampConfigCursor()
-	m.content = formatConfig(settings)
+	m.content = msg.content
 	m.loadedAt = time.Now()
 }
 
 func (m model) currentConfigRows() []configRow {
-	return configRowsForPage(m.configSettings, m.configOptions, m.configPage)
+	rows := configRowsForPage(m.configSettings, m.configOptions, m.configPage)
+	for index := range rows {
+		switch rows[index].key {
+		case "user.current":
+			rows[index].value = currentUserLabel(m.configUsers)
+		case "term.current":
+			rows[index].value = currentTermLabel(m.configTerms, m.configSettings.Term)
+		}
+	}
+	return rows
 }
 
 func (m model) currentConfigChoices() []string {
 	switch m.configChoiceKey {
+	case "user.current":
+		return userChoices(m.configUsers)
+	case "term.current":
+		return termChoices(m.configTerms)
 	case "reminder.name":
 		return categoryChoices(m.configOptions.Reminders, m.configSettings.Reminder.ListName)
 	case "calendar.name":
@@ -2118,6 +2134,24 @@ func (m model) currentConfigChoices() []string {
 func (m model) currentConfigChoiceIndex() int {
 	current := ""
 	switch m.configChoiceKey {
+	case "user.current":
+		choices := userChoices(m.configUsers)
+		current = currentUserLabel(m.configUsers)
+		for index, choice := range choices {
+			if choice == current {
+				return index
+			}
+		}
+		return 0
+	case "term.current":
+		choices := termChoices(m.configTerms)
+		current = currentTermChoice(m.configTerms, m.configSettings.Term)
+		for index, choice := range choices {
+			if choice == current {
+				return index
+			}
+		}
+		return 0
 	case "reminder.name":
 		current = m.configSettings.Reminder.ListName
 	case "calendar.name":
@@ -2133,6 +2167,10 @@ func (m model) currentConfigChoiceIndex() int {
 
 func (m model) currentConfigOptionsForKey() []string {
 	switch m.configChoiceKey {
+	case "user.current":
+		return userChoices(m.configUsers)
+	case "term.current":
+		return termChoices(m.configTerms)
 	case "reminder.name":
 		return m.configOptions.Reminders
 	case "calendar.name", "timetable-calendar.name":
@@ -2145,6 +2183,19 @@ func (m model) currentConfigOptionsForKey() []string {
 func (m model) applyConfigCategoryChoice(key string, value string) error {
 	useExisting := containsString(uniqueStrings(m.currentConfigOptionsForKey()), value)
 	switch key {
+	case "user.current":
+		if err := m.service.SelectUser(m.ctx, strings.TrimSpace(value)); err != nil {
+			return err
+		}
+		m.resetLoadedMainScreens()
+		return nil
+	case "term.current":
+		selector := termSelectorFromChoice(value)
+		if _, err := m.service.SelectTerm(m.ctx, selector, app.UserOption{}); err != nil {
+			return err
+		}
+		m.resetLoadedMainScreens()
+		return nil
 	case "reminder.name":
 		_, err := m.service.SetReminderConfig(value, useExisting)
 		return err
@@ -2157,6 +2208,22 @@ func (m model) applyConfigCategoryChoice(key string, value string) error {
 	default:
 		return nil
 	}
+}
+
+func (m *model) resetLoadedMainScreens() {
+	for _, target := range []screen{screenDashboard, screenDue, screenAssignments, screenNotices, screenLectures, screenAcademic} {
+		delete(m.loadedScreens, target)
+		delete(m.loadingScreens, target)
+		delete(m.screenErrors, target)
+	}
+	m.dashboardResult = app.DashboardResult{}
+	m.dueResult = app.DueResult{}
+	m.assignmentRows = nil
+	m.noticeRows = nil
+	m.lectureRows = nil
+	m.academicResult = app.AcademicListResult{}
+	m.contentCourse = 0
+	m.contentCursor = 0
 }
 
 func (m *model) clampConfigCursor() {
@@ -2927,6 +2994,10 @@ func (m model) renderConfigPageTabs() string {
 
 func (m model) renderConfigHint(row configRow) string {
 	switch row.key {
+	case "user.current":
+		return mutedStyle.Render("enter 선택")
+	case "term.current":
+		return mutedStyle.Render("enter 선택")
 	case "reminder.name":
 		return mutedStyle.Render("enter 선택")
 	case "calendar.name":
@@ -3598,12 +3669,10 @@ func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.
 			result, err := m.service.AcademicList(m.ctx, app.AcademicListOptions{Refresh: refresh})
 			return loadMsg{screen: target, prefetch: prefetch, academic: result, err: err}
 		case screenConfig:
-			settings, err := m.service.ConfigSettings()
-			if err != nil {
-				return loadMsg{screen: target, prefetch: prefetch, err: err}
-			}
-			categories, err := m.service.CategoryOptions()
-			return loadMsg{screen: target, prefetch: prefetch, content: formatConfig(settings), config: settings, categories: categories, err: err}
+			msg := m.loadConfigMsg()
+			msg.screen = target
+			msg.prefetch = prefetch
+			return msg
 		}
 		content, err := m.loadContent(target, refresh)
 		return loadMsg{screen: target, prefetch: prefetch, content: content, err: err}
@@ -3616,6 +3685,34 @@ func (m model) loadContent(target screen, refresh bool) (string, error) {
 		return "", errors.New("Dashboard는 structured loader를 사용해야 합니다")
 	default:
 		return "", errors.New("지원하지 않는 TUI 화면입니다")
+	}
+}
+
+func (m model) loadConfigMsg() loadMsg {
+	settings, err := m.service.ConfigSettings()
+	if err != nil {
+		return loadMsg{err: err}
+	}
+	categories, err := m.service.CategoryOptions()
+	if err != nil {
+		return loadMsg{err: err}
+	}
+	users, err := m.service.Users(m.ctx)
+	if err != nil {
+		return loadMsg{err: err}
+	}
+	terms := []app.TermRow{}
+	if len(users) > 0 {
+		if rows, termErr := m.service.TermList(m.ctx, app.TermListOptions{}); termErr == nil {
+			terms = rows
+		}
+	}
+	return loadMsg{
+		content:    formatConfig(settings),
+		config:     settings,
+		categories: categories,
+		users:      users,
+		terms:      terms,
 	}
 }
 
@@ -3955,6 +4052,24 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 	_ = options
 	return []configRow{
 		{
+			key:     "user.current",
+			page:    configPageGeneral,
+			section: "General",
+			label:   "현재 계정",
+			value:   "등록 계정 중 선택",
+			hint:    "enter 선택",
+			cycle:   true,
+		},
+		{
+			key:     "term.current",
+			page:    configPageGeneral,
+			section: "General",
+			label:   "현재 학기",
+			value:   emptyFallback(settings.Term.Label, emptyFallback(settings.Term.Value, "자동")),
+			hint:    "enter 선택",
+			cycle:   true,
+		},
+		{
 			key:      "reminder.name",
 			page:     configPageGeneral,
 			section:  "Reminder",
@@ -4082,8 +4197,86 @@ func categoryChoiceIndex(options []string, current string) (int, []string) {
 	return 0, choices
 }
 
+func userChoices(users []app.UserRow) []string {
+	choices := make([]string, 0, len(users))
+	for _, user := range users {
+		studentID := strings.TrimSpace(user.User.StudentID)
+		if studentID != "" {
+			choices = append(choices, studentID)
+		}
+	}
+	return choices
+}
+
+func currentUserLabel(users []app.UserRow) string {
+	for _, user := range users {
+		if user.Current && strings.TrimSpace(user.User.StudentID) != "" {
+			return user.User.StudentID
+		}
+	}
+	if len(users) == 1 {
+		return users[0].User.StudentID
+	}
+	return "선택 필요"
+}
+
+func termChoices(terms []app.TermRow) []string {
+	choices := make([]string, 0, len(terms))
+	for _, row := range terms {
+		value := strings.TrimSpace(row.Term.Value)
+		if value == "" {
+			continue
+		}
+		label := strings.TrimSpace(row.Term.Label)
+		if label == "" {
+			choices = append(choices, value)
+			continue
+		}
+		choices = append(choices, value+"  "+label)
+	}
+	return choices
+}
+
+func currentTermChoice(terms []app.TermRow, settings app.TermSettings) string {
+	currentValue := strings.TrimSpace(settings.Value)
+	for _, row := range terms {
+		if row.Current || (currentValue != "" && row.Term.Value == currentValue) {
+			value := strings.TrimSpace(row.Term.Value)
+			label := strings.TrimSpace(row.Term.Label)
+			if label == "" {
+				return value
+			}
+			return value + "  " + label
+		}
+	}
+	return ""
+}
+
+func currentTermLabel(terms []app.TermRow, settings app.TermSettings) string {
+	choice := currentTermChoice(terms, settings)
+	if choice != "" {
+		return choice
+	}
+	if len(terms) > 0 {
+		return "선택 필요"
+	}
+	return emptyFallback(settings.Label, emptyFallback(settings.Value, "자동"))
+}
+
+func termSelectorFromChoice(choice string) string {
+	choice = strings.TrimSpace(choice)
+	if choice == "" {
+		return ""
+	}
+	return strings.Fields(choice)[0]
+}
+
 func configInputLabel(key string) string {
 	switch key {
+	case "user.current":
+		return "현재 계정"
+	case "term.current":
+		return "현재 학기"
 	case "download.dir":
 		return "저장 폴더"
 	case "reminder.name":
