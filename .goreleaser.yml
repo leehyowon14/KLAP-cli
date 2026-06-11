@@ -1,0 +1,99 @@
+version: 2
+
+project_name: klap
+
+builds:
+  - id: klap
+    main: ./cmd/klap
+    binary: klap
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: klap
+    ids:
+      - klap
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md
+      - LICENSE
+      - docs/ARCHITECTURE.md
+      - src: bridges/macos/reminder.swift
+        dst: bridges/macos/reminder.swift
+      - src: bridges/macos/calendar.swift
+        dst: bridges/macos/calendar.swift
+      - src: bridges/macos/categories.swift
+        dst: bridges/macos/categories.swift
+      - src: bridges/macos/transcribe.swift
+        dst: bridges/macos/transcribe.swift
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: leehyowon14
+    name: KLAP-cli
+  draft: true
+  prerelease: auto
+
+brews:
+  - name: klap
+    repository:
+      owner: leehyowon14
+      name: homebrew-klap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/leehyowon14/KLAP-cli
+    description: Kwangwoon Learning Automation Project CLI/TUI
+    license: MIT
+    install: |
+      libexec.install "klap"
+      libexec.install "bridges" if File.directory?("bridges")
+      env = {}
+      if OS.mac?
+        env = {
+          KLAP_REMINDER_BRIDGE: libexec/"bridges/macos/reminder.swift",
+          KLAP_CALENDAR_BRIDGE: libexec/"bridges/macos/calendar.swift",
+          KLAP_CATEGORY_BRIDGE: libexec/"bridges/macos/categories.swift",
+          KLAP_TRANSCRIPT_BRIDGE: libexec/"bridges/macos/transcribe.swift",
+        }
+      end
+      (bin/"klap").write_env_script libexec/"klap", env
+    test: |
+      system "#{bin}/klap", "cache", "status"
