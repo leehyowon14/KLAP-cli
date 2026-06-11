@@ -11,13 +11,15 @@ import (
 )
 
 type Assignment struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Course    string     `json:"course"`
-	DueAt     *time.Time `json:"dueAt"`
-	Submitted bool       `json:"submitted"`
-	DetailURL string     `json:"detailUrl"`
-	Notes     string     `json:"notes"`
+	ID              string     `json:"id"`
+	Title           string     `json:"title"`
+	Course          string     `json:"course"`
+	DueAt           *time.Time `json:"dueAt"`
+	Submitted       bool       `json:"submitted"`
+	DetailURL       string     `json:"detailUrl"`
+	Notes           string     `json:"notes"`
+	KnownSourceHash string     `json:"knownSourceHash,omitempty"`
+	ForceUpdate     bool       `json:"forceUpdate,omitempty"`
 }
 
 type SyncRequest struct {

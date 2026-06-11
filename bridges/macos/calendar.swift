@@ -11,6 +11,8 @@ struct AcademicEvent: Codable {
     let url: String
     let recurrence: String?
     let recurrenceEnd: Date?
+    let knownSourceHash: String?
+    let forceUpdate: Bool?
 }
 
 struct SyncRequest: Codable {
@@ -135,34 +137,42 @@ var result = SyncResult()
 for item in request.events {
     let fallback = fallbackKey(for: item.id, title: item.title)
     let existing = known[item.id] ?? (fallback.flatMap { fallbackKnown[$0] })
+    if existing == nil && item.knownSourceHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false && item.forceUpdate != true {
+        result.skipped += 1
+        continue
+    }
     let event = existing ?? EKEvent(eventStore: store)
     let isNew = existing == nil
     event.calendar = calendar
-    event.title = item.title
-    event.startDate = item.startAt
-    event.endDate = item.endAt
-    event.isAllDay = item.allDay
-    event.notes = item.notes
-    if !item.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        event.url = URL(string: item.url)
-    }
-    if item.recurrence == "weekly", let recurrenceEnd = item.recurrenceEnd {
-        event.recurrenceRules = [
-            EKRecurrenceRule(
-                recurrenceWith: .weekly,
-                interval: 1,
-                end: EKRecurrenceEnd(end: recurrenceEnd)
-            )
-        ]
-    } else {
-        event.recurrenceRules = nil
+    if isNew || item.forceUpdate == true {
+        event.title = item.title
+        event.startDate = item.startAt
+        event.endDate = item.endAt
+        event.isAllDay = item.allDay
+        event.notes = item.notes
+        if !item.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            event.url = URL(string: item.url)
+        }
+        if item.recurrence == "weekly", let recurrenceEnd = item.recurrenceEnd {
+            event.recurrenceRules = [
+                EKRecurrenceRule(
+                    recurrenceWith: .weekly,
+                    interval: 1,
+                    end: EKRecurrenceEnd(end: recurrenceEnd)
+                )
+            ]
+        } else {
+            event.recurrenceRules = nil
+        }
     }
     let saveSpan: EKSpan = (event.recurrenceRules?.isEmpty == false) ? .futureEvents : .thisEvent
     try store.save(event, span: saveSpan, commit: false)
     if isNew {
         result.created += 1
-    } else {
+    } else if item.forceUpdate == true {
         result.updated += 1
+    } else {
+        result.skipped += 1
     }
 }
 

@@ -655,6 +655,7 @@ func TestViewStartsWithHeaderBeforeRule(t *testing.T) {
 		{name: "assignment-detail", view: testChromeModel(screenAssignmentDetail).View()},
 		{name: "notice-detail", view: testChromeModel(screenNoticeDetail).View()},
 		{name: "academic", view: testChromeModel(screenAcademic).View()},
+		{name: "sync-conflict", view: testChromeModel(screenSyncConflict).View()},
 		{name: "config", view: testChromeModel(screenConfig).View()},
 		{name: "config-choice", view: testChromeModel(screenConfigChoice).View()},
 		{name: "config-input", view: testChromeModel(screenConfigInput).View()},
@@ -751,6 +752,13 @@ func testChromeModel(active screen) model {
 		configInput:         textinput.New(),
 		roomDaysSelected:    map[int]bool{1: true},
 		roomPeriodsSelected: map[int]bool{1: true},
+		syncConflicts: []app.SyncConflict{{
+			Key:     "assignment:1",
+			Scope:   "assignment",
+			Title:   "기말 과제",
+			Summary: "기말 과제 · 2026-06-17 23:59",
+		}},
+		syncConflictActions: map[string]app.SyncDecision{"assignment:1": app.SyncDecisionKeep},
 	}
 	m.configInput.SetValue("입력값")
 	return m

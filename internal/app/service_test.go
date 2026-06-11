@@ -10,11 +10,66 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kw-klap/klap-cli/internal/cache"
 	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/kw-klap/klap-cli/internal/reminder"
 	"github.com/kw-klap/klap-cli/internal/settings"
 )
 
 var errDashboardTest = errors.New("dashboard test error")
+
+func TestPrepareReminderSyncPromptsOnceForChangedSource(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	dueAt := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	original := reminder.Assignment{ID: "assignment:1", Title: "기말 과제", Course: "오픈소스", DueAt: &dueAt, Notes: "old"}
+
+	first, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{original}, nil)
+	if err != nil {
+		t.Fatalf("prepareReminderSync() first error = %v", err)
+	}
+	if len(first.Conflicts) != 0 || len(first.Assignments) != 1 || !first.Assignments[0].ForceUpdate {
+		t.Fatalf("first prepare = %+v", first)
+	}
+	commitSyncSourceHashes(&first.State, first.Pending)
+	if err := service.saveSyncSourceState("assignment", "20260001", first.State); err != nil {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+
+	changed := original
+	changed.Title = "기말 대체 과제"
+	second, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{changed}, nil)
+	if err != nil {
+		t.Fatalf("prepareReminderSync() second error = %v", err)
+	}
+	if len(second.Conflicts) != 1 || second.Conflicts[0].Key != "assignment:assignment:1" {
+		t.Fatalf("second conflicts = %+v", second.Conflicts)
+	}
+
+	kept, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{changed}, map[string]SyncDecision{
+		second.Conflicts[0].Key: SyncDecisionKeep,
+	})
+	if err != nil {
+		t.Fatalf("prepareReminderSync() keep error = %v", err)
+	}
+	if len(kept.Conflicts) != 0 || len(kept.Assignments) != 0 || kept.Skipped != 1 {
+		t.Fatalf("kept prepare = %+v", kept)
+	}
+	if err := service.saveSyncSourceState("assignment", "20260001", kept.State); err != nil {
+		t.Fatalf("save keep state error = %v", err)
+	}
+
+	again, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{changed}, nil)
+	if err != nil {
+		t.Fatalf("prepareReminderSync() again error = %v", err)
+	}
+	if len(again.Conflicts) != 0 || len(again.Assignments) != 0 || again.Skipped != 1 {
+		t.Fatalf("again prepare = %+v", again)
+	}
+}
 
 func TestSelectedCoursesByNumber(t *testing.T) {
 	term := klas.Term{Courses: []klas.Course{

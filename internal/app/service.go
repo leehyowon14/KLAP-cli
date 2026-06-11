@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -66,9 +68,10 @@ type CourseListOptions struct {
 }
 
 type AssignmentListOptions struct {
-	User         UserOption
-	CourseFilter string
-	Refresh      bool
+	User          UserOption
+	CourseFilter  string
+	Refresh       bool
+	SyncDecisions map[string]SyncDecision
 }
 
 type NoticeListOptions struct {
@@ -78,8 +81,9 @@ type NoticeListOptions struct {
 }
 
 type TimetableOptions struct {
-	User    UserOption
-	Refresh bool
+	User          UserOption
+	Refresh       bool
+	SyncDecisions map[string]SyncDecision
 }
 
 type AttendanceListOptions struct {
@@ -137,9 +141,10 @@ type TermListOptions struct {
 }
 
 type LectureListOptions struct {
-	User         UserOption
-	CourseFilter string
-	Refresh      bool
+	User          UserOption
+	CourseFilter  string
+	Refresh       bool
+	SyncDecisions map[string]SyncDecision
 }
 
 type LectureDownloadOptions struct {
@@ -506,11 +511,39 @@ type LectureAttendAllResult struct {
 type ReminderSyncResult struct {
 	Result        reminder.SyncResult
 	EligibleCount int
+	Conflicts     []SyncConflict
 }
 
 type CalendarSyncResult struct {
 	Result        klapcalendar.SyncResult
 	EligibleCount int
+	Conflicts     []SyncConflict
+}
+
+type SyncDecision string
+
+const (
+	SyncDecisionApply SyncDecision = "apply"
+	SyncDecisionKeep  SyncDecision = "keep"
+)
+
+type SyncConflict struct {
+	Key          string
+	Scope        string
+	ID           string
+	Kind         string
+	Title        string
+	PreviousHash string
+	CurrentHash  string
+	Summary      string
+}
+
+type SyncConflictError struct {
+	Conflicts []SyncConflict
+}
+
+func (e SyncConflictError) Error() string {
+	return fmt.Sprintf("KLAS에서 갱신된 항목 %d개에 대한 확인이 필요합니다", len(e.Conflicts))
 }
 
 type ReminderSettings struct {
@@ -3014,6 +3047,10 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}
+	studentID, err := s.selectedStudentID(ctx, opts.User)
+	if err != nil {
+		return ReminderSyncResult{}, err
+	}
 
 	currentSettings, err := s.loadSettings()
 	if err != nil {
@@ -3044,14 +3081,32 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 	if len(assignments) == 0 {
 		return ReminderSyncResult{}, nil
 	}
+	prepared, err := s.prepareReminderSync("assignment", studentID, assignments, opts.SyncDecisions)
+	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+	if len(prepared.Conflicts) > 0 {
+		return ReminderSyncResult{EligibleCount: len(assignments), Conflicts: prepared.Conflicts}, SyncConflictError{Conflicts: prepared.Conflicts}
+	}
+	if len(prepared.Assignments) == 0 {
+		if err := s.saveSyncSourceState("assignment", studentID, prepared.State); err != nil {
+			return ReminderSyncResult{}, err
+		}
+		return ReminderSyncResult{Result: reminder.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(assignments)}, nil
+	}
 
 	result, err := reminder.NewMacOSBridge(s.reminderBridgePath).Sync(reminder.SyncRequest{
 		ListName:        currentSettings.Reminder.ListName,
 		UseExistingList: currentSettings.Reminder.UseExistingList,
 		AlarmBeforeMin:  currentSettings.Reminder.AlarmBeforeMin,
-		Assignments:     assignments,
+		Assignments:     prepared.Assignments,
 	})
 	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+	result.Skipped += prepared.Skipped
+	commitSyncSourceHashes(&prepared.State, prepared.Pending)
+	if err := s.saveSyncSourceState("assignment", studentID, prepared.State); err != nil {
 		return ReminderSyncResult{}, err
 	}
 	return ReminderSyncResult{
@@ -3062,6 +3117,10 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 
 func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOptions) (ReminderSyncResult, error) {
 	rows, err := s.LectureList(ctx, opts)
+	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}
@@ -3091,14 +3150,32 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOpti
 	if len(assignments) == 0 {
 		return ReminderSyncResult{}, nil
 	}
+	prepared, err := s.prepareReminderSync("lecture", studentID, assignments, opts.SyncDecisions)
+	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+	if len(prepared.Conflicts) > 0 {
+		return ReminderSyncResult{EligibleCount: len(assignments), Conflicts: prepared.Conflicts}, SyncConflictError{Conflicts: prepared.Conflicts}
+	}
+	if len(prepared.Assignments) == 0 {
+		if err := s.saveSyncSourceState("lecture", studentID, prepared.State); err != nil {
+			return ReminderSyncResult{}, err
+		}
+		return ReminderSyncResult{Result: reminder.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(assignments)}, nil
+	}
 
 	result, err := reminder.NewMacOSBridge(s.reminderBridgePath).Sync(reminder.SyncRequest{
 		ListName:        currentSettings.Reminder.ListName,
 		UseExistingList: currentSettings.Reminder.UseExistingList,
 		AlarmBeforeMin:  currentSettings.Reminder.AlarmBeforeMin,
-		Assignments:     assignments,
+		Assignments:     prepared.Assignments,
 	})
 	if err != nil {
+		return ReminderSyncResult{}, err
+	}
+	result.Skipped += prepared.Skipped
+	commitSyncSourceHashes(&prepared.State, prepared.Pending)
+	if err := s.saveSyncSourceState("lecture", studentID, prepared.State); err != nil {
 		return ReminderSyncResult{}, err
 	}
 	return ReminderSyncResult{
@@ -3138,13 +3215,31 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOpt
 	if len(events) == 0 {
 		return CalendarSyncResult{}, nil
 	}
+	prepared, err := s.prepareCalendarSync("academic", "global", events, opts.SyncDecisions)
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+	if len(prepared.Conflicts) > 0 {
+		return CalendarSyncResult{EligibleCount: len(events), Conflicts: prepared.Conflicts}, SyncConflictError{Conflicts: prepared.Conflicts}
+	}
+	if len(prepared.Events) == 0 {
+		if err := s.saveSyncSourceState("academic", "global", prepared.State); err != nil {
+			return CalendarSyncResult{}, err
+		}
+		return CalendarSyncResult{Result: klapcalendar.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(events)}, nil
+	}
 
 	syncResult, err := klapcalendar.NewMacOSBridge(s.calendarBridgePath).Sync(klapcalendar.SyncRequest{
 		CalendarName:    currentSettings.Calendar.Name,
 		UseExistingList: currentSettings.Calendar.UseExistingList,
-		Events:          events,
+		Events:          prepared.Events,
 	})
 	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+	syncResult.Skipped += prepared.Skipped
+	commitSyncSourceHashes(&prepared.State, prepared.Pending)
+	if err := s.saveSyncSourceState("academic", "global", prepared.State); err != nil {
 		return CalendarSyncResult{}, err
 	}
 	return CalendarSyncResult{Result: syncResult, EligibleCount: len(events)}, nil
@@ -3156,6 +3251,10 @@ func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableOptio
 		return CalendarSyncResult{}, err
 	}
 	result, err := s.Timetable(ctx, opts)
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
 		return CalendarSyncResult{}, err
 	}
@@ -3193,16 +3292,262 @@ func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableOptio
 	if len(events) == 0 {
 		return CalendarSyncResult{}, nil
 	}
+	prepared, err := s.prepareCalendarSync("timetable", studentID, events, opts.SyncDecisions)
+	if err != nil {
+		return CalendarSyncResult{}, err
+	}
+	if len(prepared.Conflicts) > 0 {
+		return CalendarSyncResult{EligibleCount: len(events), Conflicts: prepared.Conflicts}, SyncConflictError{Conflicts: prepared.Conflicts}
+	}
+	if len(prepared.Events) == 0 {
+		if err := s.saveSyncSourceState("timetable", studentID, prepared.State); err != nil {
+			return CalendarSyncResult{}, err
+		}
+		return CalendarSyncResult{Result: klapcalendar.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(events)}, nil
+	}
 
 	syncResult, err := klapcalendar.NewMacOSBridge(s.calendarBridgePath).Sync(klapcalendar.SyncRequest{
 		CalendarName:    currentSettings.Calendar.TimetableName,
 		UseExistingList: currentSettings.Calendar.TimetableUseExistingList,
-		Events:          events,
+		Events:          prepared.Events,
 	})
 	if err != nil {
 		return CalendarSyncResult{}, err
 	}
+	syncResult.Skipped += prepared.Skipped
+	commitSyncSourceHashes(&prepared.State, prepared.Pending)
+	if err := s.saveSyncSourceState("timetable", studentID, prepared.State); err != nil {
+		return CalendarSyncResult{}, err
+	}
 	return CalendarSyncResult{Result: syncResult, EligibleCount: len(events)}, nil
+}
+
+const syncSourceCacheTTL = 24 * 365 * 10 * time.Hour
+
+type syncSourceState struct {
+	Items map[string]syncSourceItem `json:"items"`
+}
+
+type syncSourceItem struct {
+	Hash        string `json:"hash"`
+	IgnoredHash string `json:"ignoredHash,omitempty"`
+}
+
+type preparedReminderSync struct {
+	Assignments []reminder.Assignment
+	State       syncSourceState
+	Pending     map[string]string
+	Skipped     int
+	Conflicts   []SyncConflict
+}
+
+type preparedCalendarSync struct {
+	Events    []klapcalendar.Event
+	State     syncSourceState
+	Pending   map[string]string
+	Skipped   int
+	Conflicts []SyncConflict
+}
+
+func (s *Service) prepareReminderSync(scope string, owner string, assignments []reminder.Assignment, decisions map[string]SyncDecision) (preparedReminderSync, error) {
+	state, err := s.loadSyncSourceState(scope, owner)
+	if err != nil {
+		return preparedReminderSync{}, err
+	}
+	result := preparedReminderSync{
+		State:   state,
+		Pending: map[string]string{},
+	}
+	for _, assignment := range assignments {
+		hash := reminderSourceHash(assignment)
+		item := state.Items[assignment.ID]
+		assignment.KnownSourceHash = item.Hash
+		key := syncConflictKey(scope, assignment.ID)
+		if item.Hash != "" && item.Hash != hash {
+			switch decisions[key] {
+			case SyncDecisionApply:
+				assignment.ForceUpdate = true
+			case SyncDecisionKeep:
+				item.IgnoredHash = hash
+				state.Items[assignment.ID] = item
+				result.Skipped++
+				continue
+			default:
+				if item.IgnoredHash == hash {
+					result.Skipped++
+					continue
+				}
+				result.Conflicts = append(result.Conflicts, SyncConflict{
+					Key:          key,
+					Scope:        scope,
+					ID:           assignment.ID,
+					Kind:         "reminder",
+					Title:        assignment.Title,
+					PreviousHash: item.Hash,
+					CurrentHash:  hash,
+					Summary:      reminderConflictSummary(assignment),
+				})
+				continue
+			}
+		}
+		if item.Hash == "" {
+			assignment.ForceUpdate = true
+		}
+		result.Assignments = append(result.Assignments, assignment)
+		result.Pending[assignment.ID] = hash
+	}
+	result.State = state
+	return result, nil
+}
+
+func (s *Service) prepareCalendarSync(scope string, owner string, events []klapcalendar.Event, decisions map[string]SyncDecision) (preparedCalendarSync, error) {
+	state, err := s.loadSyncSourceState(scope, owner)
+	if err != nil {
+		return preparedCalendarSync{}, err
+	}
+	result := preparedCalendarSync{
+		State:   state,
+		Pending: map[string]string{},
+	}
+	for _, event := range events {
+		hash := calendarSourceHash(event)
+		item := state.Items[event.ID]
+		event.KnownSourceHash = item.Hash
+		key := syncConflictKey(scope, event.ID)
+		if item.Hash != "" && item.Hash != hash {
+			switch decisions[key] {
+			case SyncDecisionApply:
+				event.ForceUpdate = true
+			case SyncDecisionKeep:
+				item.IgnoredHash = hash
+				state.Items[event.ID] = item
+				result.Skipped++
+				continue
+			default:
+				if item.IgnoredHash == hash {
+					result.Skipped++
+					continue
+				}
+				result.Conflicts = append(result.Conflicts, SyncConflict{
+					Key:          key,
+					Scope:        scope,
+					ID:           event.ID,
+					Kind:         "calendar",
+					Title:        event.Title,
+					PreviousHash: item.Hash,
+					CurrentHash:  hash,
+					Summary:      calendarConflictSummary(event),
+				})
+				continue
+			}
+		}
+		if item.Hash == "" {
+			event.ForceUpdate = true
+		}
+		result.Events = append(result.Events, event)
+		result.Pending[event.ID] = hash
+	}
+	result.State = state
+	return result, nil
+}
+
+func (s *Service) loadSyncSourceState(scope string, owner string) (syncSourceState, error) {
+	state := syncSourceState{Items: map[string]syncSourceItem{}}
+	if s.cacheStore == nil {
+		return state, nil
+	}
+	_, ok, err := s.cacheStore.Get(syncSourceCacheKey(scope, owner), &state)
+	if err != nil {
+		return syncSourceState{}, err
+	}
+	if !ok || state.Items == nil {
+		state.Items = map[string]syncSourceItem{}
+	}
+	return state, nil
+}
+
+func (s *Service) saveSyncSourceState(scope string, owner string, state syncSourceState) error {
+	if s.cacheStore == nil {
+		return nil
+	}
+	if state.Items == nil {
+		state.Items = map[string]syncSourceItem{}
+	}
+	return s.cacheStore.Set(syncSourceCacheKey(scope, owner), syncSourceCacheTTL, state)
+}
+
+func syncSourceCacheKey(scope string, owner string) string {
+	return "sync-source:" + strings.TrimSpace(owner) + ":" + strings.TrimSpace(scope)
+}
+
+func syncConflictKey(scope string, id string) string {
+	return strings.TrimSpace(scope) + ":" + strings.TrimSpace(id)
+}
+
+func commitSyncSourceHashes(state *syncSourceState, pending map[string]string) {
+	if state.Items == nil {
+		state.Items = map[string]syncSourceItem{}
+	}
+	for id, hash := range pending {
+		state.Items[id] = syncSourceItem{Hash: hash}
+	}
+}
+
+func reminderSourceHash(assignment reminder.Assignment) string {
+	dueAt := ""
+	if assignment.DueAt != nil {
+		dueAt = assignment.DueAt.UTC().Format(time.RFC3339Nano)
+	}
+	return hashSyncParts(
+		assignment.ID,
+		assignment.Title,
+		assignment.Course,
+		dueAt,
+		strconv.FormatBool(assignment.Submitted),
+		assignment.DetailURL,
+		assignment.Notes,
+	)
+}
+
+func calendarSourceHash(event klapcalendar.Event) string {
+	recurrenceEnd := ""
+	if event.RecurrenceEnd != nil {
+		recurrenceEnd = event.RecurrenceEnd.UTC().Format(time.RFC3339Nano)
+	}
+	return hashSyncParts(
+		event.ID,
+		event.Title,
+		event.StartAt.UTC().Format(time.RFC3339Nano),
+		event.EndAt.UTC().Format(time.RFC3339Nano),
+		strconv.FormatBool(event.AllDay),
+		event.Notes,
+		event.URL,
+		event.Recurrence,
+		recurrenceEnd,
+	)
+}
+
+func hashSyncParts(parts ...string) string {
+	hasher := sha256.New()
+	for _, part := range parts {
+		hasher.Write([]byte(part))
+		hasher.Write([]byte{0})
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func reminderConflictSummary(assignment reminder.Assignment) string {
+	if assignment.DueAt == nil {
+		return assignment.Title
+	}
+	return fmt.Sprintf("%s · %s", assignment.Title, assignment.DueAt.Format("2006-01-02 15:04"))
+}
+
+func calendarConflictSummary(event klapcalendar.Event) string {
+	if event.AllDay {
+		return fmt.Sprintf("%s · %s ~ %s", event.Title, event.StartAt.Format("2006-01-02"), event.EndAt.Format("2006-01-02"))
+	}
+	return fmt.Sprintf("%s · %s ~ %s", event.Title, event.StartAt.Format("2006-01-02 15:04"), event.EndAt.Format("15:04"))
 }
 
 func (s *Service) loadSettings() (settings.Settings, error) {

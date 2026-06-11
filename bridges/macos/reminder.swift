@@ -9,6 +9,8 @@ struct Assignment: Codable {
     let submitted: Bool
     let detailUrl: String
     let notes: String
+    let knownSourceHash: String?
+    let forceUpdate: Bool?
 }
 
 struct SyncRequest: Codable {
@@ -147,18 +149,29 @@ for assignment in request.assignments {
 
     if let reminder = known[assignment.id] {
         reminder.calendar = calendar
-        reminder.title = assignment.title
-        reminder.notes = notes(for: assignment)
-        reminder.url = URL(string: assignment.detailUrl)
-        applyDueDate(dueAt, to: reminder)
-        applyAlarm(dueAt, beforeMinutes: request.alarmBeforeMin, to: reminder)
+        if assignment.forceUpdate == true {
+            reminder.title = assignment.title
+            reminder.notes = notes(for: assignment)
+            reminder.url = URL(string: assignment.detailUrl)
+            applyDueDate(dueAt, to: reminder)
+            applyAlarm(dueAt, beforeMinutes: request.alarmBeforeMin, to: reminder)
+        }
         if assignment.submitted && !reminder.isCompleted {
             reminder.isCompleted = true
             result.completed += 1
         } else {
-            result.updated += 1
+            if assignment.forceUpdate == true {
+                result.updated += 1
+            } else {
+                result.skipped += 1
+            }
         }
         try store.save(reminder, commit: false)
+        continue
+    }
+
+    if assignment.knownSourceHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false && assignment.forceUpdate != true {
+        result.skipped += 1
         continue
     }
 
