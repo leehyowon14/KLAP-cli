@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -1029,7 +1030,7 @@ func runLectureAttend(ctx context.Context, service *app.Service, args []string) 
 	if err != nil {
 		return err
 	}
-	onProgress := printLectureProgress
+	progressPrinter := newLectureProgressPrinter(os.Stdout, stdoutSupportsInPlaceProgress())
 
 	if args[0] == "all" {
 		course, err := courseFilter(args[1:])
@@ -1040,8 +1041,9 @@ func runLectureAttend(ctx context.Context, service *app.Service, args []string) 
 			User:         app.UserOption{StudentID: userFlag(args[1:])},
 			CourseFilter: course,
 			Interval:     interval,
-			OnProgress:   onProgress,
+			OnProgress:   progressPrinter.Print,
 		})
+		progressPrinter.Clear()
 		if err != nil {
 			return err
 		}
@@ -1052,8 +1054,9 @@ func runLectureAttend(ctx context.Context, service *app.Service, args []string) 
 	result, err := service.AttendLecture(ctx, args[0], app.LectureAttendOptions{
 		User:       app.UserOption{StudentID: userFlag(args[1:])},
 		Interval:   interval,
-		OnProgress: onProgress,
+		OnProgress: progressPrinter.Print,
 	})
+	progressPrinter.Clear()
 	if err != nil {
 		return err
 	}
@@ -1076,12 +1079,14 @@ func runAttend(ctx context.Context, service *app.Service, args []string) error {
 	if err != nil {
 		return err
 	}
+	progressPrinter := newLectureProgressPrinter(os.Stdout, stdoutSupportsInPlaceProgress())
 	result, err := service.AttendAllLectures(ctx, app.LectureAttendAllOptions{
 		User:         app.UserOption{StudentID: userFlag(flagArgs)},
 		CourseFilter: courseFilter,
 		Interval:     interval,
-		OnProgress:   printLectureProgress,
+		OnProgress:   progressPrinter.Print,
 	})
+	progressPrinter.Clear()
 	if err != nil {
 		return err
 	}
@@ -2810,8 +2815,32 @@ func printLectureAttendAllResult(result app.LectureAttendAllResult) {
 	fmt.Printf("전체 수강 결과: 완료 %d, 실패 %d\n", completed, failed)
 }
 
-func printLectureProgress(row app.LectureRow, progress klas.LectureProgress) {
-	fmt.Printf("수강중: %s | %s\n", formatLectureProgress(row, progress), row.Lecture.Title)
+type lectureProgressPrinter struct {
+	writer io.Writer
+	inline bool
+	active bool
+}
+
+func newLectureProgressPrinter(writer io.Writer, inline bool) *lectureProgressPrinter {
+	return &lectureProgressPrinter{writer: writer, inline: inline}
+}
+
+func (p *lectureProgressPrinter) Print(row app.LectureRow, progress klas.LectureProgress) {
+	line := fmt.Sprintf("수강중: %s | %s", formatLectureProgress(row, progress), row.Lecture.Title)
+	if !p.inline {
+		fmt.Fprintln(p.writer, line)
+		return
+	}
+	fmt.Fprintf(p.writer, "\r\x1b[2K%s", line)
+	p.active = true
+}
+
+func (p *lectureProgressPrinter) Clear() {
+	if !p.inline || !p.active {
+		return
+	}
+	fmt.Fprint(p.writer, "\r\x1b[2K")
+	p.active = false
 }
 
 func formatLectureProgress(row app.LectureRow, progress klas.LectureProgress) string {
@@ -3021,6 +3050,17 @@ func terminalHyperlinksEnabled() bool {
 		return true
 	}
 
+	return stdoutIsTerminal()
+}
+
+func stdoutSupportsInPlaceProgress() bool {
+	if os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	return stdoutIsTerminal()
+}
+
+func stdoutIsTerminal() bool {
 	stdout, err := os.Stdout.Stat()
 	if err != nil {
 		return false

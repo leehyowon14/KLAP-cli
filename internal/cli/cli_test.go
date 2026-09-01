@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kw-klap/klap-cli/internal/app"
 	"github.com/kw-klap/klap-cli/internal/klas"
 )
 
@@ -199,6 +201,61 @@ func TestRenderProgressBar(t *testing.T) {
 	got := renderProgressBar(25, 12)
 	if got == "" || !strings.Contains(got, "25%") {
 		t.Fatalf("renderProgressBar() = %q", got)
+	}
+}
+
+func TestLectureProgressPrinterUpdatesCurrentTerminalLine(t *testing.T) {
+	var output bytes.Buffer
+	printer := newLectureProgressPrinter(&output, true)
+	row := app.LectureRow{
+		ID:         "1:video",
+		CourseName: "자료구조",
+		Lecture:    klas.Lecture{Title: "01-DS-preliminary"},
+	}
+
+	printer.Print(row, klas.LectureProgress{Progress: 2, TotalTime: "1", PTime: "41"})
+	printer.Print(row, klas.LectureProgress{Progress: 5, TotalTime: "2", PTime: "41"})
+	printer.Clear()
+
+	got := output.String()
+	if strings.Contains(got, "\n") {
+		t.Fatalf("inline progress contains newline: %q", got)
+	}
+	if count := strings.Count(got, "\r\x1b[2K"); count != 3 {
+		t.Fatalf("clear-line sequence count = %d, output = %q", count, got)
+	}
+	if !strings.Contains(got, "2% 1/41분") || !strings.Contains(got, "5% 2/41분") {
+		t.Fatalf("inline progress output = %q", got)
+	}
+	if printer.active {
+		t.Fatal("Clear() should reset active state")
+	}
+}
+
+func TestLectureProgressPrinterKeepsLineLogsWhenNotInteractive(t *testing.T) {
+	var output bytes.Buffer
+	printer := newLectureProgressPrinter(&output, false)
+	row := app.LectureRow{ID: "1:video", Lecture: klas.Lecture{Title: "영상"}}
+
+	printer.Print(row, klas.LectureProgress{Progress: 25})
+	printer.Print(row, klas.LectureProgress{Progress: 50})
+	printer.Clear()
+
+	got := output.String()
+	if strings.Count(got, "\n") != 2 {
+		t.Fatalf("non-interactive progress output = %q", got)
+	}
+	if strings.Contains(got, "\r") || strings.Contains(got, "\x1b[2K") {
+		t.Fatalf("non-interactive output contains terminal controls: %q", got)
+	}
+}
+
+func TestLectureProgressPrinterClearBeforeFirstUpdateDoesNothing(t *testing.T) {
+	var output bytes.Buffer
+	printer := newLectureProgressPrinter(&output, true)
+	printer.Clear()
+	if output.Len() != 0 {
+		t.Fatalf("Clear() output before progress = %q", output.String())
 	}
 }
 
