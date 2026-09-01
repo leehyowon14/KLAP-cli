@@ -109,6 +109,8 @@ const (
 	screenDownloadConfirm
 	screenDownloadLanguage
 	screenDownloadProgress
+	screenAttendConfirm
+	screenAttendProgress
 )
 
 type menuItem struct {
@@ -176,6 +178,8 @@ type model struct {
 	downloadTranscribe  bool
 	downloadLanguage    int
 	downloadProgress    *lectureDownloadModel
+	attendRow           app.LectureRow
+	attendProgress      *lectureAttendModel
 	roomDayCursor       int
 	roomDaysSelected    map[int]bool
 	roomPeriodCursor    int
@@ -339,6 +343,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.active == screenDownloadProgress {
 		return m.updateDownloadProgress(msg)
 	}
+	if m.active == screenAttendProgress {
+		return m.updateAttendProgress(msg)
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -355,6 +362,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.active == screenDownloadLanguage {
 			return m.updateDownloadLanguage(msg)
+		}
+		if m.active == screenAttendConfirm {
+			return m.updateAttendConfirm(msg)
 		}
 		if m.active == screenConfigChoice {
 			return m.updateConfigChoice(msg)
@@ -536,6 +546,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 			m.content = ""
 			return m, m.loadDownloadRows()
+		case m.active == screenLectures && !m.loading && keyMatches(key, "a", "ㅁ"):
+			return m.startAttendConfirm()
 		case m.active == screenDashboard && m.dashboardPage > 0 && !m.loading && keyMatches(key, "p", "ㅔ"):
 			return m.openDashboardSyllabus()
 		}
@@ -2546,6 +2558,13 @@ func (m model) View() string {
 			return appStyle.Render(errorStyle.Render("다운로드 상태가 없습니다"))
 		}
 		return m.downloadProgress.View()
+	case screenAttendConfirm:
+		return appStyle.Render(m.renderAttendConfirmView(contentWidth))
+	case screenAttendProgress:
+		if m.attendProgress == nil {
+			return appStyle.Render(errorStyle.Render("수강 상태가 없습니다"))
+		}
+		return m.attendProgress.View()
 	case screenConfigChoice:
 		return appStyle.Render(m.renderConfigChoiceView(contentWidth))
 	case screenConfigInput:
@@ -2609,7 +2628,7 @@ func (m model) footerHelp() string {
 		return "↑↓ 스크롤  k KLAS  b/esc 목록  q 종료"
 	}
 	if m.active == screenLectures {
-		return "←/→ 과목  ↑↓ 스크롤  k KLAS  d 다운로드  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+		return "←/→ 과목  ↑↓ 스크롤  a 수강  k KLAS  d 다운로드  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenConfig {
 		return "←/→ 페이지  ↑↓ 선택  enter 선택  [] 변경  b/esc 뒤로  r 새로고침  q 종료"
@@ -4366,6 +4385,8 @@ func screenTitle(value screen) string {
 		return "Transcript"
 	case screenDownloadProgress:
 		return "Download"
+	case screenAttendConfirm, screenAttendProgress:
+		return "Attend"
 	default:
 		return "Home"
 	}

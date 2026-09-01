@@ -665,6 +665,8 @@ func TestViewStartsWithHeaderBeforeRule(t *testing.T) {
 		{name: "download-confirm", view: testChromeModel(screenDownloadConfirm).View()},
 		{name: "download-language", view: testChromeModel(screenDownloadLanguage).View()},
 		{name: "download-progress", view: lectureDownloadModel{width: 80, height: 24, items: initialDownloadStatusLines([]app.LectureRow{{ID: "1", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}})}.View()},
+		{name: "attend-confirm", view: testChromeModel(screenAttendConfirm).View()},
+		{name: "attend-progress", view: lectureAttendModel{width: 80, height: 24, row: app.LectureRow{ID: "1:video", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}, progress: klas.LectureProgress{Progress: 50, TotalTime: "5", PTime: "10"}}.View()},
 		{name: "confirm", view: confirmModel{title: "확인", message: "진행할까요?", width: 80}.View()},
 		{name: "lecture-select", view: lectureSelectionModel{width: 80, height: 24, rows: []app.LectureRow{{ID: "1", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}}, selected: map[string]bool{"1": true}}.View()},
 	} {
@@ -1294,6 +1296,163 @@ func TestLectureSelectionToggleAll(t *testing.T) {
 	model.toggleAll()
 	if !model.selected["1:a"] || !model.selected["1:b"] || model.selected["1:empty"] {
 		t.Fatalf("toggleAll() expected downloadable rows on only: %+v", model.selected)
+	}
+}
+
+func TestLectureAttendShortcutOpensConfirmation(t *testing.T) {
+	m := model{
+		active: screenLectures,
+		width:  96,
+		lectureRows: []app.LectureRow{{
+			ID:         "1:video",
+			CourseName: "운영체제",
+			Lecture: klas.Lecture{
+				ContentID: "video",
+				Title:     "프로세스",
+				Progress:  "25",
+			},
+		}},
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("attend confirmation should not start attendance")
+	}
+	if got.active != screenAttendConfirm || got.attendRow.ID != "1:video" {
+		t.Fatalf("active=%v attendRow=%+v", got.active, got.attendRow)
+	}
+	if !strings.Contains(got.View(), "이 강의를 수강할까요?") {
+		t.Fatalf("confirmation view = %q", got.View())
+	}
+}
+
+func TestLectureAttendShortcutAcceptsKoreanKeyboardKey(t *testing.T) {
+	m := model{
+		active: screenLectures,
+		lectureRows: []app.LectureRow{{
+			ID:      "1:video",
+			Lecture: klas.Lecture{ContentID: "video", Progress: "25"},
+		}},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅁ")})
+	if got := updated.(model); got.active != screenAttendConfirm {
+		t.Fatalf("active = %v, want screenAttendConfirm", got.active)
+	}
+}
+
+func TestValidateLectureAttendRejectsInvalidStates(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.Local)
+	before := now.Add(time.Hour)
+	after := now.Add(-time.Hour)
+	tests := []struct {
+		name string
+		row  app.LectureRow
+	}{
+		{name: "missing id", row: app.LectureRow{Lecture: klas.Lecture{ContentID: "video"}}},
+		{name: "unsupported", row: app.LectureRow{ID: "1:unsupported"}},
+		{name: "completed video", row: app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video", Progress: "100"}}},
+		{name: "completed activity", row: app.LectureRow{ID: "1:lrn-1", Lecture: klas.Lecture{LearningSeq: "1", AchievedTime: "10", RequiredTime: "10"}}},
+		{name: "not started", row: app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video", StartAt: &before}}},
+		{name: "expired", row: app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video", EndAt: &after}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := validateLectureAttend(tt.row, now); err == nil {
+				t.Fatalf("validateLectureAttend(%+v) returned nil", tt.row)
+			}
+		})
+	}
+
+	valid := app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video", Progress: "99"}}
+	if err := validateLectureAttend(valid, now); err != nil {
+		t.Fatalf("validateLectureAttend(valid) error = %v", err)
+	}
+}
+
+func TestAttendConfirmationCanCancel(t *testing.T) {
+	m := model{
+		active:    screenAttendConfirm,
+		attendRow: app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video"}},
+	}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	got := updated.(model)
+	if cmd != nil || got.active != screenLectures || got.attendRow.ID != "" {
+		t.Fatalf("cmd=%v active=%v attendRow=%+v", cmd, got.active, got.attendRow)
+	}
+}
+
+func TestLectureAttendModelTracksProgressAndCompletion(t *testing.T) {
+	canceled := false
+	m := lectureAttendModel{
+		cancel: func() { canceled = true },
+		row:    app.LectureRow{ID: "1:video"},
+	}
+	updated, _ := m.Update(lectureAttendProgressMsg{progress: klas.LectureProgress{Progress: 40, TotalTime: "4", PTime: "10"}})
+	got := updated.(lectureAttendModel)
+	if got.progress.Progress != 40 || got.done {
+		t.Fatalf("progress=%+v done=%t", got.progress, got.done)
+	}
+
+	updated, _ = got.Update(lectureAttendDoneMsg{result: app.LectureAttendResult{
+		Lecture:  app.LectureRow{ID: "1:video"},
+		Progress: klas.LectureProgress{Progress: 100, Completed: true},
+	}})
+	got = updated.(lectureAttendModel)
+	if !got.done || got.progress.Progress != 100 || !canceled {
+		t.Fatalf("done=%t progress=%+v canceled=%t", got.done, got.progress, canceled)
+	}
+}
+
+type fakeLectureAttender struct {
+	id       string
+	progress klas.LectureProgress
+}
+
+func (f *fakeLectureAttender) AttendLecture(_ context.Context, id string, opts app.LectureAttendOptions) (app.LectureAttendResult, error) {
+	f.id = id
+	if opts.OnProgress != nil {
+		opts.OnProgress(app.LectureRow{ID: id}, f.progress)
+	}
+	return app.LectureAttendResult{
+		Lecture:  app.LectureRow{ID: id},
+		Progress: f.progress,
+	}, nil
+}
+
+func TestLectureAttendRunCallsServiceAndEmitsProgress(t *testing.T) {
+	progress := klas.LectureProgress{Progress: 75, TotalTime: "9", PTime: "12"}
+	service := &fakeLectureAttender{progress: progress}
+	m := lectureAttendModel{
+		ctx:     context.Background(),
+		service: service,
+		row:     app.LectureRow{ID: "2:video"},
+		updates: make(chan tea.Msg, 1),
+	}
+
+	msg := m.run()()
+	done, ok := msg.(lectureAttendDoneMsg)
+	if !ok || done.err != nil || done.result.Progress.Progress != 75 {
+		t.Fatalf("run() message = %#v", msg)
+	}
+	if service.id != "2:video" {
+		t.Fatalf("AttendLecture id = %q", service.id)
+	}
+	progressMsg, ok := (<-m.updates).(lectureAttendProgressMsg)
+	if !ok || progressMsg.progress.Progress != 75 {
+		t.Fatalf("progress message = %#v", progressMsg)
+	}
+}
+
+func TestInitialAttendProgressForLearningActivity(t *testing.T) {
+	progress := initialAttendProgress(app.LectureRow{Lecture: klas.Lecture{
+		LearningSeq:  "1",
+		AchievedTime: "3",
+		RequiredTime: "12",
+	}})
+	if progress.Progress != 25 || progress.TotalTime != "3" || progress.PTime != "12" {
+		t.Fatalf("initialAttendProgress() = %+v", progress)
 	}
 }
 
