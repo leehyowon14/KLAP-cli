@@ -96,6 +96,7 @@ const (
 	screenLectures
 	screenAssignmentDetail
 	screenNoticeDetail
+	screenSyllabus
 	screenAcademic
 	screenConfig
 	screenRoomDay
@@ -145,6 +146,9 @@ type model struct {
 	academicCursor      int
 	assignmentDetail    app.AssignmentDetailResult
 	noticeDetail        app.NoticeDetailResult
+	syllabusResult      app.SyllabusResult
+	syllabusCourseIndex int
+	syllabusCursor      int
 	detailBack          screen
 	detailCursor        int
 	contentCourse       int
@@ -289,6 +293,11 @@ type detailMsg struct {
 	err        error
 }
 
+type syllabusMsg struct {
+	result app.SyllabusResult
+	err    error
+}
+
 type roomAvailableResultsMsg struct {
 	results []app.RoomAvailableResult
 	err     error
@@ -376,6 +385,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 				m.content = ""
 				m.loading = false
+			} else if m.active == screenSyllabus {
+				m.active = screenDashboard
+				m.err = nil
+				m.loading = false
+				m.syllabusCursor = 0
 			} else if m.isDetailScreen() {
 				m.active = m.detailBack
 				m.err = nil
@@ -396,6 +410,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveRoomResultCursor(-1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
+			} else if m.active == screenSyllabus && !m.loading {
+				m.moveSyllabusCursor(-1)
 			} else if m.active == screenDashboard && !m.loading {
 				m.moveDashboardCursor(-1)
 			} else if m.active == screenDue && !m.loading {
@@ -414,6 +430,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveRoomResultCursor(1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
+			} else if m.active == screenSyllabus && !m.loading {
+				m.moveSyllabusCursor(1)
 			} else if m.active == screenDashboard && !m.loading {
 				m.moveDashboardCursor(1)
 			} else if m.active == screenDue && !m.loading {
@@ -483,6 +501,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.content = ""
 				return m, m.loadRoomAvailableResults(true)
 			}
+			if m.active == screenSyllabus {
+				m.loading = true
+				m.err = nil
+				m.syllabusCursor = 0
+				return m, m.loadSyllabus(m.syllabusCourseIndex)
+			}
 			if m.active != screenHome {
 				m.loading = true
 				m.err = nil
@@ -512,6 +536,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 			m.content = ""
 			return m, m.loadDownloadRows()
+		case m.active == screenDashboard && m.dashboardPage > 0 && !m.loading && keyMatches(key, "p", "ㅔ"):
+			return m.openDashboardSyllabus()
 		}
 	case loadMsg:
 		m.applyLoadMsg(msg)
@@ -615,6 +641,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.noticeDetail = msg.notice
 		m.detailCursor = 0
 		m.syncStatus = ""
+		m.loadedAt = time.Now()
+	case syllabusMsg:
+		if m.active != screenSyllabus {
+			return m, nil
+		}
+		m.loading = false
+		m.err = msg.err
+		m.syllabusResult = msg.result
+		m.syllabusCursor = 0
 		m.loadedAt = time.Now()
 	case downloadRowsMsg:
 		if m.active != screenDownloadSelect {
@@ -845,6 +880,43 @@ func (m model) openNoticeDetail() (tea.Model, tea.Cmd) {
 	m.err = nil
 	m.syncStatus = ""
 	return m, m.loadNoticeDetail(row.ID)
+}
+
+func (m model) openDashboardSyllabus() (tea.Model, tea.Cmd) {
+	course, ok := m.currentDashboardCourse()
+	if !ok {
+		return m, nil
+	}
+	index := course.Index
+	if index <= 0 {
+		index = m.dashboardPage
+	}
+	m.active = screenSyllabus
+	m.loading = true
+	m.err = nil
+	m.syllabusResult = app.SyllabusResult{}
+	m.syllabusCourseIndex = index
+	m.syllabusCursor = 0
+	return m, m.loadSyllabus(index)
+}
+
+func (m model) currentDashboardCourse() (app.DashboardCourse, bool) {
+	index := m.dashboardPage - 1
+	if index < 0 || index >= len(m.dashboardResult.Courses) {
+		return app.DashboardCourse{}, false
+	}
+	return m.dashboardResult.Courses[index], true
+}
+
+func (m model) loadSyllabus(courseIndex int) tea.Cmd {
+	termValue := m.dashboardResult.Term.Value
+	return func() tea.Msg {
+		result, err := m.service.Syllabus(m.ctx, app.SyllabusOptions{
+			Selector:  strconv.Itoa(courseIndex),
+			TermValue: termValue,
+		})
+		return syllabusMsg{result: result, err: err}
+	}
 }
 
 func (m model) loadAssignmentDetail(id string) tea.Cmd {
@@ -1786,6 +1858,22 @@ func (m *model) moveDetailCursor(delta int) {
 	}
 }
 
+func (m *model) moveSyllabusCursor(delta int) {
+	lines := syllabusLines(m.syllabusResult, m.width)
+	if len(lines) == 0 {
+		m.syllabusCursor = 0
+		return
+	}
+	maxCursor := maxInt(0, len(lines)-m.visibleBodyRows(0))
+	m.syllabusCursor += delta
+	if m.syllabusCursor < 0 {
+		m.syllabusCursor = 0
+	}
+	if m.syllabusCursor > maxCursor {
+		m.syllabusCursor = maxCursor
+	}
+}
+
 var duePageLabels = []string{"Summary", "과제", "온라인 강의", "학사일정"}
 
 func (m *model) moveDashboardPage(delta int) {
@@ -2494,7 +2582,13 @@ func (m model) footerHelp() string {
 		return "동기화 진행 중  q 종료"
 	}
 	if m.active == screenDashboard {
+		if m.dashboardPage > 0 {
+			return "←/→ 페이지  ↑↓ 스크롤  p 강의계획서  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+		}
 		return "←/→ 페이지  ↑↓ 스크롤  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+	}
+	if m.active == screenSyllabus {
+		return "↑↓ 스크롤  b/esc Dashboard  r 새로고침  q 종료"
 	}
 	if m.active == screenDue {
 		if m.duePage == 3 {
@@ -3177,6 +3271,10 @@ func (m model) renderPanel(width int) string {
 		}
 		return b.String()
 	}
+	if m.active == screenSyllabus {
+		b.WriteString(m.renderSyllabusPanel(width))
+		return b.String()
+	}
 	if m.active == screenDue {
 		b.WriteString(m.renderDuePagedPanel(width))
 		return b.String()
@@ -3517,6 +3615,14 @@ func (m model) renderDetailPanel(width int) string {
 	return b.String()
 }
 
+func (m model) renderSyllabusPanel(width int) string {
+	lines := syllabusLines(m.syllabusResult, width)
+	if len(lines) == 0 {
+		return emptyStyle.Render("강의계획서 정보가 없습니다") + "\n"
+	}
+	return renderWindowedLines(lines, m.syllabusCursor, m.visibleBodyRows(0))
+}
+
 func (m model) visibleBodyRows(reserved int) int {
 	if m.height <= 0 {
 		return 16
@@ -3641,6 +3747,109 @@ func noticeDetailLines(result app.NoticeDetailResult, width int) []string {
 		lines = appendWrappedLines(lines, detail.ContentText, width)
 	}
 	return lines
+}
+
+func syllabusLines(result app.SyllabusResult, width int) []string {
+	syllabus := result.Syllabus
+	if strings.TrimSpace(result.SubjectID) == "" && strings.TrimSpace(syllabus.SubjectID) == "" {
+		return nil
+	}
+	title := firstNonEmptyText(syllabus.FullName, syllabus.KoreanName, result.Course.Name, "과목명 확인 필요")
+	lines := []string{
+		sectionStyle.Render(title),
+		mutedStyle.Render(strings.TrimSpace(result.Term.Label) + "  " + strings.TrimSpace(result.Term.Value)),
+		"",
+		"학정번호  " + emptyFallback(syllabus.CourseCode, "확인 필요"),
+		"과목 ID  " + firstNonEmptyText(result.SubjectID, syllabus.SubjectID, "확인 필요"),
+	}
+	if syllabus.CourseType != "" || syllabus.Credits != "" {
+		lines = append(lines, "이수/학점  "+emptyFallback(syllabus.CourseType, "-")+" / "+emptyFallback(syllabus.Credits, "-"))
+	}
+	if syllabus.Professor != "" {
+		professor := syllabus.Professor
+		if syllabus.ProfessorTitle != "" {
+			professor += " (" + syllabus.ProfessorTitle + ")"
+		}
+		lines = append(lines, "담당교수  "+professor)
+	}
+	if len(syllabus.Times) > 0 {
+		lines = append(lines, "강의시간  "+formatSyllabusTimes(syllabus.Times))
+	}
+	if syllabus.Operation != "" {
+		lines = append(lines, "운영방식  "+syllabus.Operation)
+	}
+	if syllabus.Competency != "" {
+		lines = append(lines, "대표역량  "+syllabus.Competency)
+	}
+	for _, section := range []struct {
+		title string
+		text  string
+	}{
+		{title: "개요", text: syllabus.Summary},
+		{title: "학습목표", text: syllabus.Purpose},
+		{title: "학습성과", text: syllabus.Outcome},
+	} {
+		if strings.TrimSpace(section.text) == "" {
+			continue
+		}
+		lines = append(lines, "", sectionStyle.Render(section.title))
+		lines = appendWrappedLines(lines, section.text, width)
+	}
+	if syllabus.BookName != "" {
+		lines = append(lines, "", sectionStyle.Render("교재"), syllabus.BookName)
+	}
+	lines = append(lines, "", sectionStyle.Render("평가"), formatSyllabusEvaluation(syllabus.Evaluation))
+	if len(syllabus.Schedule) > 0 {
+		lines = append(lines, "", sectionStyle.Render("주차별 계획"))
+		for _, week := range syllabus.Schedule {
+			label := fmt.Sprintf("%d주차", week.Week)
+			lines = appendWrappedLines(lines, label+"  "+week.Topic, width)
+			if strings.TrimSpace(week.SubNote) != "" {
+				lines = appendWrappedLines(lines, "  "+week.SubNote, width)
+			}
+		}
+	}
+	return lines
+}
+
+func formatSyllabusTimes(times []klas.SyllabusTime) string {
+	parts := make([]string, 0, len(times))
+	for _, item := range times {
+		label := strings.TrimSpace(item.Weekday)
+		if len(item.Periods) > 0 {
+			periods := make([]string, 0, len(item.Periods))
+			for _, period := range item.Periods {
+				periods = append(periods, strconv.Itoa(period))
+			}
+			label += " " + strings.Join(periods, ",") + "교시"
+		}
+		if item.Room != "" {
+			label += " (" + item.Room + ")"
+		}
+		parts = append(parts, strings.TrimSpace(label))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatSyllabusEvaluation(evaluation klas.SyllabusEvaluation) string {
+	return fmt.Sprintf("출석 %d / 학습 %d / 중간 %d / 기말 %d / 과제 %d / 퀴즈 %d / 기타 %d",
+		evaluation.Attendance,
+		evaluation.Learning,
+		evaluation.Midterm,
+		evaluation.Final,
+		evaluation.Report,
+		evaluation.Quiz,
+		evaluation.Other,
+	)
+}
+
+func firstNonEmptyText(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func appendWrappedLines(lines []string, text string, width int) []string {
@@ -4126,6 +4335,8 @@ func screenTitle(value screen) string {
 		return "Assignment"
 	case screenNoticeDetail:
 		return "Notice"
+	case screenSyllabus:
+		return "Syllabus"
 	case screenAcademic:
 		return "Academic"
 	case screenConfig:
@@ -4167,6 +4378,8 @@ func screenSubtitle(value screen) string {
 		return "과제 상세"
 	case screenNoticeDetail:
 		return "공지 상세"
+	case screenSyllabus:
+		return "선택한 과목의 강의계획서"
 	case screenAcademic:
 		return "학사일정 달력"
 	case screenConfig:

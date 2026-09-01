@@ -936,6 +936,94 @@ func TestDashboardPageWraps(t *testing.T) {
 	}
 }
 
+func TestDashboardSyllabusShortcutOnlyWorksOnCoursePage(t *testing.T) {
+	result := app.DashboardResult{
+		Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		Courses: []app.DashboardCourse{{
+			Index: 1,
+			Name:  "컴퓨터그래픽스",
+		}},
+	}
+
+	summary := model{active: screenDashboard, dashboardResult: result}
+	updated, cmd := summary.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	got := updated.(model)
+	if got.active != screenDashboard || cmd != nil {
+		t.Fatalf("summary shortcut active=%v cmd nil=%t", got.active, cmd == nil)
+	}
+
+	course := model{active: screenDashboard, dashboardResult: result, dashboardPage: 1}
+	updated, cmd = course.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	got = updated.(model)
+	if got.active != screenSyllabus || !got.loading || got.syllabusCourseIndex != 1 || cmd == nil {
+		t.Fatalf("course shortcut active=%v loading=%t index=%d cmd nil=%t", got.active, got.loading, got.syllabusCourseIndex, cmd == nil)
+	}
+}
+
+func TestDashboardSyllabusShortcutAcceptsKoreanKeyboardKey(t *testing.T) {
+	m := model{
+		active:        screenDashboard,
+		dashboardPage: 1,
+		dashboardResult: app.DashboardResult{
+			Term:    klas.Term{Value: "2026,1"},
+			Courses: []app.DashboardCourse{{Index: 1, Name: "컴퓨터그래픽스"}},
+		},
+	}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅔ")})
+	got := updated.(model)
+	if got.active != screenSyllabus || cmd == nil {
+		t.Fatalf("korean shortcut active=%v cmd nil=%t", got.active, cmd == nil)
+	}
+}
+
+func TestSyllabusBackReturnsToSelectedDashboardCourse(t *testing.T) {
+	m := model{active: screenSyllabus, dashboardPage: 2, syllabusCursor: 3}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(model)
+	if got.active != screenDashboard || got.dashboardPage != 2 || got.syllabusCursor != 0 {
+		t.Fatalf("back active=%v dashboardPage=%d syllabusCursor=%d", got.active, got.dashboardPage, got.syllabusCursor)
+	}
+}
+
+func TestSyllabusLinesShowCoursePlan(t *testing.T) {
+	result := app.SyllabusResult{
+		Term:      klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		SubjectID: "U202613951I040013",
+		Course:    klas.Course{Name: "컴퓨터그래픽스"},
+		Syllabus: klas.Syllabus{
+			CourseCode:     "I040-3-3951-01",
+			FullName:       "컴퓨터그래픽스",
+			CourseType:     "전공선택",
+			Credits:        "3",
+			Professor:      "김교수",
+			ProfessorTitle: "교수",
+			Summary:        "그래픽스의 기본 원리를 학습한다.",
+			Purpose:        "렌더링 파이프라인을 이해한다.",
+			BookName:       "Computer Graphics",
+			Times:          []klas.SyllabusTime{{Weekday: "월", Periods: []int{1, 2}, Room: "새빛관 101"}},
+			Evaluation:     klas.SyllabusEvaluation{Attendance: 10, Midterm: 30, Final: 30, Report: 30},
+			Schedule:       []klas.SyllabusWeek{{Week: 1, Topic: "그래픽스 개요", SubNote: "실습 환경 구성"}},
+		},
+	}
+	view := strings.Join(syllabusLines(result, 96), "\n")
+	for _, want := range []string{"컴퓨터그래픽스", "I040-3-3951-01", "김교수", "월 1,2교시", "개요", "학습목표", "평가", "1주차", "그래픽스 개요"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("syllabusLines() missing %q: %q", want, view)
+		}
+	}
+}
+
+func TestDashboardFooterShowsSyllabusShortcutOnlyOnCoursePage(t *testing.T) {
+	summary := model{active: screenDashboard}
+	if strings.Contains(summary.footerHelp(), "p 강의계획서") {
+		t.Fatalf("summary footer = %q", summary.footerHelp())
+	}
+	course := model{active: screenDashboard, dashboardPage: 1}
+	if !strings.Contains(course.footerHelp(), "p 강의계획서") {
+		t.Fatalf("course footer = %q", course.footerHelp())
+	}
+}
+
 func TestLectureDownloadFormatting(t *testing.T) {
 	row := app.LectureRow{
 		CourseName: "오픈소스소프트웨어실습",
