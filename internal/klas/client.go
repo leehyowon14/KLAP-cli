@@ -239,6 +239,7 @@ type Syllabus struct {
 	FullName        string
 	CourseType      string
 	Credits         string
+	CurrentNum      string
 	Professor       string
 	ProfessorTitle  string
 	Summary         string
@@ -1718,6 +1719,7 @@ func buildSyllabus(subjectID string, item syllabusDataItem, timeItems []syllabus
 		FullName:        strings.TrimSpace(item.FullName),
 		CourseType:      strings.TrimSpace(item.CourseType),
 		Credits:         firstNonEmpty(item.Credits.String(), item.CreditHours.String()),
+		CurrentNum:      item.CurrentNum.String(),
 		Professor:       strings.TrimSpace(item.Professor),
 		ProfessorTitle:  strings.TrimSpace(item.ProfessorTitle),
 		Summary:         cleanSyllabusText(item.Summary),

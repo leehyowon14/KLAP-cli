@@ -323,6 +323,7 @@ func TestBuildSyllabus(t *testing.T) {
 		Professor:      "김동준",
 		CourseType:     "전선",
 		Credits:        flexibleString("3"),
+		CurrentNum:     flexibleString("42"),
 		Face100Opt:     "Y",
 		AttendanceRate: 10,
 		MidtermRate:    25,
@@ -335,6 +336,9 @@ func TestBuildSyllabus(t *testing.T) {
 
 	if syllabus.CourseCode != "I040-3-3951-01" || syllabus.Operation != "100%대면강의" {
 		t.Fatalf("buildSyllabus() = %+v", syllabus)
+	}
+	if syllabus.CurrentNum != "42" {
+		t.Fatalf("buildSyllabus() current num = %q", syllabus.CurrentNum)
 	}
 	if len(syllabus.Schedule) != 2 || syllabus.Schedule[1].Week != 10 || syllabus.Schedule[1].SubNote != "동영상 보강" {
 		t.Fatalf("buildSyllabus() schedule = %+v", syllabus.Schedule)
