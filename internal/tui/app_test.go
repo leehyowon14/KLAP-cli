@@ -995,8 +995,10 @@ func TestSyllabusLinesShowCoursePlan(t *testing.T) {
 			FullName:       "컴퓨터그래픽스",
 			CourseType:     "전공선택",
 			Credits:        "3",
+			CurrentNum:     "42",
 			Professor:      "김교수",
 			ProfessorTitle: "교수",
+			Competency:     "창의융합",
 			Summary:        "그래픽스의 기본 원리를 학습한다.",
 			Purpose:        "렌더링 파이프라인을 이해한다.",
 			BookName:       "Computer Graphics",
@@ -1005,11 +1007,43 @@ func TestSyllabusLinesShowCoursePlan(t *testing.T) {
 			Schedule:       []klas.SyllabusWeek{{Week: 1, Topic: "그래픽스 개요", SubNote: "실습 환경 구성"}},
 		},
 	}
-	view := strings.Join(syllabusLines(result, 96), "\n")
-	for _, want := range []string{"컴퓨터그래픽스", "I040-3-3951-01", "김교수", "월 1,2교시", "개요", "학습목표", "평가", "1주차", "그래픽스 개요"} {
+	lines := syllabusLines(result, 96)
+	view := strings.Join(lines, "\n")
+	for _, want := range []string{"컴퓨터그래픽스", "I040-3-3951-01", "김교수", "월 1,2교시", "수강인원: 42명 (A: 16명, B: 33명)", "개요", "학습목표", "평가", "1주차", "그래픽스 개요"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("syllabusLines() missing %q: %q", want, view)
 		}
+	}
+	for index, line := range lines {
+		if strings.HasPrefix(line, "대표역량") {
+			if index+1 >= len(lines) || lines[index+1] != "수강인원: 42명 (A: 16명, B: 33명)" {
+				t.Fatalf("enrollment line is not directly below competency: %+v", lines)
+			}
+			return
+		}
+	}
+	t.Fatal("competency line is missing")
+}
+
+func TestFormatSyllabusEnrollment(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		want    string
+	}{
+		{name: "zero", current: "0", want: "수강인원: 0명 (A: 0명, B: 0명)"},
+		{name: "floor fractional quota", current: "42", want: "수강인원: 42명 (A: 16명, B: 33명)"},
+		{name: "trim whitespace", current: " 50 ", want: "수강인원: 50명 (A: 20명, B: 40명)"},
+		{name: "missing", current: "", want: "수강인원: 확인 필요"},
+		{name: "invalid", current: "unknown", want: "수강인원: 확인 필요"},
+		{name: "negative", current: "-1", want: "수강인원: 확인 필요"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatSyllabusEnrollment(tt.current); got != tt.want {
+				t.Fatalf("formatSyllabusEnrollment(%q) = %q, want %q", tt.current, got, tt.want)
+			}
+		})
 	}
 }
 

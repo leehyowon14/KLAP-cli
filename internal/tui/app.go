@@ -3781,6 +3781,7 @@ func syllabusLines(result app.SyllabusResult, width int) []string {
 	if syllabus.Competency != "" {
 		lines = append(lines, "대표역량  "+syllabus.Competency)
 	}
+	lines = append(lines, formatSyllabusEnrollment(syllabus.CurrentNum))
 	for _, section := range []struct {
 		title string
 		text  string
@@ -3841,6 +3842,14 @@ func formatSyllabusEvaluation(evaluation klas.SyllabusEvaluation) string {
 		evaluation.Quiz,
 		evaluation.Other,
 	)
+}
+
+func formatSyllabusEnrollment(currentNum string) string {
+	count, err := strconv.Atoi(strings.TrimSpace(currentNum))
+	if err != nil || count < 0 {
+		return "수강인원: 확인 필요"
+	}
+	return fmt.Sprintf("수강인원: %d명 (A: %d명, B: %d명)", count, count*40/100, count*80/100)
 }
 
 func firstNonEmptyText(values ...string) string {
