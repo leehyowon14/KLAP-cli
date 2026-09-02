@@ -25,6 +25,7 @@ struct SyncResult: Codable {
     var created: Int = 0
     var updated: Int = 0
     var skipped: Int = 0
+    var syncedIds: [String] = []
 }
 
 let input = FileHandle.standardInput.readDataToEndOfFile()
@@ -137,7 +138,12 @@ var result = SyncResult()
 for item in request.events {
     let fallback = fallbackKey(for: item.id, title: item.title)
     let existing = known[item.id] ?? (fallback.flatMap { fallbackKnown[$0] })
-    if existing == nil && item.knownSourceHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false && item.forceUpdate != true {
+    let hasKnownSource = item.knownSourceHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    if existing != nil && !hasKnownSource && item.forceUpdate != true {
+        result.skipped += 1
+        continue
+    }
+    if existing == nil && hasKnownSource && item.forceUpdate != true {
         result.skipped += 1
         continue
     }
@@ -174,6 +180,7 @@ for item in request.events {
     } else {
         result.skipped += 1
     }
+    result.syncedIds.append(item.id)
 }
 
 try store.commit()

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kw-klap/klap-cli/internal/cache"
+	klapcalendar "github.com/kw-klap/klap-cli/internal/calendar"
 	"github.com/kw-klap/klap-cli/internal/klas"
 	"github.com/kw-klap/klap-cli/internal/reminder"
 	"github.com/kw-klap/klap-cli/internal/settings"
@@ -31,10 +32,10 @@ func TestPrepareReminderSyncPromptsOnceForChangedSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareReminderSync() first error = %v", err)
 	}
-	if len(first.Conflicts) != 0 || len(first.Assignments) != 1 || !first.Assignments[0].ForceUpdate {
+	if len(first.Conflicts) != 0 || len(first.Assignments) != 1 || first.Assignments[0].ForceUpdate {
 		t.Fatalf("first prepare = %+v", first)
 	}
-	commitSyncSourceHashes(&first.State, first.Pending)
+	commitSyncSourceHashes(&first.State, first.Pending, []string{original.ID})
 	if err := service.saveSyncSourceState("assignment", "20260001", first.State); err != nil {
 		t.Fatalf("saveSyncSourceState() error = %v", err)
 	}
@@ -47,6 +48,15 @@ func TestPrepareReminderSyncPromptsOnceForChangedSource(t *testing.T) {
 	}
 	if len(second.Conflicts) != 1 || second.Conflicts[0].Key != "assignment:assignment:1" {
 		t.Fatalf("second conflicts = %+v", second.Conflicts)
+	}
+	applied, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{changed}, map[string]SyncDecision{
+		second.Conflicts[0].Key: SyncDecisionApply,
+	})
+	if err != nil {
+		t.Fatalf("prepareReminderSync() apply error = %v", err)
+	}
+	if len(applied.Assignments) != 1 || !applied.Assignments[0].ForceUpdate {
+		t.Fatalf("applied prepare = %+v", applied)
 	}
 
 	kept, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{changed}, map[string]SyncDecision{
@@ -68,6 +78,192 @@ func TestPrepareReminderSyncPromptsOnceForChangedSource(t *testing.T) {
 	}
 	if len(again.Conflicts) != 0 || len(again.Assignments) != 0 || again.Skipped != 1 {
 		t.Fatalf("again prepare = %+v", again)
+	}
+}
+
+func TestPrepareCalendarSyncWithoutBaselineDoesNotForceUpdate(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	event := klapcalendar.Event{
+		ID:      "academic:2026:1",
+		Title:   "개강",
+		StartAt: time.Date(2026, 3, 2, 0, 0, 0, 0, time.Local),
+		EndAt:   time.Date(2026, 3, 2, 23, 59, 0, 0, time.Local),
+	}
+
+	prepared, err := service.prepareCalendarSync("academic", "global", []klapcalendar.Event{event}, nil)
+	if err != nil {
+		t.Fatalf("prepareCalendarSync() error = %v", err)
+	}
+	if len(prepared.Conflicts) != 0 || len(prepared.Events) != 1 {
+		t.Fatalf("prepareCalendarSync() = %+v", prepared)
+	}
+	if prepared.Events[0].ForceUpdate || prepared.Events[0].KnownSourceHash != "" {
+		t.Fatalf("event without baseline must not force update: %+v", prepared.Events[0])
+	}
+}
+
+func TestPrepareSyncRejectsCorruptedBaseline(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	if err := cacheStore.Set(syncSourceCacheKey("assignment", "20260001"), time.Minute, "invalid state"); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	assignment := reminder.Assignment{ID: "assignment:1", Title: "기말 과제"}
+
+	prepared, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{assignment}, nil)
+	if err == nil {
+		t.Fatal("prepareReminderSync() expected corrupted baseline error")
+	}
+	if len(prepared.Assignments) != 0 || len(prepared.Pending) != 0 {
+		t.Fatalf("prepareReminderSync() returned work after baseline error: %+v", prepared)
+	}
+}
+
+func TestCommitSyncSourceHashesRecordsOnlySyncedIDs(t *testing.T) {
+	state := syncSourceState{Items: map[string]syncSourceItem{}}
+	pending := map[string]string{
+		"created":          "created-hash",
+		"existing-skipped": "skipped-hash",
+	}
+
+	commitSyncSourceHashes(&state, pending, []string{"created", "unknown"})
+
+	if got := state.Items["created"].Hash; got != "created-hash" {
+		t.Fatalf("created hash = %q, want created-hash", got)
+	}
+	if _, ok := state.Items["existing-skipped"]; ok {
+		t.Fatal("existing item skipped without baseline must remain untracked")
+	}
+	if _, ok := state.Items["unknown"]; ok {
+		t.Fatal("bridge ID without pending hash must be ignored")
+	}
+}
+
+func TestSkippedExistingWithoutBaselineRemainsProtected(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	assignment := reminder.Assignment{ID: "assignment:1", Title: "기말 과제"}
+
+	first, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{assignment}, nil)
+	if err != nil {
+		t.Fatalf("first prepareReminderSync() error = %v", err)
+	}
+	commitSyncSourceHashes(&first.State, first.Pending, nil)
+	if err := service.saveSyncSourceState("assignment", "20260001", first.State); err != nil {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+
+	second, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{assignment}, nil)
+	if err != nil {
+		t.Fatalf("second prepareReminderSync() error = %v", err)
+	}
+	if len(second.Assignments) != 1 || second.Assignments[0].ForceUpdate || second.Assignments[0].KnownSourceHash != "" {
+		t.Fatalf("second prepare must keep missing baseline protection: %+v", second)
+	}
+}
+
+func TestClearCachePreservesSyncSourceState(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	want := syncSourceState{Items: map[string]syncSourceItem{
+		"assignment:1": {Hash: "source-hash"},
+	}}
+	if err := service.saveSyncSourceState("assignment", "20260001", want); err != nil {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+	if err := cacheStore.Set("assignment:v1:20260001:2026,1:", time.Minute, struct {
+		Name string `json:"name"`
+	}{Name: "cached"}); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	result, err := service.ClearCache()
+	if err != nil {
+		t.Fatalf("ClearCache() error = %v", err)
+	}
+	if result.Removed != 1 {
+		t.Fatalf("ClearCache() removed = %d, want 1", result.Removed)
+	}
+	got, err := service.loadSyncSourceState("assignment", "20260001")
+	if err != nil {
+		t.Fatalf("loadSyncSourceState() error = %v", err)
+	}
+	if got.Items["assignment:1"].Hash != "source-hash" {
+		t.Fatalf("sync state after ClearCache() = %+v", got)
+	}
+}
+
+func TestClearCacheScopePreservesSyncSourceState(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	want := syncSourceState{Items: map[string]syncSourceItem{
+		"assignment:1": {Hash: "source-hash"},
+	}}
+	if err := service.saveSyncSourceState("assignment", "20260001", want); err != nil {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+	if err := cacheStore.Set("assignment:v1:20260001:2026,1:", time.Minute, struct {
+		Name string `json:"name"`
+	}{Name: "cached"}); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	result, err := service.ClearCacheScope("assignment")
+	if err != nil {
+		t.Fatalf("ClearCacheScope() error = %v", err)
+	}
+	if result.Removed != 1 {
+		t.Fatalf("ClearCacheScope() removed = %d, want 1", result.Removed)
+	}
+	got, err := service.loadSyncSourceState("assignment", "20260001")
+	if err != nil {
+		t.Fatalf("loadSyncSourceState() error = %v", err)
+	}
+	if got.Items["assignment:1"].Hash != "source-hash" {
+		t.Fatalf("sync state after ClearCacheScope() = %+v", got)
+	}
+}
+
+func TestClearCacheScopeRejectsSyncSource(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	want := syncSourceState{Items: map[string]syncSourceItem{
+		"assignment:1": {Hash: "source-hash"},
+	}}
+	if err := service.saveSyncSourceState("assignment", "20260001", want); err != nil {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+
+	for _, scope := range []string{"sync-source", "SYNC-SOURCE", "Sync-Source:20260001"} {
+		if _, err := service.ClearCacheScope(scope); err == nil {
+			t.Fatalf("ClearCacheScope(%q) expected protected scope error", scope)
+		}
+	}
+	got, err := service.loadSyncSourceState("assignment", "20260001")
+	if err != nil {
+		t.Fatalf("loadSyncSourceState() error = %v", err)
+	}
+	if got.Items["assignment:1"].Hash != "source-hash" {
+		t.Fatalf("sync state after rejected clear = %+v", got)
 	}
 }
 

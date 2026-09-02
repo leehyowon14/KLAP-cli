@@ -111,6 +111,53 @@ func (s *Store) Clear() (int, error) {
 	return s.ClearPrefix("")
 }
 
+func (s *Store) ClearExceptPrefixes(preservedPrefixes ...string) (int, error) {
+	if s == nil {
+		return 0, nil
+	}
+	entries, err := os.ReadDir(s.dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("cache 목록 조회 실패: %w", err)
+	}
+
+	count := 0
+	for _, item := range entries {
+		if item.IsDir() || filepath.Ext(item.Name()) != ".json" {
+			continue
+		}
+		path := filepath.Join(s.dir, item.Name())
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return count, fmt.Errorf("cache 읽기 실패: %w", err)
+		}
+		var cached entry
+		if err := json.Unmarshal(body, &cached); err != nil {
+			return count, fmt.Errorf("cache 파싱 실패: %w", err)
+		}
+		if s.pathFor(cached.Key) != path {
+			return count, errors.New("cache key가 일치하지 않습니다")
+		}
+		preserved := false
+		for _, prefix := range preservedPrefixes {
+			if prefix != "" && strings.HasPrefix(cached.Key, prefix) {
+				preserved = true
+				break
+			}
+		}
+		if preserved {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return count, fmt.Errorf("cache 삭제 실패: %w", err)
+		}
+		count++
+	}
+	return count, nil
+}
+
 func (s *Store) ClearPrefix(prefix string) (int, error) {
 	if s == nil {
 		return 0, nil
@@ -137,6 +184,9 @@ func (s *Store) ClearPrefix(prefix string) (int, error) {
 			var cached entry
 			if err := json.Unmarshal(body, &cached); err != nil {
 				return count, fmt.Errorf("cache 파싱 실패: %w", err)
+			}
+			if s.pathFor(cached.Key) != path {
+				return count, errors.New("cache key가 일치하지 않습니다")
 			}
 			if !strings.HasPrefix(cached.Key, prefix) {
 				continue

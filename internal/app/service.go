@@ -1019,7 +1019,7 @@ func (s *Service) CacheStatus() (CacheStatusResult, error) {
 }
 
 func (s *Service) ClearCache() (CacheClearResult, error) {
-	removed, err := s.cacheStore.Clear()
+	removed, err := s.cacheStore.ClearExceptPrefixes("sync-source:")
 	if err != nil {
 		return CacheClearResult{}, err
 	}
@@ -1027,7 +1027,11 @@ func (s *Service) ClearCache() (CacheClearResult, error) {
 }
 
 func (s *Service) ClearCacheScope(scope string) (CacheClearResult, error) {
-	prefix := cacheScopePrefix(scope)
+	normalizedScope := strings.ToLower(strings.TrimSpace(scope))
+	if strings.HasPrefix(normalizedScope, "sync-source") {
+		return CacheClearResult{}, errors.New("동기화 기준 cache는 삭제할 수 없습니다")
+	}
+	prefix := cacheScopePrefix(normalizedScope)
 	if prefix == "" {
 		return s.ClearCache()
 	}
@@ -3105,7 +3109,7 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 		return ReminderSyncResult{}, err
 	}
 	result.Skipped += prepared.Skipped
-	commitSyncSourceHashes(&prepared.State, prepared.Pending)
+	commitSyncSourceHashes(&prepared.State, prepared.Pending, result.SyncedIDs)
 	if err := s.saveSyncSourceState("assignment", studentID, prepared.State); err != nil {
 		return ReminderSyncResult{}, err
 	}
@@ -3174,7 +3178,7 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOpti
 		return ReminderSyncResult{}, err
 	}
 	result.Skipped += prepared.Skipped
-	commitSyncSourceHashes(&prepared.State, prepared.Pending)
+	commitSyncSourceHashes(&prepared.State, prepared.Pending, result.SyncedIDs)
 	if err := s.saveSyncSourceState("lecture", studentID, prepared.State); err != nil {
 		return ReminderSyncResult{}, err
 	}
@@ -3238,7 +3242,7 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOpt
 		return CalendarSyncResult{}, err
 	}
 	syncResult.Skipped += prepared.Skipped
-	commitSyncSourceHashes(&prepared.State, prepared.Pending)
+	commitSyncSourceHashes(&prepared.State, prepared.Pending, syncResult.SyncedIDs)
 	if err := s.saveSyncSourceState("academic", "global", prepared.State); err != nil {
 		return CalendarSyncResult{}, err
 	}
@@ -3315,7 +3319,7 @@ func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableOptio
 		return CalendarSyncResult{}, err
 	}
 	syncResult.Skipped += prepared.Skipped
-	commitSyncSourceHashes(&prepared.State, prepared.Pending)
+	commitSyncSourceHashes(&prepared.State, prepared.Pending, syncResult.SyncedIDs)
 	if err := s.saveSyncSourceState("timetable", studentID, prepared.State); err != nil {
 		return CalendarSyncResult{}, err
 	}
@@ -3390,9 +3394,6 @@ func (s *Service) prepareReminderSync(scope string, owner string, assignments []
 				continue
 			}
 		}
-		if item.Hash == "" {
-			assignment.ForceUpdate = true
-		}
 		result.Assignments = append(result.Assignments, assignment)
 		result.Pending[assignment.ID] = hash
 	}
@@ -3441,9 +3442,6 @@ func (s *Service) prepareCalendarSync(scope string, owner string, events []klapc
 				continue
 			}
 		}
-		if item.Hash == "" {
-			event.ForceUpdate = true
-		}
 		result.Events = append(result.Events, event)
 		result.Pending[event.ID] = hash
 	}
@@ -3484,12 +3482,14 @@ func syncConflictKey(scope string, id string) string {
 	return strings.TrimSpace(scope) + ":" + strings.TrimSpace(id)
 }
 
-func commitSyncSourceHashes(state *syncSourceState, pending map[string]string) {
+func commitSyncSourceHashes(state *syncSourceState, pending map[string]string, syncedIDs []string) {
 	if state.Items == nil {
 		state.Items = map[string]syncSourceItem{}
 	}
-	for id, hash := range pending {
-		state.Items[id] = syncSourceItem{Hash: hash}
+	for _, id := range syncedIDs {
+		if hash, ok := pending[id]; ok {
+			state.Items[id] = syncSourceItem{Hash: hash}
+		}
 	}
 }
 

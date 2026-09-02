@@ -25,6 +25,7 @@ struct SyncResult: Codable {
     var updated: Int = 0
     var completed: Int = 0
     var skipped: Int = 0
+    var syncedIds: [String] = []
 }
 
 let input = FileHandle.standardInput.readDataToEndOfFile()
@@ -147,7 +148,12 @@ for assignment in request.assignments {
         continue
     }
 
+    let hasKnownSource = assignment.knownSourceHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     if let reminder = known[assignment.id] {
+        if !hasKnownSource && assignment.forceUpdate != true {
+            result.skipped += 1
+            continue
+        }
         reminder.calendar = calendar
         if assignment.forceUpdate == true {
             reminder.title = assignment.title
@@ -167,10 +173,11 @@ for assignment in request.assignments {
             }
         }
         try store.save(reminder, commit: false)
+        result.syncedIds.append(assignment.id)
         continue
     }
 
-    if assignment.knownSourceHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false && assignment.forceUpdate != true {
+    if hasKnownSource && assignment.forceUpdate != true {
         result.skipped += 1
         continue
     }
@@ -187,6 +194,7 @@ for assignment in request.assignments {
     }
     try store.save(reminder, commit: false)
     result.created += 1
+    result.syncedIds.append(assignment.id)
 }
 
 try store.commit()

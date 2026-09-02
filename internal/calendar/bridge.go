@@ -31,9 +31,10 @@ type SyncRequest struct {
 }
 
 type SyncResult struct {
-	Created int `json:"created"`
-	Updated int `json:"updated"`
-	Skipped int `json:"skipped"`
+	Created   int      `json:"created"`
+	Updated   int      `json:"updated"`
+	Skipped   int      `json:"skipped"`
+	SyncedIDs []string `json:"syncedIds"`
 }
 
 type MacOSBridge struct {
