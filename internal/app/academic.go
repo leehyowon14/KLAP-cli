@@ -69,7 +69,9 @@ func (s *Service) AcademicList(ctx context.Context, opts AcademicListOptions) (A
 	if err != nil {
 		return AcademicListResult{}, fmt.Errorf("학사일정 조회 실패: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return AcademicListResult{}, fmt.Errorf("학사일정 조회 실패: HTTP %d", response.StatusCode)
 	}

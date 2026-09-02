@@ -4977,7 +4977,9 @@ func downloadFile(ctx context.Context, sourceURL string, path string, keepPartia
 	if err != nil {
 		return 0, fmt.Errorf("동영상 다운로드 요청 실패: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	flag := os.O_CREATE | os.O_WRONLY
 	if offset > 0 && response.StatusCode == http.StatusPartialContent {
