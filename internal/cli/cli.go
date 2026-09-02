@@ -2828,10 +2828,10 @@ func newLectureProgressPrinter(writer io.Writer, inline bool) *lectureProgressPr
 func (p *lectureProgressPrinter) Print(row app.LectureRow, progress klas.LectureProgress) {
 	line := fmt.Sprintf("수강중: %s | %s", formatLectureProgress(row, progress), row.Lecture.Title)
 	if !p.inline {
-		fmt.Fprintln(p.writer, line)
+		_, _ = fmt.Fprintln(p.writer, line)
 		return
 	}
-	fmt.Fprintf(p.writer, "\r\x1b[2K%s", line)
+	_, _ = fmt.Fprintf(p.writer, "\r\x1b[2K%s", line)
 	p.active = true
 }
 
@@ -2839,7 +2839,7 @@ func (p *lectureProgressPrinter) Clear() {
 	if !p.inline || !p.active {
 		return
 	}
-	fmt.Fprint(p.writer, "\r\x1b[2K")
+	_, _ = fmt.Fprint(p.writer, "\r\x1b[2K")
 	p.active = false
 }
 
