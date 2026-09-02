@@ -32,12 +32,21 @@ import (
 
 type Service struct {
 	store                *account.Store
+	sessions             sessionStore
 	settingsStore        *settings.Store
 	cacheStore           *cache.Store
+	newKlasClient        func() (*klas.Client, error)
+	login                func(context.Context, *klas.Client, string, string) (klas.Session, error)
 	reminderBridgePath   string
 	calendarBridgePath   string
 	categoryBridgePath   string
 	transcriptBridgePath string
+}
+
+type sessionStore interface {
+	LoadPassword(context.Context, string) (string, error)
+	LoadSession(context.Context, string) (klas.Session, error)
+	SaveSession(context.Context, string, klas.Session) error
 }
 
 type UserOption struct {
@@ -606,9 +615,14 @@ func newService(store *account.Store, factories serviceStoreFactories) (*Service
 		return nil, fmt.Errorf("cache store 초기화 실패: %w", err)
 	}
 	return &Service{
-		store:                store,
-		settingsStore:        settingsStore,
-		cacheStore:           cacheStore,
+		store:         store,
+		sessions:      store,
+		settingsStore: settingsStore,
+		cacheStore:    cacheStore,
+		newKlasClient: klas.NewClient,
+		login: func(ctx context.Context, client *klas.Client, studentID string, password string) (klas.Session, error) {
+			return client.Login(ctx, studentID, password)
+		},
 		reminderBridgePath:   defaultReminderBridgePath(),
 		calendarBridgePath:   defaultCalendarBridgePath(),
 		categoryBridgePath:   defaultCategoryBridgePath(),
@@ -4612,26 +4626,28 @@ func (s *Service) selectedStudentID(ctx context.Context, user UserOption) (strin
 }
 
 func (s *Service) authenticatedClient(ctx context.Context, studentID string) (*klas.Client, error) {
-	client, err := klas.NewClient()
+	client, err := s.newKlasClient()
 	if err != nil {
 		return nil, err
 	}
 
-	session, err := s.store.LoadSession(ctx, studentID)
+	session, err := s.sessions.LoadSession(ctx, studentID)
 	if err == nil {
 		client.SetSession(session)
 		return client, nil
 	}
 
-	password, err := s.store.LoadPassword(ctx, studentID)
+	password, err := s.sessions.LoadPassword(ctx, studentID)
 	if err != nil {
 		return nil, err
 	}
-	session, err = client.Login(ctx, studentID, password)
+	session, err = s.login(ctx, client, studentID, password)
 	if err != nil {
 		return nil, fmt.Errorf("재로그인 실패: %w", err)
 	}
-	_ = s.store.SaveSession(ctx, studentID, session)
+	if err := s.sessions.SaveSession(ctx, studentID, session); err != nil {
+		return nil, fmt.Errorf("갱신 세션 저장 실패: %w", err)
+	}
 	return client, nil
 }
 
@@ -4640,19 +4656,21 @@ func (s *Service) refreshedClientAfterSessionError(ctx context.Context, studentI
 		return nil, false, err
 	}
 
-	client, clientErr := klas.NewClient()
+	client, clientErr := s.newKlasClient()
 	if clientErr != nil {
 		return nil, true, clientErr
 	}
-	password, passwordErr := s.store.LoadPassword(ctx, studentID)
+	password, passwordErr := s.sessions.LoadPassword(ctx, studentID)
 	if passwordErr != nil {
 		return nil, true, passwordErr
 	}
-	session, loginErr := client.Login(ctx, studentID, password)
+	session, loginErr := s.login(ctx, client, studentID, password)
 	if loginErr != nil {
 		return nil, true, fmt.Errorf("재로그인 실패: %w", loginErr)
 	}
-	_ = s.store.SaveSession(ctx, studentID, session)
+	if saveErr := s.sessions.SaveSession(ctx, studentID, session); saveErr != nil {
+		return nil, true, fmt.Errorf("갱신 세션 저장 실패: %w", saveErr)
+	}
 	return client, true, nil
 }
 
