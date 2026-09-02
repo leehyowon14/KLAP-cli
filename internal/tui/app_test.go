@@ -55,9 +55,14 @@ func TestAuthCheckShowsSetupWhenNoUsers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore() error = %v", err)
 	}
+	t.Setenv("KLAP_CACHE_DIR", t.TempDir())
+	service, err := app.NewService(store)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
 	m := model{
 		ctx:        context.Background(),
-		service:    app.NewService(store),
+		service:    service,
 		active:     screenAuth,
 		loading:    true,
 		authInputs: newAuthInputs(),

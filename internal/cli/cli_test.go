@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/app"
 	"github.com/kw-klap/klap-cli/internal/klas"
 )
@@ -20,6 +22,27 @@ func TestModeForArgsStartsTUIWithoutSubcommand(t *testing.T) {
 	}
 	if got := modeForArgs([]string{"dashboard"}); got != commandModeCLI {
 		t.Fatalf("modeForArgs(dashboard) = %v, want CLI", got)
+	}
+}
+
+func TestRunPropagatesServiceInitializationFailure(t *testing.T) {
+	wantErr := errors.New("service initialization failed")
+	store := &account.Store{}
+
+	err := runWithFactories(
+		context.Background(),
+		[]string{"help"},
+		func() (*account.Store, error) { return store, nil },
+		func(got *account.Store) (*app.Service, error) {
+			if got != store {
+				t.Fatalf("newService() store = %p, want %p", got, store)
+			}
+			return nil, wantErr
+		},
+	)
+
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("runWithFactories() error = %v, want %v", err, wantErr)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kw-klap/klap-cli/internal/account"
 	"github.com/kw-klap/klap-cli/internal/cache"
 	klapcalendar "github.com/kw-klap/klap-cli/internal/calendar"
 	"github.com/kw-klap/klap-cli/internal/klas"
@@ -18,6 +19,68 @@ import (
 )
 
 var errDashboardTest = errors.New("dashboard test error")
+
+func TestNewServicePropagatesSettingsStoreFailure(t *testing.T) {
+	wantErr := errors.New("settings unavailable")
+	cacheFactoryCalled := false
+
+	service, err := newService(nil, serviceStoreFactories{
+		settings: func() (*settings.Store, error) {
+			return nil, wantErr
+		},
+		cache: func() (*cache.Store, error) {
+			cacheFactoryCalled = true
+			return nil, nil
+		},
+	})
+
+	if service != nil {
+		t.Fatalf("newService() service = %v, want nil", service)
+	}
+	if !errors.Is(err, wantErr) || !strings.Contains(err.Error(), "settings store 초기화 실패") {
+		t.Fatalf("newService() error = %v", err)
+	}
+	if cacheFactoryCalled {
+		t.Fatal("cache factory should not run after settings factory failure")
+	}
+}
+
+func TestNewServicePropagatesCacheStoreFailure(t *testing.T) {
+	wantErr := errors.New("cache unavailable")
+
+	service, err := newService(nil, serviceStoreFactories{
+		settings: func() (*settings.Store, error) {
+			return &settings.Store{}, nil
+		},
+		cache: func() (*cache.Store, error) {
+			return nil, wantErr
+		},
+	})
+
+	if service != nil {
+		t.Fatalf("newService() service = %v, want nil", service)
+	}
+	if !errors.Is(err, wantErr) || !strings.Contains(err.Error(), "cache store 초기화 실패") {
+		t.Fatalf("newService() error = %v", err)
+	}
+}
+
+func TestNewServiceInitializesStores(t *testing.T) {
+	accountStore := &account.Store{}
+	settingsStore := &settings.Store{}
+	cacheStore := &cache.Store{}
+
+	service, err := newService(accountStore, serviceStoreFactories{
+		settings: func() (*settings.Store, error) { return settingsStore, nil },
+		cache:    func() (*cache.Store, error) { return cacheStore, nil },
+	})
+	if err != nil {
+		t.Fatalf("newService() error = %v", err)
+	}
+	if service.store != accountStore || service.settingsStore != settingsStore || service.cacheStore != cacheStore {
+		t.Fatalf("newService() stores = %+v", service)
+	}
+}
 
 func TestPrepareReminderSyncPromptsOnceForChangedSource(t *testing.T) {
 	cacheStore, err := cache.NewStoreAt(t.TempDir())

@@ -584,9 +584,27 @@ type selectedCourse struct {
 	Course klas.Course
 }
 
-func NewService(store *account.Store) *Service {
-	settingsStore, _ := settings.NewStore()
-	cacheStore, _ := cache.NewStore()
+type serviceStoreFactories struct {
+	settings func() (*settings.Store, error)
+	cache    func() (*cache.Store, error)
+}
+
+func NewService(store *account.Store) (*Service, error) {
+	return newService(store, serviceStoreFactories{
+		settings: settings.NewStore,
+		cache:    cache.NewStore,
+	})
+}
+
+func newService(store *account.Store, factories serviceStoreFactories) (*Service, error) {
+	settingsStore, err := factories.settings()
+	if err != nil {
+		return nil, fmt.Errorf("settings store 초기화 실패: %w", err)
+	}
+	cacheStore, err := factories.cache()
+	if err != nil {
+		return nil, fmt.Errorf("cache store 초기화 실패: %w", err)
+	}
 	return &Service{
 		store:                store,
 		settingsStore:        settingsStore,
@@ -595,7 +613,7 @@ func NewService(store *account.Store) *Service {
 		calendarBridgePath:   defaultCalendarBridgePath(),
 		categoryBridgePath:   defaultCategoryBridgePath(),
 		transcriptBridgePath: defaultTranscriptBridgePath(),
-	}
+	}, nil
 }
 
 func (s *Service) Authenticate(ctx context.Context, studentID string, password string) error {

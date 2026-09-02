@@ -36,11 +36,23 @@ func modeForArgs(args []string) commandMode {
 }
 
 func Run(ctx context.Context, args []string) error {
-	store, err := account.NewStore()
+	return runWithFactories(ctx, args, account.NewStore, app.NewService)
+}
+
+func runWithFactories(
+	ctx context.Context,
+	args []string,
+	newAccountStore func() (*account.Store, error),
+	newService func(*account.Store) (*app.Service, error),
+) error {
+	store, err := newAccountStore()
 	if err != nil {
 		return err
 	}
-	service := app.NewService(store)
+	service, err := newService(store)
+	if err != nil {
+		return err
+	}
 
 	if modeForArgs(args) == commandModeTUI {
 		return tui.Run(ctx, service)
