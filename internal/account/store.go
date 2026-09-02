@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,6 +24,7 @@ const (
 type Store struct {
 	registryPath string
 	keyring      keyringStore
+	registry     registryWriter
 }
 
 type keyringStore interface {
@@ -32,6 +34,15 @@ type keyringStore interface {
 }
 
 type systemKeyring struct{}
+
+type registryWriter interface {
+	WriteAtomic(path string, data []byte, perm fs.FileMode) error
+}
+
+type filesystemRegistryWriter struct {
+	replace func(temporaryPath string, registryPath string) error
+	recover func(registryPath string) error
+}
 
 func (systemKeyring) Set(service string, user string, password string) error {
 	return keyring.Set(service, user, password)
@@ -43,6 +54,57 @@ func (systemKeyring) Get(service string, user string) (string, error) {
 
 func (systemKeyring) Delete(service string, user string) error {
 	return keyring.Delete(service, user)
+}
+
+func (w filesystemRegistryWriter) WriteAtomic(path string, data []byte, perm fs.FileMode) (returnErr error) {
+	if w.recover != nil {
+		if err := w.recover(path); err != nil {
+			return fmt.Errorf("registry 이전 상태 복구 실패: %w", err)
+		}
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".users-*.tmp")
+	if err != nil {
+		return fmt.Errorf("registry 임시 파일 생성 실패: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	closed := false
+	defer func() {
+		if !closed {
+			if closeErr := temporary.Close(); closeErr != nil {
+				returnErr = errors.Join(returnErr, fmt.Errorf("registry 임시 파일 닫기 실패: %w", closeErr))
+			}
+		}
+		if removeErr := os.Remove(temporaryPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			returnErr = errors.Join(returnErr, fmt.Errorf("registry 임시 파일 정리 실패: %w", removeErr))
+		}
+	}()
+
+	if err := temporary.Chmod(perm); err != nil {
+		return fmt.Errorf("registry 임시 파일 권한 설정 실패: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		return fmt.Errorf("registry 임시 파일 쓰기 실패: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		return fmt.Errorf("registry 임시 파일 동기화 실패: %w", err)
+	}
+	closed = true
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("registry 임시 파일 닫기 실패: %w", err)
+	}
+	replace := w.replace
+	if replace == nil {
+		replace = replaceRegistryFile
+	}
+	if err := replace(temporaryPath, path); err != nil {
+		if w.recover != nil {
+			if recoverErr := w.recover(path); recoverErr != nil {
+				return fmt.Errorf("registry 교체 및 복구 실패: %w", errors.Join(err, recoverErr))
+			}
+		}
+		return fmt.Errorf("registry 교체 실패: %w", err)
+	}
+	return nil
 }
 
 type User struct {
@@ -88,7 +150,14 @@ func NewStore() (*Store, error) {
 }
 
 func newStoreAt(registryPath string, secrets keyringStore) *Store {
-	return &Store{registryPath: registryPath, keyring: secrets}
+	return &Store{
+		registryPath: registryPath,
+		keyring:      secrets,
+		registry: filesystemRegistryWriter{
+			replace: replaceRegistryFile,
+			recover: recoverRegistryFile,
+		},
+	}
 }
 
 func configDir() (string, error) {
@@ -351,6 +420,9 @@ func (s *Store) deleteSecret(kind string, studentID string) error {
 }
 
 func (s *Store) loadRegistry() (registryFile, error) {
+	if err := recoverRegistryFile(s.registryPath); err != nil {
+		return registryFile{}, fmt.Errorf("유저 registry 복구 실패: %w", err)
+	}
 	bytes, err := os.ReadFile(s.registryPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return registryFile{}, nil
@@ -372,7 +444,7 @@ func (s *Store) saveRegistry(registry registryFile) error {
 		return fmt.Errorf("유저 registry 직렬화 실패: %w", err)
 	}
 
-	if err := os.WriteFile(s.registryPath, bytes, 0o600); err != nil {
+	if err := s.registry.WriteAtomic(s.registryPath, bytes, 0o600); err != nil {
 		return fmt.Errorf("유저 registry 저장 실패: %w", err)
 	}
 	return nil

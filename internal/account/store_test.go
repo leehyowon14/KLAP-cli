@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -99,6 +100,102 @@ func TestStoreUsesInjectedKeyringForCredentials(t *testing.T) {
 	}
 	if gotSession.UserID != session.UserID || gotSession.Cookies["SESSION"] != "cookie" {
 		t.Fatalf("LoadSession() = %+v", gotSession)
+	}
+}
+
+func TestSaveRegistryAtomicallyReplacesExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "users.json")
+	store := newStoreAt(path, newMemoryKeyring())
+	want := registryFile{
+		CurrentStudentID: "20260002",
+		Users:            []User{{StudentID: "20260002", UserID: "user-id"}},
+	}
+
+	if err := store.saveRegistry(want); err != nil {
+		t.Fatalf("saveRegistry() error = %v", err)
+	}
+	got, err := store.loadRegistry()
+	if err != nil {
+		t.Fatalf("loadRegistry() error = %v", err)
+	}
+	if got.CurrentStudentID != want.CurrentStudentID || len(got.Users) != 1 || got.Users[0].UserID != "user-id" {
+		t.Fatalf("loadRegistry() = %+v", got)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if gotPerm := info.Mode().Perm(); runtime.GOOS == "windows" {
+		if gotPerm&0o200 == 0 {
+			t.Fatalf("registry permissions = %o, want owner-writable", gotPerm)
+		}
+	} else if gotPerm != 0o600 {
+		t.Fatalf("registry permissions = %o, want 600", gotPerm)
+	}
+	temporaryFiles, err := filepath.Glob(filepath.Join(dir, ".users-*.tmp"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(temporaryFiles) != 0 {
+		t.Fatalf("temporary registry files = %v", temporaryFiles)
+	}
+}
+
+func TestSaveRegistryFailurePreservesLastValidState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "users.json")
+	store := newStoreAt(path, newMemoryKeyring())
+	original := registryFile{
+		CurrentStudentID: "20260001",
+		Users:            []User{{StudentID: "20260001", UserID: "old-user"}},
+	}
+	if err := store.saveRegistry(original); err != nil {
+		t.Fatalf("saveRegistry() seed error = %v", err)
+	}
+	wantErr := errors.New("interrupted atomic write")
+	backupPath := path + ".backup"
+	store.registry = filesystemRegistryWriter{
+		replace: func(_ string, registryPath string) error {
+			if err := os.Rename(registryPath, backupPath); err != nil {
+				t.Fatalf("simulated replacement backup error = %v", err)
+			}
+			return wantErr
+		},
+		recover: func(registryPath string) error {
+			if _, err := os.Stat(backupPath); errors.Is(err, os.ErrNotExist) {
+				return nil
+			} else if err != nil {
+				return err
+			}
+			return os.Rename(backupPath, registryPath)
+		},
+	}
+
+	err := store.saveRegistry(registryFile{
+		CurrentStudentID: "20260002",
+		Users:            []User{{StudentID: "20260002", UserID: "new-user"}},
+	})
+
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("saveRegistry() error = %v, want %v", err, wantErr)
+	}
+	store.registry = filesystemRegistryWriter{
+		replace: replaceRegistryFile,
+		recover: recoverRegistryFile,
+	}
+	got, loadErr := store.loadRegistry()
+	if loadErr != nil {
+		t.Fatalf("loadRegistry() error = %v", loadErr)
+	}
+	if got.CurrentStudentID != original.CurrentStudentID || len(got.Users) != 1 || got.Users[0].UserID != "old-user" {
+		t.Fatalf("loadRegistry() after interrupted write = %+v", got)
+	}
+	temporaryFiles, globErr := filepath.Glob(filepath.Join(filepath.Dir(path), ".users-*.tmp"))
+	if globErr != nil {
+		t.Fatalf("Glob() error = %v", globErr)
+	}
+	if len(temporaryFiles) != 0 {
+		t.Fatalf("temporary registry files after failure = %v", temporaryFiles)
 	}
 }
 
