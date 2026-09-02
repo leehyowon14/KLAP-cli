@@ -22,6 +22,27 @@ const (
 
 type Store struct {
 	registryPath string
+	keyring      keyringStore
+}
+
+type keyringStore interface {
+	Set(service string, user string, password string) error
+	Get(service string, user string) (string, error)
+	Delete(service string, user string) error
+}
+
+type systemKeyring struct{}
+
+func (systemKeyring) Set(service string, user string, password string) error {
+	return keyring.Set(service, user, password)
+}
+
+func (systemKeyring) Get(service string, user string) (string, error) {
+	return keyring.Get(service, user)
+}
+
+func (systemKeyring) Delete(service string, user string) error {
+	return keyring.Delete(service, user)
 }
 
 type User struct {
@@ -44,7 +65,11 @@ func NewStore() (*Store, error) {
 		return nil, fmt.Errorf("config dir 생성 실패: %w", err)
 	}
 
-	return &Store{registryPath: filepath.Join(dir, "users.json")}, nil
+	return newStoreAt(filepath.Join(dir, "users.json"), systemKeyring{}), nil
+}
+
+func newStoreAt(registryPath string, secrets keyringStore) *Store {
+	return &Store{registryPath: registryPath, keyring: secrets}
 }
 
 func configDir() (string, error) {
@@ -62,7 +87,7 @@ func configDir() (string, error) {
 func (s *Store) Save(ctx context.Context, studentID string, password string, session klas.Session) error {
 	_ = ctx
 
-	if err := keyring.Set(keyringService, keyName(passwordKind, studentID), password); err != nil {
+	if err := s.keyring.Set(keyringService, keyName(passwordKind, studentID), password); err != nil {
 		return fmt.Errorf("비밀번호 보안 저장 실패: %w", err)
 	}
 
@@ -70,7 +95,7 @@ func (s *Store) Save(ctx context.Context, studentID string, password string, ses
 	if err != nil {
 		return fmt.Errorf("세션 직렬화 실패: %w", err)
 	}
-	if err := keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
+	if err := s.keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
 		return fmt.Errorf("세션 보안 저장 실패: %w", err)
 	}
 
@@ -146,7 +171,7 @@ func (s *Store) Select(ctx context.Context, studentID string) error {
 func (s *Store) LoadPassword(ctx context.Context, studentID string) (string, error) {
 	_ = ctx
 
-	password, err := keyring.Get(keyringService, keyName(passwordKind, studentID))
+	password, err := s.keyring.Get(keyringService, keyName(passwordKind, studentID))
 	if err != nil {
 		return "", fmt.Errorf("저장된 비밀번호를 읽지 못했습니다: %w", err)
 	}
@@ -156,7 +181,7 @@ func (s *Store) LoadPassword(ctx context.Context, studentID string) (string, err
 func (s *Store) LoadSession(ctx context.Context, studentID string) (klas.Session, error) {
 	_ = ctx
 
-	sessionText, err := keyring.Get(keyringService, keyName(sessionKind, studentID))
+	sessionText, err := s.keyring.Get(keyringService, keyName(sessionKind, studentID))
 	if err != nil {
 		return klas.Session{}, fmt.Errorf("저장된 세션을 읽지 못했습니다: %w", err)
 	}
@@ -175,7 +200,7 @@ func (s *Store) SaveSession(ctx context.Context, studentID string, session klas.
 	if err != nil {
 		return fmt.Errorf("세션 직렬화 실패: %w", err)
 	}
-	if err := keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
+	if err := s.keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
 		return fmt.Errorf("세션 보안 저장 실패: %w", err)
 	}
 	return nil
@@ -208,8 +233,8 @@ func (s *Store) Remove(ctx context.Context, studentID string) error {
 		}
 	}
 
-	_ = keyring.Delete(keyringService, keyName(passwordKind, studentID))
-	_ = keyring.Delete(keyringService, keyName(sessionKind, studentID))
+	_ = s.keyring.Delete(keyringService, keyName(passwordKind, studentID))
+	_ = s.keyring.Delete(keyringService, keyName(sessionKind, studentID))
 
 	registry.Users = filtered
 	return s.saveRegistry(registry)
