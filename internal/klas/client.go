@@ -1586,7 +1586,9 @@ func (c *Client) ResolveLectureMediaURL(ctx context.Context, contentID string) (
 	if err != nil {
 		return "", fmt.Errorf("KWCommons 요청 실패: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -2572,7 +2574,9 @@ func (c *Client) do(ctx context.Context, method string, path string, payload any
 	if err != nil {
 		return nil, fmt.Errorf("KLAS 요청 실패: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -2606,7 +2610,9 @@ func (c *Client) doForm(ctx context.Context, path string, values url.Values, all
 	if err != nil {
 		return nil, fmt.Errorf("KLAS 요청 실패: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
