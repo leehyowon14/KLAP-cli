@@ -241,3 +241,109 @@ func TestRemoveCurrentSelectsFirstRemainingUser(t *testing.T) {
 		t.Fatalf("Current() = %q, want %q", got, "2024000002")
 	}
 }
+
+func TestRemoveRestoresPasswordWhenSessionDeleteFailsAndCanRetry(t *testing.T) {
+	secrets := newMemoryKeyring()
+	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
+	session := klas.Session{UserID: "user-id", Cookies: map[string]string{"SESSION": "cookie"}}
+	if err := store.Save(context.Background(), "20260001", "password", session); err != nil {
+		t.Fatalf("Save() seed error = %v", err)
+	}
+	wantErr := errors.New("session delete failed")
+	secrets.deleteErrors[secretMapKey(sessionKind, "20260001")] = []error{wantErr}
+
+	err := store.Remove(context.Background(), "20260001")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Remove() first error = %v, want %v", err, wantErr)
+	}
+	password, passwordErr := store.LoadPassword(context.Background(), "20260001")
+	if passwordErr != nil || password != "password" {
+		t.Fatalf("LoadPassword() after rollback = %q, %v", password, passwordErr)
+	}
+	storedSession, sessionErr := store.LoadSession(context.Background(), "20260001")
+	if sessionErr != nil || storedSession.UserID != session.UserID {
+		t.Fatalf("LoadSession() after rollback = %+v, %v", storedSession, sessionErr)
+	}
+	users, listErr := store.List(context.Background())
+	if listErr != nil || len(users) != 1 {
+		t.Fatalf("List() after rollback = %+v, %v", users, listErr)
+	}
+
+	if err := store.Remove(context.Background(), "20260001"); err != nil {
+		t.Fatalf("Remove() retry error = %v", err)
+	}
+	users, listErr = store.List(context.Background())
+	if listErr != nil || len(users) != 0 {
+		t.Fatalf("List() after retry = %+v, %v", users, listErr)
+	}
+}
+
+func TestRemovePropagatesPasswordDeleteFailureWithoutChangingRegistry(t *testing.T) {
+	secrets := newMemoryKeyring()
+	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
+	if err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"}); err != nil {
+		t.Fatalf("Save() seed error = %v", err)
+	}
+	wantErr := errors.New("password delete failed")
+	secrets.deleteErrors[secretMapKey(passwordKind, "20260001")] = []error{wantErr}
+
+	err := store.Remove(context.Background(), "20260001")
+
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Remove() error = %v, want %v", err, wantErr)
+	}
+	users, listErr := store.List(context.Background())
+	if listErr != nil || len(users) != 1 {
+		t.Fatalf("List() after delete failure = %+v, %v", users, listErr)
+	}
+}
+
+func TestRemoveTreatsKeyringNotFoundAsDeleted(t *testing.T) {
+	secrets := newMemoryKeyring()
+	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
+	if err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"}); err != nil {
+		t.Fatalf("Save() seed error = %v", err)
+	}
+	secrets.deleteErrors[secretMapKey(passwordKind, "20260001")] = []error{keyring.ErrNotFound}
+
+	if err := store.Remove(context.Background(), "20260001"); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	users, err := store.List(context.Background())
+	if err != nil || len(users) != 0 {
+		t.Fatalf("List() after remove = %+v, %v", users, err)
+	}
+}
+
+func TestRemoveReturnsPartialFailureWhenCredentialRollbackFails(t *testing.T) {
+	secrets := newMemoryKeyring()
+	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
+	if err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"}); err != nil {
+		t.Fatalf("Save() seed error = %v", err)
+	}
+	wantErr := errors.New("session delete failed")
+	rollbackErr := errors.New("password restore failed")
+	secrets.deleteErrors[secretMapKey(sessionKind, "20260001")] = []error{wantErr}
+	secrets.setErrors[secretMapKey(passwordKind, "20260001")] = []error{rollbackErr}
+
+	err := store.Remove(context.Background(), "20260001")
+
+	var partial *PartialFailureError
+	if !errors.As(err, &partial) {
+		t.Fatalf("Remove() error type = %T, want *PartialFailureError (%v)", err, err)
+	}
+	if !errors.Is(err, wantErr) || partial.Operation != "계정 삭제" || len(partial.RollbackErrors) != 1 || !errors.Is(partial.RollbackErrors[0], rollbackErr) {
+		t.Fatalf("Remove() partial failure = %+v", partial)
+	}
+	users, listErr := store.List(context.Background())
+	if listErr != nil || len(users) != 1 {
+		t.Fatalf("List() after partial failure = %+v, %v", users, listErr)
+	}
+	if err := store.Remove(context.Background(), "20260001"); err != nil {
+		t.Fatalf("Remove() retry after partial failure error = %v", err)
+	}
+	users, listErr = store.List(context.Background())
+	if listErr != nil || len(users) != 0 {
+		t.Fatalf("List() after partial failure retry = %+v, %v", users, listErr)
+	}
+}

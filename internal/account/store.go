@@ -305,18 +305,49 @@ func (s *Store) Remove(ctx context.Context, studentID string) error {
 	if !found {
 		return fmt.Errorf("저장된 유저가 없습니다: %s", studentID)
 	}
+	passwordSnapshot, err := s.snapshotSecret(passwordKind, studentID)
+	if err != nil {
+		return fmt.Errorf("기존 비밀번호 확인 실패: %w", err)
+	}
+	sessionSnapshot, err := s.snapshotSecret(sessionKind, studentID)
+	if err != nil {
+		return fmt.Errorf("기존 세션 확인 실패: %w", err)
+	}
+
+	if err := s.deleteSecret(passwordKind, studentID); err != nil {
+		cause := fmt.Errorf("비밀번호 보안 삭제 실패: %w", err)
+		return s.rollbackSecrets("계정 삭제", studentID, cause, map[string]secretSnapshot{passwordKind: passwordSnapshot})
+	}
+	if err := s.deleteSecret(sessionKind, studentID); err != nil {
+		cause := fmt.Errorf("세션 보안 삭제 실패: %w", err)
+		return s.rollbackSecrets("계정 삭제", studentID, cause, map[string]secretSnapshot{
+			sessionKind:  sessionSnapshot,
+			passwordKind: passwordSnapshot,
+		})
+	}
+
+	registry.Users = filtered
 	if registry.CurrentStudentID == studentID {
 		registry.CurrentStudentID = ""
 		if len(filtered) > 0 {
 			registry.CurrentStudentID = filtered[0].StudentID
 		}
 	}
+	if err := s.saveRegistry(registry); err != nil {
+		return s.rollbackSecrets("계정 삭제", studentID, err, map[string]secretSnapshot{
+			sessionKind:  sessionSnapshot,
+			passwordKind: passwordSnapshot,
+		})
+	}
+	return nil
+}
 
-	_ = s.keyring.Delete(keyringService, keyName(passwordKind, studentID))
-	_ = s.keyring.Delete(keyringService, keyName(sessionKind, studentID))
-
-	registry.Users = filtered
-	return s.saveRegistry(registry)
+func (s *Store) deleteSecret(kind string, studentID string) error {
+	err := s.keyring.Delete(keyringService, keyName(kind, studentID))
+	if errors.Is(err, keyring.ErrNotFound) {
+		return nil
+	}
+	return err
 }
 
 func (s *Store) loadRegistry() (registryFile, error) {
