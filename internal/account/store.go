@@ -56,6 +56,25 @@ type registryFile struct {
 	Users            []User `json:"users"`
 }
 
+type PartialFailureError struct {
+	Operation      string
+	Cause          error
+	RollbackErrors []error
+}
+
+func (e *PartialFailureError) Error() string {
+	return fmt.Sprintf("%s 부분 실패: %v (rollback 실패: %v)", e.Operation, e.Cause, errors.Join(e.RollbackErrors...))
+}
+
+func (e *PartialFailureError) Unwrap() error {
+	return e.Cause
+}
+
+type secretSnapshot struct {
+	value  string
+	exists bool
+}
+
 func NewStore() (*Store, error) {
 	dir, err := configDir()
 	if err != nil {
@@ -87,21 +106,34 @@ func configDir() (string, error) {
 func (s *Store) Save(ctx context.Context, studentID string, password string, session klas.Session) error {
 	_ = ctx
 
-	if err := s.keyring.Set(keyringService, keyName(passwordKind, studentID), password); err != nil {
-		return fmt.Errorf("비밀번호 보안 저장 실패: %w", err)
-	}
-
 	sessionBytes, err := json.Marshal(session)
 	if err != nil {
 		return fmt.Errorf("세션 직렬화 실패: %w", err)
-	}
-	if err := s.keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
-		return fmt.Errorf("세션 보안 저장 실패: %w", err)
 	}
 
 	registry, err := s.loadRegistry()
 	if err != nil {
 		return err
+	}
+	passwordSnapshot, err := s.snapshotSecret(passwordKind, studentID)
+	if err != nil {
+		return fmt.Errorf("기존 비밀번호 확인 실패: %w", err)
+	}
+	sessionSnapshot, err := s.snapshotSecret(sessionKind, studentID)
+	if err != nil {
+		return fmt.Errorf("기존 세션 확인 실패: %w", err)
+	}
+
+	if err := s.keyring.Set(keyringService, keyName(passwordKind, studentID), password); err != nil {
+		cause := fmt.Errorf("비밀번호 보안 저장 실패: %w", err)
+		return s.rollbackSecrets("계정 저장", studentID, cause, map[string]secretSnapshot{passwordKind: passwordSnapshot})
+	}
+	if err := s.keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
+		cause := fmt.Errorf("세션 보안 저장 실패: %w", err)
+		return s.rollbackSecrets("계정 저장", studentID, cause, map[string]secretSnapshot{
+			sessionKind:  sessionSnapshot,
+			passwordKind: passwordSnapshot,
+		})
 	}
 
 	updated := false
@@ -128,7 +160,54 @@ func (s *Store) Save(ctx context.Context, studentID string, password string, ses
 		return registry.Users[i].StudentID < registry.Users[j].StudentID
 	})
 
-	return s.saveRegistry(registry)
+	if err := s.saveRegistry(registry); err != nil {
+		return s.rollbackSecrets("계정 저장", studentID, err, map[string]secretSnapshot{
+			sessionKind:  sessionSnapshot,
+			passwordKind: passwordSnapshot,
+		})
+	}
+	return nil
+}
+
+func (s *Store) snapshotSecret(kind string, studentID string) (secretSnapshot, error) {
+	value, err := s.keyring.Get(keyringService, keyName(kind, studentID))
+	if errors.Is(err, keyring.ErrNotFound) {
+		return secretSnapshot{}, nil
+	}
+	if err != nil {
+		return secretSnapshot{}, err
+	}
+	return secretSnapshot{value: value, exists: true}, nil
+}
+
+func (s *Store) rollbackSecrets(operation string, studentID string, cause error, snapshots map[string]secretSnapshot) error {
+	var rollbackErrors []error
+	for _, kind := range []string{sessionKind, passwordKind} {
+		snapshot, ok := snapshots[kind]
+		if !ok {
+			continue
+		}
+		var err error
+		if snapshot.exists {
+			err = s.keyring.Set(keyringService, keyName(kind, studentID), snapshot.value)
+		} else {
+			err = s.keyring.Delete(keyringService, keyName(kind, studentID))
+			if errors.Is(err, keyring.ErrNotFound) {
+				err = nil
+			}
+		}
+		if err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("%s rollback 실패: %w", kind, err))
+		}
+	}
+	if len(rollbackErrors) > 0 {
+		return &PartialFailureError{
+			Operation:      operation,
+			Cause:          cause,
+			RollbackErrors: rollbackErrors,
+		}
+	}
+	return cause
 }
 
 func (s *Store) List(ctx context.Context) ([]User, error) {
