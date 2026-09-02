@@ -68,8 +68,8 @@ func (m confirmModel) View() string {
 		width = 96
 	}
 	contentWidth := tuiContentWidth(width)
-	yes := "Yes"
-	no := "No"
+	var yes string
+	var no string
 	if m.value {
 		yes = menuSelectedStyle.Render("› Yes")
 		no = mutedStyle.Render("  No")

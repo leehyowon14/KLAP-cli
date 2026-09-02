@@ -2722,7 +2722,7 @@ func (m model) renderHomeView(width int) string {
 		headerStyle.Render("https://github.com/leehyowon14/KLAP-GoLang"),
 		taglineStyle.Render("Beyond KLAS, in your terminal."),
 	)
-	top := logo
+	var top string
 	if width >= 82 {
 		top = lipgloss.JoinHorizontal(lipgloss.Top, logo, "   ", meta)
 	} else {
@@ -3382,8 +3382,8 @@ func (m model) renderSyncConflictPanel(width int) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	keep := "내 수정 유지"
-	apply := "KLAS 갱신 반영"
+	var keep string
+	var apply string
 	if decision == app.SyncDecisionApply {
 		keep = mutedStyle.Render("  내 수정 유지")
 		apply = menuSelectedStyle.Render("› KLAS 갱신 반영")
