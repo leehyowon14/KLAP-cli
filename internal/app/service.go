@@ -28,6 +28,7 @@ import (
 	"github.com/kw-klap/klap-cli/internal/klas"
 	"github.com/kw-klap/klap-cli/internal/reminder"
 	"github.com/kw-klap/klap-cli/internal/settings"
+	"github.com/kw-klap/klap-cli/internal/syncstate"
 	"github.com/kw-klap/klap-cli/internal/transcript"
 )
 
@@ -36,6 +37,7 @@ type Service struct {
 	sessions             sessionStore
 	settingsStore        *settings.Store
 	cacheStore           *cache.Store
+	syncStateStore       *syncstate.Store
 	newKlasClient        func() (*klas.Client, error)
 	login                func(context.Context, *klas.Client, string, string) (klas.Session, error)
 	reminderBridgePath   string
@@ -691,14 +693,16 @@ func decodeIDPart(value string) (string, error) {
 }
 
 type serviceStoreFactories struct {
-	settings func() (*settings.Store, error)
-	cache    func() (*cache.Store, error)
+	settings  func() (*settings.Store, error)
+	cache     func() (*cache.Store, error)
+	syncState func() (*syncstate.Store, error)
 }
 
 func NewService(store *account.Store) (*Service, error) {
 	return newService(store, serviceStoreFactories{
-		settings: settings.NewStore,
-		cache:    cache.NewStore,
+		settings:  settings.NewStore,
+		cache:     cache.NewStore,
+		syncState: syncstate.NewStore,
 	})
 }
 
@@ -711,12 +715,17 @@ func newService(store *account.Store, factories serviceStoreFactories) (*Service
 	if err != nil {
 		return nil, fmt.Errorf("cache store 초기화 실패: %w", err)
 	}
+	syncStateStore, err := factories.syncState()
+	if err != nil {
+		return nil, fmt.Errorf("sync state store 초기화 실패: %w", err)
+	}
 	return &Service{
-		store:         store,
-		sessions:      store,
-		settingsStore: settingsStore,
-		cacheStore:    cacheStore,
-		newKlasClient: klas.NewClient,
+		store:          store,
+		sessions:       store,
+		settingsStore:  settingsStore,
+		cacheStore:     cacheStore,
+		syncStateStore: syncStateStore,
+		newKlasClient:  klas.NewClient,
 		login: func(ctx context.Context, client *klas.Client, studentID string, password string) (klas.Session, error) {
 			return client.Login(ctx, studentID, password)
 		},
