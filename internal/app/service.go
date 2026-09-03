@@ -4434,7 +4434,11 @@ func dashboardEvaluationForCourse(rows []EvaluationRow, courseName string) (Eval
 }
 
 func dashboardCacheKey(studentID string, termValue string) string {
-	return "dashboard:v2:" + strings.TrimSpace(studentID) + ":" + strings.TrimSpace(termValue)
+	return dashboardCacheKeyVersion("v3", studentID, termValue)
+}
+
+func dashboardCacheKeyVersion(version string, studentID string, termValue string) string {
+	return "dashboard:" + strings.TrimSpace(version) + ":" + strings.TrimSpace(studentID) + ":" + strings.TrimSpace(termValue)
 }
 
 func dashboardCacheTTL() time.Duration {
