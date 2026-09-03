@@ -3293,6 +3293,7 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 		assignments = append(assignments, reminder.Assignment{
 			ID:        detail.ID,
 			LegacyIDs: compactNonEmpty([]string{row.LegacyID}),
+			TermValue: detail.TermValue,
 			Title:     detail.Detail.Title,
 			Course:    detail.CourseName,
 			DueAt:     detail.Detail.DueAt,
@@ -3363,6 +3364,7 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOpti
 		assignments = append(assignments, reminder.Assignment{
 			ID:        lectureReminderID(row.ID),
 			LegacyIDs: compactNonEmpty([]string{lectureReminderID(row.LegacyID)}),
+			TermValue: row.TermValue,
 			Title:     firstNonEmpty(row.Lecture.Title, row.Lecture.ModuleTitle, "온라인 강의"),
 			Course:    row.CourseName,
 			DueAt:     row.Lecture.EndAt,
@@ -3592,12 +3594,11 @@ func (s *Service) prepareReminderSync(scope string, owner string, assignments []
 				if !legacyExists {
 					continue
 				}
-				if legacyItem.Hash != legacyReminderSourceHash(assignment, legacyID) {
-					continue
+				if legacyItem.Hash == legacyReminderSourceHash(assignment, legacyID) {
+					legacyItem.Hash = hash
+					legacyItem.IgnoredHash = ""
+					delete(state.Items, legacyID)
 				}
-				legacyItem.Hash = hash
-				legacyItem.IgnoredHash = ""
-				delete(state.Items, legacyID)
 				state.Items[assignment.ID] = legacyItem
 				item = legacyItem
 				break
@@ -3755,13 +3756,38 @@ func legacyReminderSourceHash(assignment reminder.Assignment, legacyID string) s
 
 func replaceReminderNoteID(notes string, id string) string {
 	lines := strings.Split(notes, "\n")
-	for index, line := range lines {
+	metadataStart, metadataEnd, ok := reminderMetadataBounds(lines)
+	if !ok {
+		return notes
+	}
+	for index := metadataStart; index < metadataEnd; index++ {
+		line := lines[index]
 		if strings.HasPrefix(line, "ID: ") {
 			lines[index] = "ID: " + strings.TrimSpace(id)
 			break
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func reminderMetadataBounds(lines []string) (int, int, bool) {
+	footer := -1
+	for index := len(lines) - 1; index >= 0; index-- {
+		if strings.TrimSpace(lines[index]) == "[This reminder is created by KLAP.]" {
+			footer = index
+			break
+		}
+	}
+	if footer < 0 {
+		return 0, 0, false
+	}
+	for index := footer - 1; index >= 0; index-- {
+		marker := strings.TrimSpace(lines[index])
+		if marker == "--- KLAP ---" || marker == "=========================================" {
+			return index + 1, footer, true
+		}
+	}
+	return 0, 0, false
 }
 
 func calendarSourceHash(event klapcalendar.Event) string {

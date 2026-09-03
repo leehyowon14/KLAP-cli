@@ -410,7 +410,29 @@ func TestPrepareReminderSyncMigratesLegacyAssignmentBaseline(t *testing.T) {
 	}
 }
 
-func TestPrepareReminderSyncDoesNotClaimMismatchedLegacyBaseline(t *testing.T) {
+func TestReplaceReminderNoteIDPreservesBodyMetadataLookalike(t *testing.T) {
+	notes := "본문\n--- KLAP ---\nID: body-id\n과목: body-course\n\n--- KLAP ---\n\nID: old-id\n과목: 실제과목\n[This reminder is created by KLAP.]"
+	got := replaceReminderNoteID(notes, "stable-id")
+	if !strings.Contains(got, "ID: body-id") || !strings.Contains(got, "과목: body-course") {
+		t.Fatalf("replaceReminderNoteID() changed body:\n%s", got)
+	}
+	if !strings.Contains(got, "--- KLAP ---\n\nID: stable-id\n과목: 실제과목") {
+		t.Fatalf("replaceReminderNoteID() did not change metadata:\n%s", got)
+	}
+}
+
+func TestReplaceReminderNoteIDSupportsLegacySeparator(t *testing.T) {
+	notes := "본문\nID: body-id\n=========================================\n\nID: old-id\n과목: 실제과목\n[This reminder is created by KLAP.]"
+	got := replaceReminderNoteID(notes, "stable-id")
+	if !strings.Contains(got, "ID: body-id") {
+		t.Fatalf("replaceReminderNoteID() changed body:\n%s", got)
+	}
+	if !strings.Contains(got, "=========================================\n\nID: stable-id\n과목: 실제과목") {
+		t.Fatalf("replaceReminderNoteID() did not change legacy metadata:\n%s", got)
+	}
+}
+
+func TestPrepareReminderSyncConflictsOnMismatchedLegacyBaseline(t *testing.T) {
 	cacheStore, err := cache.NewStoreAt(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewStoreAt() error = %v", err)
@@ -433,11 +455,11 @@ func TestPrepareReminderSyncDoesNotClaimMismatchedLegacyBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareReminderSync() error = %v", err)
 	}
-	if len(prepared.Assignments) != 1 || prepared.Assignments[0].KnownSourceHash != "" {
-		t.Fatalf("prepareReminderSync() assignments = %+v", prepared.Assignments)
+	if len(prepared.Assignments) != 0 || len(prepared.Conflicts) != 1 {
+		t.Fatalf("prepareReminderSync() = %+v", prepared)
 	}
-	if _, exists := prepared.State.Items[assignment.ID]; exists {
-		t.Fatalf("mismatched legacy baseline moved to stable ID: %+v", prepared.State.Items)
+	if got := prepared.State.Items[assignment.ID].Hash; got != "another-course-hash" {
+		t.Fatalf("stable conflict baseline = %q", got)
 	}
 	if got := prepared.State.Items["lecture:2:content-123"].Hash; got != "another-course-hash" {
 		t.Fatalf("legacy baseline changed: %+v", prepared.State.Items)
