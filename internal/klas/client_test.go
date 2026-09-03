@@ -217,6 +217,36 @@ func TestEvaluationCourseJSONOmitsRawPayload(t *testing.T) {
 	}
 }
 
+func TestSyllabusJSONOmitsRawContactPayload(t *testing.T) {
+	syllabus := Syllabus{
+		SubjectID:  "subject-1",
+		KoreanName: "정규화 과목",
+		Professor:  "정규화 교수",
+		Purpose:    "정규화 목표",
+		Times:      []SyllabusTime{{Weekday: "월", Periods: []int{1, 2}, Room: "R101"}},
+		Raw: syllabusDataItem{
+			Email:   "raw-secret@example.com",
+			PhoneNo: "raw-secret-phone",
+			TelNo:   "raw-secret-tel",
+		},
+		RawTimeResponse: []syllabusTimeItem{{Room: "raw-secret-room"}},
+	}
+	payload, err := json.Marshal(syllabus)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret")) || bytes.Contains(payload, []byte(`"Raw"`)) || bytes.Contains(payload, []byte(`"RawTimeResponse"`)) {
+		t.Fatalf("Syllabus JSON contains raw contact payload: %s", payload)
+	}
+	var roundTrip Syllabus
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.SubjectID != syllabus.SubjectID || roundTrip.KoreanName != syllabus.KoreanName || roundTrip.Professor != syllabus.Professor || roundTrip.Purpose != syllabus.Purpose || len(roundTrip.Times) != 1 || roundTrip.Times[0].Room != "R101" {
+		t.Fatalf("Syllabus round trip = %+v", roundTrip)
+	}
+}
+
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
 		name string

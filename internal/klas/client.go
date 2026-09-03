@@ -251,8 +251,8 @@ type Syllabus struct {
 	Evaluation      SyllabusEvaluation
 	Schedule        []SyllabusWeek
 	Times           []SyllabusTime
-	Raw             syllabusDataItem
-	RawTimeResponse []syllabusTimeItem
+	Raw             syllabusDataItem   `json:"-"`
+	RawTimeResponse []syllabusTimeItem `json:"-"`
 }
 
 type SyllabusEvaluation struct {
