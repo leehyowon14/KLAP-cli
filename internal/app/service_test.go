@@ -768,6 +768,42 @@ func TestDashboardCoursesBuildsCourseScopedSummary(t *testing.T) {
 	}
 }
 
+func TestNormalizeCachedDashboardResultMigratesTopLevelAndCourseRows(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
+	legacyAssignment := AssignmentRow{ID: "1:7", CourseName: "컴퓨터그래픽스"}
+	legacyNotice := NoticeRow{ID: "1:board:master", CourseName: "컴퓨터그래픽스"}
+	legacyLecture := LectureRow{ID: "1:content", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "content"}}
+	result, migrated, err := normalizeCachedDashboardResult(DashboardResult{
+		Assignments: []AssignmentRow{legacyAssignment},
+		Notices:     []NoticeRow{legacyNotice},
+		Lectures:    []LectureRow{legacyLecture},
+		Courses: []DashboardCourse{{
+			Assignments: []AssignmentRow{legacyAssignment},
+			Notices:     []NoticeRow{legacyNotice},
+			Lectures:    []LectureRow{legacyLecture},
+		}},
+	}, term)
+	if err != nil {
+		t.Fatalf("normalizeCachedDashboardResult() error = %v", err)
+	}
+	if !migrated {
+		t.Fatal("normalizeCachedDashboardResult() migrated = false")
+	}
+	ids := []string{
+		result.Assignments[0].ID,
+		result.Notices[0].ID,
+		result.Lectures[0].ID,
+		result.Courses[0].Assignments[0].ID,
+		result.Courses[0].Notices[0].ID,
+		result.Courses[0].Lectures[0].ID,
+	}
+	for _, id := range ids {
+		if !strings.Contains(id, ":v1:") {
+			t.Fatalf("dashboard row ID was not migrated: %q", id)
+		}
+	}
+}
+
 func TestTermLabel(t *testing.T) {
 	if got := termLabel("2026,3"); got != "2026년도 여름학기" {
 		t.Fatalf("termLabel() = %q", got)

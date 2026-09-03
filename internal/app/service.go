@@ -1466,9 +1466,15 @@ func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (Dashboa
 		var cached DashboardResult
 		hit, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached)
 		if cacheErr == nil && ok {
-			cached.Cached = true
-			cached.CacheCreatedAt = hit.CreatedAt
-			return cached, nil
+			result, migrated, migrationErr := normalizeCachedDashboardResult(cached, term)
+			if migrationErr == nil {
+				if migrated {
+					_ = s.cacheStore.Set(cacheKey, dashboardCacheTTL(), result)
+				}
+				result.Cached = true
+				result.CacheCreatedAt = hit.CreatedAt
+				return result, nil
+			}
 		}
 	}
 
@@ -4411,6 +4417,49 @@ func dashboardCacheTTL() time.Duration {
 
 func dashboardCacheable(result DashboardResult) bool {
 	return len(result.SectionErrors) == 0 && result.Attendance.DetailErrors == 0
+}
+
+func normalizeCachedDashboardResult(result DashboardResult, term klas.Term) (DashboardResult, bool, error) {
+	migrated := false
+	assignments, changed, err := normalizeCachedAssignmentRows(result.Assignments, term)
+	if err != nil {
+		return DashboardResult{}, false, err
+	}
+	result.Assignments = assignments
+	migrated = migrated || changed
+	notices, changed, err := normalizeCachedNoticeRows(result.Notices, term)
+	if err != nil {
+		return DashboardResult{}, false, err
+	}
+	result.Notices = notices
+	migrated = migrated || changed
+	lectures, changed, err := normalizeCachedLectureRows(result.Lectures, term)
+	if err != nil {
+		return DashboardResult{}, false, err
+	}
+	result.Lectures = lectures
+	migrated = migrated || changed
+	for index := range result.Courses {
+		assignments, changed, err = normalizeCachedAssignmentRows(result.Courses[index].Assignments, term)
+		if err != nil {
+			return DashboardResult{}, false, err
+		}
+		result.Courses[index].Assignments = assignments
+		migrated = migrated || changed
+		notices, changed, err = normalizeCachedNoticeRows(result.Courses[index].Notices, term)
+		if err != nil {
+			return DashboardResult{}, false, err
+		}
+		result.Courses[index].Notices = notices
+		migrated = migrated || changed
+		lectures, changed, err = normalizeCachedLectureRows(result.Courses[index].Lectures, term)
+		if err != nil {
+			return DashboardResult{}, false, err
+		}
+		result.Courses[index].Lectures = lectures
+		migrated = migrated || changed
+	}
+	return result, migrated, nil
 }
 
 func listCacheKey(scope string, studentID string, termValue string, selector string) string {
