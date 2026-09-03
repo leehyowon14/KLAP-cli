@@ -63,6 +63,85 @@ func TestNewServicePropagatesSettingsStoreFailure(t *testing.T) {
 	}
 }
 
+func TestCourseRefStableResourceIDIgnoresCourseOrder(t *testing.T) {
+	termValue := "2026,1"
+	firstOrder := []klas.Course{
+		{Name: "컴퓨터그래픽스", Value: "U202613951I040013"},
+		{Name: "오픈소스소프트웨어실습", Value: "U202613951I040014"},
+	}
+	secondOrder := []klas.Course{firstOrder[1], firstOrder[0]}
+
+	firstRef, err := NewCourseRef(termValue, firstOrder[0])
+	if err != nil {
+		t.Fatalf("NewCourseRef() first error = %v", err)
+	}
+	secondRef, err := NewCourseRef(termValue, secondOrder[1])
+	if err != nil {
+		t.Fatalf("NewCourseRef() second error = %v", err)
+	}
+	firstID, err := stableCourseResourceID("assignment", firstRef, "7")
+	if err != nil {
+		t.Fatalf("stableCourseResourceID() first error = %v", err)
+	}
+	secondID, err := stableCourseResourceID("assignment", secondRef, "7")
+	if err != nil {
+		t.Fatalf("stableCourseResourceID() second error = %v", err)
+	}
+	if firstID != secondID {
+		t.Fatalf("stable ID changed after reorder: %q != %q", firstID, secondID)
+	}
+
+	parsedRef, remoteParts, stable, err := parseStableCourseResourceID("assignment", firstID, 1)
+	if err != nil || !stable {
+		t.Fatalf("parseStableCourseResourceID() = %+v, %v, %v", parsedRef, stable, err)
+	}
+	if parsedRef != firstRef || len(remoteParts) != 1 || remoteParts[0] != "7" {
+		t.Fatalf("parseStableCourseResourceID() = %+v, %v", parsedRef, remoteParts)
+	}
+}
+
+func TestCourseRefStableResourceIDSeparatesTermsAndCourses(t *testing.T) {
+	course := klas.Course{Name: "컴퓨터그래픽스", Value: "course:id/01"}
+	firstRef, err := NewCourseRef("2026,1", course)
+	if err != nil {
+		t.Fatalf("NewCourseRef() first error = %v", err)
+	}
+	secondRef, err := NewCourseRef("2026,2", course)
+	if err != nil {
+		t.Fatalf("NewCourseRef() second error = %v", err)
+	}
+	otherCourseRef, err := NewCourseRef("2026,1", klas.Course{Name: "다른 과목", Value: "course:id/02"})
+	if err != nil {
+		t.Fatalf("NewCourseRef() other course error = %v", err)
+	}
+	firstID, _ := stableCourseResourceID("lecture", firstRef, "content:id/1")
+	secondID, _ := stableCourseResourceID("lecture", secondRef, "content:id/1")
+	otherCourseID, _ := stableCourseResourceID("lecture", otherCourseRef, "content:id/1")
+	if firstID == secondID || firstID == otherCourseID || secondID == otherCourseID {
+		t.Fatalf("stable IDs collide: %q, %q, %q", firstID, secondID, otherCourseID)
+	}
+
+	parsedRef, remoteParts, stable, err := parseStableCourseResourceID("lecture", firstID, 1)
+	if err != nil || !stable || parsedRef != firstRef || len(remoteParts) != 1 || remoteParts[0] != "content:id/1" {
+		t.Fatalf("parseStableCourseResourceID() = %+v, %v, %v, %v", parsedRef, remoteParts, stable, err)
+	}
+}
+
+func TestCourseRefRejectsMissingAndMalformedValues(t *testing.T) {
+	if _, err := NewCourseRef("", klas.Course{Value: "course"}); err == nil {
+		t.Fatal("NewCourseRef() expected missing term error")
+	}
+	if _, err := NewCourseRef("2026,1", klas.Course{}); err == nil {
+		t.Fatal("NewCourseRef() expected missing course error")
+	}
+	if _, _, stable, err := parseStableCourseResourceID("assignment", "assignment:v1:not-base64!:Y291cnNl:Nw", 1); err == nil || !stable {
+		t.Fatalf("parseStableCourseResourceID() malformed = stable %v, error %v", stable, err)
+	}
+	if _, _, stable, err := parseStableCourseResourceID("assignment", "3:7", 1); err != nil || stable {
+		t.Fatalf("parseStableCourseResourceID() legacy = stable %v, error %v", stable, err)
+	}
+}
+
 func TestNewServicePropagatesCacheStoreFailure(t *testing.T) {
 	wantErr := errors.New("cache unavailable")
 

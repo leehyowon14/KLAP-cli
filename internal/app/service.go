@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -591,6 +592,100 @@ type TermSettings struct {
 type selectedCourse struct {
 	Index  int
 	Course klas.Course
+}
+
+type CourseRef struct {
+	TermValue string
+	CourseID  string
+}
+
+func NewCourseRef(termValue string, course klas.Course) (CourseRef, error) {
+	ref := CourseRef{
+		TermValue: strings.TrimSpace(termValue),
+		CourseID:  strings.TrimSpace(course.Value),
+	}
+	if ref.TermValue == "" {
+		return CourseRef{}, errors.New("CourseRef에 학기 값이 없습니다")
+	}
+	if ref.CourseID == "" {
+		return CourseRef{}, errors.New("CourseRef에 과목 ID가 없습니다")
+	}
+	return ref, nil
+}
+
+const stableResourceIDVersion = "v1"
+
+func stableCourseResourceID(kind string, ref CourseRef, remoteParts ...string) (string, error) {
+	kind = strings.TrimSpace(kind)
+	if kind == "" || strings.Contains(kind, ":") {
+		return "", errors.New("stable resource kind가 올바르지 않습니다")
+	}
+	if strings.TrimSpace(ref.TermValue) == "" || strings.TrimSpace(ref.CourseID) == "" {
+		return "", errors.New("stable resource ID에 CourseRef가 필요합니다")
+	}
+	encoded := []string{
+		kind,
+		stableResourceIDVersion,
+		encodeIDPart(ref.TermValue),
+		encodeIDPart(ref.CourseID),
+	}
+	for _, part := range remoteParts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return "", errors.New("stable resource ID의 remote ID가 비어 있습니다")
+		}
+		encoded = append(encoded, encodeIDPart(part))
+	}
+	return strings.Join(encoded, ":"), nil
+}
+
+func parseStableCourseResourceID(kind string, id string, remotePartCount int) (CourseRef, []string, bool, error) {
+	prefix := strings.TrimSpace(kind) + ":"
+	id = strings.TrimSpace(id)
+	if !strings.HasPrefix(id, prefix) {
+		return CourseRef{}, nil, false, nil
+	}
+	parts := strings.Split(id, ":")
+	if len(parts) != 4+remotePartCount || parts[1] != stableResourceIDVersion {
+		return CourseRef{}, nil, true, fmt.Errorf("%s stable ID 형식이 올바르지 않습니다", kind)
+	}
+	termValue, err := decodeIDPart(parts[2])
+	if err != nil {
+		return CourseRef{}, nil, true, fmt.Errorf("stable ID 학기 파싱 실패: %w", err)
+	}
+	courseID, err := decodeIDPart(parts[3])
+	if err != nil {
+		return CourseRef{}, nil, true, fmt.Errorf("stable ID 과목 파싱 실패: %w", err)
+	}
+	ref := CourseRef{TermValue: strings.TrimSpace(termValue), CourseID: strings.TrimSpace(courseID)}
+	if ref.TermValue == "" || ref.CourseID == "" {
+		return CourseRef{}, nil, true, errors.New("stable ID의 CourseRef가 비어 있습니다")
+	}
+	remoteParts := make([]string, 0, remotePartCount)
+	for _, encoded := range parts[4:] {
+		value, err := decodeIDPart(encoded)
+		if err != nil {
+			return CourseRef{}, nil, true, fmt.Errorf("stable ID remote 값 파싱 실패: %w", err)
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return CourseRef{}, nil, true, errors.New("stable ID의 remote ID가 비어 있습니다")
+		}
+		remoteParts = append(remoteParts, value)
+	}
+	return ref, remoteParts, true, nil
+}
+
+func encodeIDPart(value string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strings.TrimSpace(value)))
+}
+
+func decodeIDPart(value string) (string, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return "", err
+	}
+	return string(decoded), nil
 }
 
 type serviceStoreFactories struct {
