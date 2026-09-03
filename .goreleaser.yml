@@ -72,28 +72,17 @@ release:
   draft: true
   prerelease: auto
 
-brews:
+homebrew_casks:
   - name: klap
+    ids:
+      - klap
+    binaries:
+      - klap
     repository:
       owner: leehyowon14
       name: homebrew-klap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: https://github.com/leehyowon14/KLAP-cli
     description: Kwangwoon Learning Automation Project CLI/TUI
     license: MIT
-    install: |
-      libexec.install "klap"
-      libexec.install "bridges" if File.directory?("bridges")
-      env = {}
-      if OS.mac?
-        env = {
-          KLAP_REMINDER_BRIDGE: libexec/"bridges/macos/reminder.swift",
-          KLAP_CALENDAR_BRIDGE: libexec/"bridges/macos/calendar.swift",
-          KLAP_CATEGORY_BRIDGE: libexec/"bridges/macos/categories.swift",
-          KLAP_TRANSCRIPT_BRIDGE: libexec/"bridges/macos/transcribe.swift",
-        }
-      end
-      (bin/"klap").write_env_script libexec/"klap", env
-    test: |
-      system "#{bin}/klap", "cache", "status"
