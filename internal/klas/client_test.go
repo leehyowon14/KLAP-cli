@@ -1,9 +1,37 @@
 package klas
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
+	"time"
 )
+
+func TestAssignmentJSONOmitsRawPayload(t *testing.T) {
+	dueAt := time.Date(2026, 6, 1, 23, 59, 0, 0, time.UTC)
+	assignment := Assignment{
+		OrdSeq: "7",
+		Title:  "정규화 제목",
+		DueAt:  &dueAt,
+		Raw: assignmentListItem{
+			Title: "raw-secret-title",
+		},
+	}
+	payload, err := json.Marshal(assignment)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret-title")) || bytes.Contains(payload, []byte(`"Raw"`)) {
+		t.Fatalf("Assignment JSON contains Raw payload: %s", payload)
+	}
+	var roundTrip Assignment
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.OrdSeq != assignment.OrdSeq || roundTrip.Title != assignment.Title || roundTrip.DueAt == nil || !roundTrip.DueAt.Equal(dueAt) {
+		t.Fatalf("Assignment round trip = %+v", roundTrip)
+	}
+}
 
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {

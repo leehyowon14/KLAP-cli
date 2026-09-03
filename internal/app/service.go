@@ -1550,8 +1550,7 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 		return nil, err
 	}
 
-	cacheKey := courseResourceListCacheKey("assignment", studentID, term.Value, courses)
-	legacyCacheKey := listCacheKey("assignment", studentID, term.Value, opts.CourseFilter)
+	cacheKey := courseResourceListCacheKeyVersion("assignment", "v2", studentID, term.Value, courses)
 	if !opts.Refresh {
 		var cached []AssignmentRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
@@ -1561,17 +1560,6 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
 				}
 				return rows, nil
-			}
-		}
-		if legacyCacheKey != cacheKey {
-			cached = nil
-			if _, ok, cacheErr := s.cacheStore.Get(legacyCacheKey, &cached); cacheErr == nil && ok {
-				rows, _, migrationErr := normalizeCachedAssignmentRows(cached, term)
-				allowEmpty := strings.TrimSpace(opts.CourseFilter) == ""
-				if migrationErr == nil && resourceIDsMatchSelected(assignmentRowIDs(rows), "assignment", 1, courses, allowEmpty) {
-					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
-					return rows, nil
-				}
 			}
 		}
 	}
@@ -4536,12 +4524,23 @@ func listCacheKey(scope string, studentID string, termValue string, selector str
 }
 
 func courseResourceListCacheKey(scope string, studentID string, termValue string, courses []selectedCourse) string {
+	return courseResourceListCacheKeyVersion(scope, "v1", studentID, termValue, courses)
+}
+
+func courseResourceListCacheKeyVersion(scope string, version string, studentID string, termValue string, courses []selectedCourse) string {
 	courseIDs := make([]string, 0, len(courses))
 	for _, course := range courses {
 		courseIDs = append(courseIDs, strings.TrimSpace(course.Course.Value))
 	}
 	sort.Strings(courseIDs)
-	return listCacheKey(scope, studentID, termValue, "courses-"+hashSyncParts(courseIDs...)[:24])
+	parts := []string{
+		strings.TrimSpace(scope),
+		strings.TrimSpace(version),
+		strings.TrimSpace(studentID),
+		strings.TrimSpace(termValue),
+		"courses-" + hashSyncParts(courseIDs...)[:24],
+	}
+	return strings.Join(parts, ":")
 }
 
 func assignmentRowIDs(rows []AssignmentRow) []string {

@@ -58,7 +58,7 @@ type Assignment struct {
 	StartAt      *time.Time
 	DueAt        *time.Time
 	Submitted    bool
-	Raw          assignmentListItem
+	Raw          assignmentListItem `json:"-"`
 }
 
 type Notice struct {
@@ -315,7 +315,7 @@ type AssignmentDetail struct {
 	SubmittedText  string
 	FinalScore     string
 	TutorText      string
-	Raw            assignmentDetailResponse
+	Raw            assignmentDetailResponse `json:"-"`
 }
 
 type NoticeDetail struct {

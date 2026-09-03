@@ -1169,6 +1169,15 @@ func TestCourseResourceListCacheKeyIgnoresCourseOrderAndFilterAlias(t *testing.T
 	}
 }
 
+func TestAssignmentCacheVersionMissesRawLegacySchema(t *testing.T) {
+	courses := []selectedCourse{{Index: 1, Course: klas.Course{Name: "A", Value: "course-a"}}}
+	legacyKey := courseResourceListCacheKey("assignment", "20260001", "2026,1", courses)
+	currentKey := courseResourceListCacheKeyVersion("assignment", "v2", "20260001", "2026,1", courses)
+	if legacyKey == currentKey || !strings.Contains(currentKey, "assignment:v2:") {
+		t.Fatalf("assignment cache keys = legacy %q, current %q", legacyKey, currentKey)
+	}
+}
+
 func TestAssignmentLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
 	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
 		{Name: "B", Value: "course-b"},
