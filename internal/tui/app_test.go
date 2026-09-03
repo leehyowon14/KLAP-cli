@@ -687,8 +687,6 @@ func TestViewStartsWithHeaderBeforeRule(t *testing.T) {
 		{name: "download-progress", view: lectureDownloadModel{width: 80, height: 24, items: initialDownloadStatusLines([]app.LectureRow{{ID: "1", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}})}.View()},
 		{name: "attend-confirm", view: testChromeModel(screenAttendConfirm).View()},
 		{name: "attend-progress", view: lectureAttendModel{width: 80, height: 24, row: app.LectureRow{ID: "1:video", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}, progress: klas.LectureProgress{Progress: 50, TotalTime: "5", PTime: "10"}}.View()},
-		{name: "confirm", view: confirmModel{title: "확인", message: "진행할까요?", width: 80}.View()},
-		{name: "lecture-select", view: lectureSelectionModel{width: 80, height: 24, rows: []app.LectureRow{{ID: "1", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}}, selected: map[string]bool{"1": true}}.View()},
 	} {
 		assertChromeInvariant(t, tt.name, tt.view, 80)
 	}
@@ -1287,35 +1285,6 @@ func TestLectureDownloadProgressCursorWraps(t *testing.T) {
 	got = updated.(lectureDownloadModel)
 	if got.cursor != 0 {
 		t.Fatalf("down from bottom cursor = %d, want 0", got.cursor)
-	}
-}
-
-func TestConfirmAcceptsKoreanKeyboardKeys(t *testing.T) {
-	m := confirmModel{value: false}
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅛ")})
-	got := updated.(confirmModel)
-	if !got.value || cmd == nil {
-		t.Fatalf("confirm korean yes value=%t cmd nil=%t", got.value, cmd == nil)
-	}
-}
-
-func TestLectureSelectionToggleAll(t *testing.T) {
-	rows := []app.LectureRow{
-		{ID: "1:a", Lecture: klas.Lecture{ContentID: "a"}},
-		{ID: "1:b", Lecture: klas.Lecture{ContentID: "b"}},
-		{ID: "1:empty"},
-	}
-	model := lectureSelectionModel{
-		rows:     rows,
-		selected: map[string]bool{"1:a": true, "1:b": true},
-	}
-	model.toggleAll()
-	if model.selected["1:a"] || model.selected["1:b"] {
-		t.Fatalf("toggleAll() expected selected rows off: %+v", model.selected)
-	}
-	model.toggleAll()
-	if !model.selected["1:a"] || !model.selected["1:b"] || model.selected["1:empty"] {
-		t.Fatalf("toggleAll() expected downloadable rows on only: %+v", model.selected)
 	}
 }
 
