@@ -95,13 +95,13 @@ type AttendanceCourse struct {
 	CreditHours string
 	CurrentNum  string
 	Weekday     string
-	Raw         attendanceCourseItem
+	Raw         attendanceCourseItem `json:"-"`
 }
 
 type AttendanceSession struct {
 	Week  string
 	Slots []AttendanceSlot
-	Raw   attendanceSessionItem
+	Raw   attendanceSessionItem `json:"-"`
 }
 
 type AttendanceSlot struct {
@@ -121,7 +121,7 @@ type CdpAttendance struct {
 	Seq     string
 	Title   string
 	Speaker string
-	Raw     cdpAttendanceItem
+	Raw     cdpAttendanceItem `json:"-"`
 }
 
 type GradeReport struct {

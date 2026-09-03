@@ -86,6 +86,49 @@ func TestTimetableEntryJSONOmitsRawPayload(t *testing.T) {
 	}
 }
 
+func TestAttendanceJSONOmitsRawPayload(t *testing.T) {
+	report := struct {
+		Course   AttendanceCourse
+		Sessions []AttendanceSession
+		CDP      CdpAttendance
+	}{
+		Course: AttendanceCourse{
+			CourseCode: "COURSE-1",
+			Name:       "정규화 과목",
+			Professor:  "정규화 교수",
+			Raw:        attendanceCourseItem{KoreanName: "raw-secret-course"},
+		},
+		Sessions: []AttendanceSession{{
+			Week:  "1",
+			Slots: []AttendanceSlot{{Index: 1, Status: "출석"}},
+			Raw:   attendanceSessionItem{AttendanceDiv1: "raw-secret-session"},
+		}},
+		CDP: CdpAttendance{
+			Date: "2026-06-01",
+			Seq:  "1",
+			Raw:  cdpAttendanceItem{Title: "raw-secret-cdp"},
+		},
+	}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret")) || bytes.Contains(payload, []byte(`"Raw"`)) {
+		t.Fatalf("attendance JSON contains Raw payload: %s", payload)
+	}
+	var roundTrip struct {
+		Course   AttendanceCourse
+		Sessions []AttendanceSession
+		CDP      CdpAttendance
+	}
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.Course.CourseCode != report.Course.CourseCode || roundTrip.Course.Name != report.Course.Name || len(roundTrip.Sessions) != 1 || roundTrip.Sessions[0].Week != "1" || len(roundTrip.Sessions[0].Slots) != 1 || roundTrip.CDP.Date != report.CDP.Date {
+		t.Fatalf("attendance round trip = %+v", roundTrip)
+	}
+}
+
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
 		name string

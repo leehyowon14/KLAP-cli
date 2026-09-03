@@ -1318,6 +1318,14 @@ func TestTimetableCacheVersionMissesRawLegacySchema(t *testing.T) {
 	}
 }
 
+func TestAttendanceCacheVersionMissesRawLegacySchema(t *testing.T) {
+	legacyKey := listCacheKey("attendance", "20260001", "2026,1", "")
+	currentKey := listCacheKeyVersion("attendance", "v2", "20260001", "2026,1", "")
+	if legacyKey == currentKey || !strings.Contains(currentKey, "attendance:v2:") {
+		t.Fatalf("attendance cache keys = legacy %q, current %q", legacyKey, currentKey)
+	}
+}
+
 func TestParseLectureID(t *testing.T) {
 	courseIndex, contentID, err := ParseLectureID("7:content-123")
 	if err != nil {

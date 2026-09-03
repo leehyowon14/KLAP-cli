@@ -1920,7 +1920,7 @@ func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions
 		return AttendanceListResult{}, err
 	}
 
-	cacheKey := listCacheKey("attendance", studentID, term.Value, "")
+	cacheKey := listCacheKeyVersion("attendance", "v2", studentID, term.Value, "")
 	if !opts.Refresh {
 		var cached AttendanceListResult
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
