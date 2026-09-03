@@ -128,6 +128,26 @@ Reminder 기본 목록 이름은 `Kwangwoon Univ.`이고, 마감 1일 전 알림
 `klap config list`는 현재 설정을 한 번에 보여준다.
 `klap config set <key> <value>`는 `term`, `reminder.name`, `reminder.use-existing-list`, `download.dir`, `download.concurrency`를 지원한다.
 
+## TUI 화면과 실행 흐름
+
+인자 없이 `klap`을 실행하거나 `klap tui`를 입력하면 현재 구현된 Bubble Tea TUI가 열린다. 저장된 사용자가 없으면 Auth 화면에서 학번과 비밀번호를 검증한 뒤 Home으로 이동한다.
+
+Home에서는 다음 화면을 선택할 수 있다.
+
+- Dashboard: 현재 학기 요약과 과목별 상세, `p`로 선택 과목 Syllabus 열기
+- Due: 과제, 미완료 강의, 학사일정의 통합 마감 목록
+- Assignments와 Notices: 과목별 목록과 상세 내용
+- Lectures: 강의 상태 조회, 선택 Download, 전사 언어 선택, Attend 확인과 progress
+- Academic: 월별 학사일정
+- Rooms: 요일과 교시를 선택한 빈 강의실 조회
+- Config: 사용자, 학기, Reminder/Calendar, Download와 Transcript 설정
+
+방향키 또는 `j`/`k`로 이동하고 `enter`로 선택한다. `esc`/`b`는 이전 화면이나 Home으로 돌아가고 `q`는 종료에 사용한다. Download와 Attend progress 화면에서는 `h`로 Home에 바로 갈 수 있다. 한글 입력 상태에서도 주요 단축키에 대응하는 키를 사용할 수 있다.
+
+Lectures의 Download 흐름은 `d` → 과목/강의 선택 → 전사 여부 → (전사 시) 언어 선택 → progress 순서다. progress 화면에서 `esc`로 취소하면 해당 작업이 추적 중인 download와 transcript artifact를 정리한다. Attend는 선택한 강의에서 `a` → 확인 → progress 순서로 실행하며 완료되었거나 기간 밖인 강의는 시작하지 않는다.
+
+Reminder 또는 Calendar 동기화에서 이전에 동기화한 원본과 현재 원본이 달라지면 Sync conflict 화면에서 기존 항목을 유지하거나 KLAP 값으로 적용할 항목을 선택한다.
+
 ## 개발 실행
 
 ```sh
@@ -140,4 +160,4 @@ CI/CD와 Homebrew 배포 절차는 [docs/RELEASE.md](docs/RELEASE.md)를 기준�
 
 ## 아키텍처
 
-TUI 확장을 고려한 패키지 경계와 마이그레이션 계획은 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 기준으로 한다.
+현재 구현과 목표 리팩터링 경계는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 기준으로 한다.
