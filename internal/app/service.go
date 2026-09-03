@@ -5933,7 +5933,7 @@ func defaultReminderBridgePath() string {
 		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "reminder.swift"))
 	}
 	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "reminder.swift"))
+		candidates = append(candidates, filepath.Join(executableDirectory(executable), "bridges", "macos", "reminder.swift"))
 	}
 
 	for _, candidate := range candidates {
@@ -5957,7 +5957,7 @@ func defaultCalendarBridgePath() string {
 		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "calendar.swift"))
 	}
 	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "calendar.swift"))
+		candidates = append(candidates, filepath.Join(executableDirectory(executable), "bridges", "macos", "calendar.swift"))
 	}
 
 	for _, candidate := range candidates {
@@ -5981,7 +5981,7 @@ func defaultCategoryBridgePath() string {
 		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "categories.swift"))
 	}
 	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "bridges", "macos", "categories.swift"))
+		candidates = append(candidates, filepath.Join(executableDirectory(executable), "bridges", "macos", "categories.swift"))
 	}
 
 	for _, candidate := range candidates {
@@ -6003,8 +6003,9 @@ func defaultTranscriptBridgePath() string {
 		candidates = append(candidates, transcriptBridgeCandidates(filepath.Join(repoRoot, "bridges", "macos"))...)
 	}
 	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "TranscriptBridge"))
-		candidates = append(candidates, transcriptBridgeCandidates(filepath.Join(filepath.Dir(executable), "bridges", "macos"))...)
+		executableDir := executableDirectory(executable)
+		candidates = append(candidates, filepath.Join(executableDir, "TranscriptBridge"))
+		candidates = append(candidates, transcriptBridgeCandidates(filepath.Join(executableDir, "bridges", "macos"))...)
 	}
 
 	for _, candidate := range candidates {
@@ -6013,6 +6014,13 @@ func defaultTranscriptBridgePath() string {
 		}
 	}
 	return candidates[0]
+}
+
+func executableDirectory(executable string) string {
+	if resolved, err := filepath.EvalSymlinks(executable); err == nil {
+		executable = resolved
+	}
+	return filepath.Dir(executable)
 }
 
 func transcriptBridgeCandidates(root string) []string {
