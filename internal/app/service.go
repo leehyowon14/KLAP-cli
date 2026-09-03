@@ -1550,16 +1550,28 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 		return nil, err
 	}
 
-	cacheKey := listCacheKey("assignment", studentID, term.Value, opts.CourseFilter)
+	cacheKey := courseResourceListCacheKey("assignment", studentID, term.Value, courses)
+	legacyCacheKey := listCacheKey("assignment", studentID, term.Value, opts.CourseFilter)
 	if !opts.Refresh {
 		var cached []AssignmentRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
 			rows, migrated, migrationErr := normalizeCachedAssignmentRows(cached, term)
-			if migrationErr == nil {
+			if migrationErr == nil && resourceIDsMatchSelected(assignmentRowIDs(rows), "assignment", 1, courses, true) {
 				if migrated {
 					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
 				}
 				return rows, nil
+			}
+		}
+		if legacyCacheKey != cacheKey {
+			cached = nil
+			if _, ok, cacheErr := s.cacheStore.Get(legacyCacheKey, &cached); cacheErr == nil && ok {
+				rows, _, migrationErr := normalizeCachedAssignmentRows(cached, term)
+				allowEmpty := strings.TrimSpace(opts.CourseFilter) == ""
+				if migrationErr == nil && resourceIDsMatchSelected(assignmentRowIDs(rows), "assignment", 1, courses, allowEmpty) {
+					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
+					return rows, nil
+				}
 			}
 		}
 	}
@@ -4471,6 +4483,43 @@ func listCacheKey(scope string, studentID string, termValue string, selector str
 		strings.TrimSpace(selector),
 	}
 	return strings.Join(parts, ":")
+}
+
+func courseResourceListCacheKey(scope string, studentID string, termValue string, courses []selectedCourse) string {
+	courseIDs := make([]string, 0, len(courses))
+	for _, course := range courses {
+		courseIDs = append(courseIDs, strings.TrimSpace(course.Course.Value))
+	}
+	sort.Strings(courseIDs)
+	return listCacheKey(scope, studentID, termValue, "courses-"+hashSyncParts(courseIDs...)[:24])
+}
+
+func assignmentRowIDs(rows []AssignmentRow) []string {
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	return ids
+}
+
+func resourceIDsMatchSelected(ids []string, kind string, remotePartCount int, courses []selectedCourse, allowEmpty bool) bool {
+	if len(ids) == 0 {
+		return allowEmpty
+	}
+	selected := make(map[string]struct{}, len(courses))
+	for _, course := range courses {
+		selected[strings.TrimSpace(course.Course.Value)] = struct{}{}
+	}
+	for _, id := range ids {
+		ref, _, stable, err := parseStableCourseResourceID(kind, id, remotePartCount)
+		if err != nil || !stable {
+			return false
+		}
+		if _, ok := selected[ref.CourseID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func listCacheTTL() time.Duration {

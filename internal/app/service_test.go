@@ -1126,6 +1126,45 @@ func TestNormalizeCachedAssignmentRowsUsesCourseNameAfterReorder(t *testing.T) {
 	}
 }
 
+func TestCourseResourceListCacheKeyIgnoresCourseOrderAndFilterAlias(t *testing.T) {
+	first := []selectedCourse{
+		{Index: 1, Course: klas.Course{Name: "A", Value: "course-a"}},
+		{Index: 2, Course: klas.Course{Name: "B", Value: "course-b"}},
+	}
+	second := []selectedCourse{
+		{Index: 1, Course: first[1].Course},
+		{Index: 2, Course: first[0].Course},
+	}
+	firstKey := courseResourceListCacheKey("assignment", "20260001", "2026,1", first)
+	secondKey := courseResourceListCacheKey("assignment", "20260001", "2026,1", second)
+	if firstKey != secondKey || strings.Contains(firstKey, ":1") {
+		t.Fatalf("courseResourceListCacheKey() = %q, %q", firstKey, secondKey)
+	}
+	byNumber := courseResourceListCacheKey("assignment", "20260001", "2026,1", first[:1])
+	byName := courseResourceListCacheKey("assignment", "20260001", "2026,1", []selectedCourse{{Index: 2, Course: first[0].Course}})
+	if byNumber != byName {
+		t.Fatalf("course filter aliases produced different keys: %q != %q", byNumber, byName)
+	}
+}
+
+func TestAssignmentLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+		{Name: "B", Value: "course-b"},
+		{Name: "A", Value: "course-a"},
+	}}
+	rows, _, err := normalizeCachedAssignmentRows([]AssignmentRow{{ID: "1:7", CourseName: "A"}}, term)
+	if err != nil {
+		t.Fatalf("normalizeCachedAssignmentRows() error = %v", err)
+	}
+	selected := []selectedCourse{{Index: 1, Course: term.Courses[0]}}
+	if resourceIDsMatchSelected(assignmentRowIDs(rows), "assignment", 1, selected, false) {
+		t.Fatalf("legacy numeric filter cache incorrectly matched current course: %+v", rows)
+	}
+	if resourceIDsMatchSelected(nil, "assignment", 1, selected, false) {
+		t.Fatal("empty filtered legacy cache must not be reused")
+	}
+}
+
 func TestResolveLegacyCachedCourseRejectsDuplicateNames(t *testing.T) {
 	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
 		{Name: "캡스톤설계", Value: "course-a"},
