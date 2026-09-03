@@ -19,6 +19,21 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 )
 
+func newTUITestService(t *testing.T) *app.Service {
+	t.Helper()
+	t.Setenv("KLAP_CONFIG_DIR", t.TempDir())
+	t.Setenv("KLAP_CACHE_DIR", t.TempDir())
+	store, err := account.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	service, err := app.NewService(store)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	return service
+}
+
 func TestHomeViewShowsMenu(t *testing.T) {
 	m := model{
 		width: 96,
@@ -1511,6 +1526,45 @@ func TestDownloadRowsStartUnselected(t *testing.T) {
 	got := updated.(model)
 	if len(got.downloadSelected) != 0 {
 		t.Fatalf("downloadSelected default = %+v, want empty", got.downloadSelected)
+	}
+}
+
+func TestIntegratedDownloadFlowStartsSelectedTranscript(t *testing.T) {
+	m := model{
+		ctx:     context.Background(),
+		service: newTUITestService(t),
+		active:  screenDownloadSelect,
+		downloadRows: []app.LectureRow{{
+			ID:         "course/1:lecture/video",
+			CourseName: "운영체제",
+			Lecture:    klas.Lecture{ContentID: "video", Title: "프로세스"},
+		}},
+		downloadSelected: map[string]bool{},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if m.active != screenDownloadConfirm {
+		t.Fatalf("active after selection = %v, want screenDownloadConfirm", m.active)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(model)
+	if m.active != screenDownloadLanguage || !m.downloadTranscribe {
+		t.Fatalf("confirm state active=%v transcribe=%t", m.active, m.downloadTranscribe)
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil || m.active != screenDownloadProgress || m.downloadProgress == nil {
+		t.Fatalf("progress state active=%v progress nil=%t cmd nil=%t", m.active, m.downloadProgress == nil, cmd == nil)
+	}
+	defer m.downloadProgress.cancel()
+	request := m.downloadProgress.request
+	if !request.All || !request.Transcribe || request.TranscriptLocale != "ko-KR" || len(request.LectureIDs) != 1 || request.LectureIDs[0] != "course/1:lecture/video" {
+		t.Fatalf("download request = %+v", request)
 	}
 }
 
