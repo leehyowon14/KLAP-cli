@@ -2438,8 +2438,7 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 		return nil, err
 	}
 
-	cacheKey := courseResourceListCacheKey("lecture", studentID, term.Value, courses)
-	legacyCacheKey := listCacheKey("lecture", studentID, term.Value, opts.CourseFilter)
+	cacheKey := courseResourceListCacheKeyVersion("lecture", "v2", studentID, term.Value, courses)
 	if !opts.Refresh {
 		var cached []LectureRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
@@ -2449,17 +2448,6 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
 				}
 				return rows, nil
-			}
-		}
-		if legacyCacheKey != cacheKey {
-			cached = nil
-			if _, ok, cacheErr := s.cacheStore.Get(legacyCacheKey, &cached); cacheErr == nil && ok {
-				rows, _, migrationErr := normalizeCachedLectureRows(cached, term)
-				allowEmpty := strings.TrimSpace(opts.CourseFilter) == ""
-				if migrationErr == nil && resourceIDsMatchSelected(lectureRowIDs(rows), "lecture", 1, courses, allowEmpty) {
-					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
-					return rows, nil
-				}
 			}
 		}
 	}

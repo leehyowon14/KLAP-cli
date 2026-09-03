@@ -291,7 +291,7 @@ type Lecture struct {
 	RequiredTime string
 	StartAt      *time.Time
 	EndAt        *time.Time
-	Raw          lectureListItem
+	Raw          lectureListItem `json:"-"`
 }
 
 type LectureProgress struct {

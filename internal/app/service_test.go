@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +22,12 @@ import (
 )
 
 var errDashboardTest = errors.New("dashboard test error")
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
 
 type fakeSessionStore struct {
 	loadPassword func(context.Context, string) (string, error)
@@ -1347,6 +1355,122 @@ func TestEvaluationCacheVersionMissesRawLegacySchema(t *testing.T) {
 	currentKey := listCacheKeyVersion("evaluation", "v2", "20260001", "", "")
 	if legacyKey == currentKey || !strings.Contains(currentKey, "evaluation:v2:") {
 		t.Fatalf("evaluation cache keys = legacy %q, current %q", legacyKey, currentKey)
+	}
+}
+
+func TestLectureCacheHitAttendRefetchesActionPayload(t *testing.T) {
+	studentID := "20260001"
+	term := klas.Term{
+		Label: "2026학년도 1학기",
+		Value: "2026,1",
+		Courses: []klas.Course{{
+			Name:  "테스트 과목",
+			Value: "subject-1",
+		}},
+	}
+	selected := []selectedCourse{{Index: 1, Course: term.Courses[0]}}
+	ref, err := NewCourseRef(term.Value, term.Courses[0])
+	if err != nil {
+		t.Fatalf("NewCourseRef() error = %v", err)
+	}
+	lectureID, err := StableLectureID(ref, "lrn-42")
+	if err != nil {
+		t.Fatalf("StableLectureID() error = %v", err)
+	}
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	cacheKey := courseResourceListCacheKeyVersion("lecture", "v2", studentID, term.Value, selected)
+	cachedRows := []LectureRow{{
+		ID:         lectureID,
+		LegacyID:   "1:lrn-42",
+		TermValue:  term.Value,
+		CourseName: term.Courses[0].Name,
+		Lecture: klas.Lecture{
+			LearningSeq:  "42",
+			Title:        "캐시 강의",
+			RequiredTime: "1",
+		},
+	}}
+	if err := cacheStore.Set(cacheKey, listCacheTTL(), cachedRows); err != nil {
+		t.Fatalf("cache Set() error = %v", err)
+	}
+
+	client, err := klas.NewClient()
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	lectureFetches := 0
+	savedPayload := ""
+	previousTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var responseBody string
+		switch request.URL.Path {
+		case "/std/cmn/frame/YearhakgiAtnlcSbjectList.do":
+			payload, marshalErr := json.Marshal([]klas.Term{term})
+			if marshalErr != nil {
+				return nil, marshalErr
+			}
+			responseBody = string(payload)
+		case "/std/lis/evltn/LctrumHomeStdInfo.do":
+			responseBody = `{}`
+		case "/std/lis/evltn/SelectOnlineCntntsStdList.do":
+			lectureFetches++
+			responseBody = `[{"grcode":"group-1","subj":"subject-1","year":"2026","hakgi":"1","bunban":"01","lrnSn":"42","ptime":"1","sbjt":"신선 강의"}]`
+		case "/std/lis/evltn/SaveLrnStatus.do":
+			body, readErr := io.ReadAll(request.Body)
+			if readErr != nil {
+				return nil, readErr
+			}
+			savedPayload = string(body)
+			responseBody = `"Y"`
+		default:
+			return &http.Response{StatusCode: http.StatusNotFound, Status: "404 Not Found", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`)), Request: request}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(responseBody)), Request: request}, nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = previousTransport })
+
+	service := &Service{
+		sessions: &fakeSessionStore{
+			loadSession: func(context.Context, string) (klas.Session, error) {
+				return klas.Session{Cookies: map[string]string{"SESSION": "saved"}}, nil
+			},
+		},
+		cacheStore: cacheStore,
+		newKlasClient: func() (*klas.Client, error) {
+			return client, nil
+		},
+	}
+	rows, err := service.LectureList(context.Background(), LectureListOptions{User: UserOption{StudentID: studentID}})
+	if err != nil {
+		t.Fatalf("LectureList() error = %v", err)
+	}
+	if len(rows) != 1 || rows[0].Lecture.Title != "캐시 강의" || lectureFetches != 0 {
+		t.Fatalf("LectureList() rows = %+v, lecture fetches = %d", rows, lectureFetches)
+	}
+
+	result, err := service.AttendLecture(context.Background(), lectureID, LectureAttendOptions{User: UserOption{StudentID: studentID}})
+	if err != nil {
+		t.Fatalf("AttendLecture() error = %v", err)
+	}
+	if lectureFetches != 1 || result.Lecture.Lecture.Title != "신선 강의" || !result.Progress.Completed {
+		t.Fatalf("AttendLecture() result = %+v, lecture fetches = %d", result, lectureFetches)
+	}
+	for _, field := range []string{`"grcode":"group-1"`, `"subj":"subject-1"`, `"lrnSn":"42"`} {
+		if !strings.Contains(savedPayload, field) {
+			t.Fatalf("SaveLrnStatus payload %q missing %s", savedPayload, field)
+		}
+	}
+}
+
+func TestLectureCacheVersionMissesRawLegacySchema(t *testing.T) {
+	courses := []selectedCourse{{Index: 1, Course: klas.Course{Name: "A", Value: "course-a"}}}
+	legacyKey := courseResourceListCacheKey("lecture", "20260001", "2026,1", courses)
+	currentKey := courseResourceListCacheKeyVersion("lecture", "v2", "20260001", "2026,1", courses)
+	if legacyKey == currentKey || !strings.Contains(currentKey, "lecture:v2:") {
+		t.Fatalf("lecture cache keys = legacy %q, current %q", legacyKey, currentKey)
 	}
 }
 

@@ -247,6 +247,37 @@ func TestSyllabusJSONOmitsRawContactPayload(t *testing.T) {
 	}
 }
 
+func TestLectureJSONOmitsRawPayload(t *testing.T) {
+	lecture := Lecture{
+		ContentID:    "content-1",
+		LearningSeq:  "42",
+		Title:        "정규화 강의",
+		Progress:     "30",
+		RequiredTime: "60",
+		Raw: lectureListItem{
+			GroupCode: "raw-secret-group",
+			SubjectID: "raw-secret-subject",
+		},
+	}
+	payload, err := json.Marshal(lecture)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret")) || bytes.Contains(payload, []byte(`"Raw"`)) {
+		t.Fatalf("Lecture JSON contains Raw payload: %s", payload)
+	}
+	var roundTrip Lecture
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.ContentID != lecture.ContentID || roundTrip.LearningSeq != lecture.LearningSeq || roundTrip.Title != lecture.Title || roundTrip.Progress != lecture.Progress || roundTrip.RequiredTime != lecture.RequiredTime {
+		t.Fatalf("Lecture round trip = %+v", roundTrip)
+	}
+	if _, err := lectureLearningStatusPayload(roundTrip, "Y"); err == nil {
+		t.Fatal("cached Lecture unexpectedly retained action payload")
+	}
+}
+
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
 		name string
