@@ -180,7 +180,7 @@ type Rank struct {
 	ClassRank      string
 	ClassSize      string
 	Warning        string
-	Raw            rankItem
+	Raw            rankItem `json:"-"`
 }
 
 type EvaluationTerm struct {

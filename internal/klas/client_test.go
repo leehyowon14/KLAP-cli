@@ -165,6 +165,32 @@ func TestGradeReportJSONOmitsRawPayload(t *testing.T) {
 	}
 }
 
+func TestRankJSONOmitsRawPayload(t *testing.T) {
+	rank := Rank{
+		Year:      "2026",
+		Hakgi:     "1",
+		TermValue: "2026,1",
+		GPA:       "4.0",
+		ClassRank: "3",
+		ClassSize: "50",
+		Raw:       rankItem{Warning: "raw-secret-rank"},
+	}
+	payload, err := json.Marshal(rank)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret")) || bytes.Contains(payload, []byte(`"Raw"`)) {
+		t.Fatalf("Rank JSON contains Raw payload: %s", payload)
+	}
+	var roundTrip Rank
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.TermValue != rank.TermValue || roundTrip.GPA != rank.GPA || roundTrip.ClassRank != rank.ClassRank || roundTrip.ClassSize != rank.ClassSize {
+		t.Fatalf("Rank round trip = %+v", roundTrip)
+	}
+}
+
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
 		name string

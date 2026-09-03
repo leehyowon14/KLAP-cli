@@ -2085,7 +2085,7 @@ func (s *Service) Rank(ctx context.Context, opts RankOptions) (RankResult, error
 		return RankResult{}, err
 	}
 
-	cacheKey := listCacheKey("rank", studentID, termValue, "")
+	cacheKey := listCacheKeyVersion("rank", "v2", studentID, termValue, "")
 	if !opts.Refresh {
 		var cached RankResult
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
