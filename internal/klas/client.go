@@ -82,7 +82,7 @@ type TimetableEntry struct {
 	Room        string
 	Professor   string
 	Online      bool
-	Raw         map[string]any
+	Raw         map[string]any `json:"-"`
 }
 
 type AttendanceCourse struct {

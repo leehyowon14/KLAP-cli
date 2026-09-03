@@ -61,6 +61,31 @@ func TestNoticeJSONOmitsRawPayload(t *testing.T) {
 	}
 }
 
+func TestTimetableEntryJSONOmitsRawPayload(t *testing.T) {
+	entry := TimetableEntry{
+		SubjectID:   "subject-1",
+		SubjectName: "정규화 과목",
+		Weekday:     2,
+		Period:      3,
+		Room:        "R101",
+		Raw:         map[string]any{"memberName": "raw-secret-professor"},
+	}
+	payload, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret")) || bytes.Contains(payload, []byte(`"Raw"`)) {
+		t.Fatalf("TimetableEntry JSON contains Raw payload: %s", payload)
+	}
+	var roundTrip TimetableEntry
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.SubjectID != entry.SubjectID || roundTrip.SubjectName != entry.SubjectName || roundTrip.Weekday != entry.Weekday || roundTrip.Period != entry.Period || roundTrip.Room != entry.Room {
+		t.Fatalf("TimetableEntry round trip = %+v", roundTrip)
+	}
+}
+
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
 		name string

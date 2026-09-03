@@ -1866,7 +1866,7 @@ func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (Timetab
 		return TimetableResult{}, err
 	}
 
-	cacheKey := listCacheKey("timetable", studentID, term.Value, "")
+	cacheKey := listCacheKeyVersion("timetable", "v2", studentID, term.Value, "")
 	if !opts.Refresh {
 		var cached TimetableResult
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
@@ -4501,9 +4501,13 @@ func normalizeCachedDashboardResult(result DashboardResult, term klas.Term) (Das
 }
 
 func listCacheKey(scope string, studentID string, termValue string, selector string) string {
+	return listCacheKeyVersion(scope, "v1", studentID, termValue, selector)
+}
+
+func listCacheKeyVersion(scope string, version string, studentID string, termValue string, selector string) string {
 	parts := []string{
 		strings.TrimSpace(scope),
-		"v1",
+		strings.TrimSpace(version),
 		strings.TrimSpace(studentID),
 		strings.TrimSpace(termValue),
 		strings.TrimSpace(selector),
