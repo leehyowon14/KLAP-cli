@@ -5051,11 +5051,8 @@ func normalizeCachedAssignmentRows(rows []AssignmentRow, term klas.Term) ([]Assi
 
 func resolveLegacyCachedCourse(term klas.Term, courseIndex int, courseName string) (klas.Course, error) {
 	normalizedName := strings.TrimSpace(courseName)
-	if courseIndex >= 1 && courseIndex <= len(term.Courses) {
-		candidate := term.Courses[courseIndex-1]
-		if normalizedName == "" || strings.EqualFold(strings.TrimSpace(candidate.Name), normalizedName) {
-			return candidate, nil
-		}
+	if normalizedName == "" {
+		return klas.Course{}, fmt.Errorf("legacy cache 과목명 없이 순번을 안전하게 이전할 수 없습니다: %d", courseIndex)
 	}
 	var match *klas.Course
 	for index := range term.Courses {

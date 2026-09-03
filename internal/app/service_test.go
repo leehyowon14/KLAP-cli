@@ -1126,6 +1126,23 @@ func TestNormalizeCachedAssignmentRowsUsesCourseNameAfterReorder(t *testing.T) {
 	}
 }
 
+func TestResolveLegacyCachedCourseRejectsDuplicateNames(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+		{Name: "캡스톤설계", Value: "course-a"},
+		{Name: "캡스톤설계", Value: "course-b"},
+	}}
+	if _, err := resolveLegacyCachedCourse(term, 1, "캡스톤설계"); err == nil {
+		t.Fatal("resolveLegacyCachedCourse() expected duplicate name error")
+	}
+}
+
+func TestResolveLegacyCachedCourseRejectsMissingName(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
+	if _, err := resolveLegacyCachedCourse(term, 1, ""); err == nil {
+		t.Fatal("resolveLegacyCachedCourse() expected missing name error")
+	}
+}
+
 func TestNormalizeCachedStableAssignmentHydratesCurrentAlias(t *testing.T) {
 	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
 		{Name: "오픈소스", Value: "course-b"},
