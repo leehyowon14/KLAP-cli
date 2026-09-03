@@ -36,11 +36,17 @@ struct TranscribeEvent: Codable {
 }
 
 func emitEvent(_ event: TranscribeEvent) {
-    guard let data = try? JSONEncoder().encode(event) else {
+    guard let data = try? encodeJSON(event) else {
         return
     }
     FileHandle.standardOutput.write(data)
     FileHandle.standardOutput.write(Data("\n".utf8))
+}
+
+func encodeJSON<T: Encodable>(_ value: T) throws -> Data {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return try encoder.encode(value)
 }
 
 enum BridgeError: Error, LocalizedError {
@@ -200,6 +206,6 @@ Task {
 
 semaphore.wait()
 if !shouldEmitProgress {
-    let output = try JSONEncoder().encode(response ?? TranscribeResponse(results: []))
+    let output = try encodeJSON(response ?? TranscribeResponse(results: []))
     FileHandle.standardOutput.write(output)
 }

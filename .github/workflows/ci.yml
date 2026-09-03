@@ -85,3 +85,6 @@ jobs:
 
       - name: Build TranscriptBridge
         run: swift build -c release --package-path bridges/macos
+
+      - name: Smoke test distributed transcript protocol
+        run: bash bridges/macos/test-transcribe-protocol.sh

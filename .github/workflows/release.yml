@@ -32,6 +32,7 @@ jobs:
           swiftc -typecheck bridges/macos/categories.swift
           swiftc -typecheck bridges/macos/transcribe.swift
           swift build -c release --package-path bridges/macos
+          bash bridges/macos/test-transcribe-protocol.sh
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
