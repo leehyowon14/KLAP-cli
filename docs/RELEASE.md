@@ -2,6 +2,12 @@
 
 KLAP uses GitHub Actions and GoReleaser for CI/CD.
 
+The canonical repository and Go module are both:
+
+```text
+github.com/leehyowon14/KLAP-cli
+```
+
 ## Versioning
 
 - `v0.1.0`: first functional release.
@@ -13,7 +19,8 @@ KLAP uses GitHub Actions and GoReleaser for CI/CD.
 `CI` runs on pushes to `main` and pull requests.
 
 - Go tests run on Linux, macOS, and Windows.
-- The macOS Swift transcript bridge is built on macOS.
+- All four distributed macOS Swift scripts are typechecked and the transcript bridge is built on macOS.
+- GoReleaser configuration, snapshot archive manifests, and a native release artifact are verified on Linux.
 
 ## Release
 
@@ -29,15 +36,18 @@ The release workflow:
 - builds cross-platform `klap` binaries
 - creates checksums
 - creates a draft GitHub Release
-- updates the Homebrew formula
+- updates the Homebrew Cask
 
 ## Required Secrets
 
 `GITHUB_TOKEN` is provided by GitHub Actions.
 
-Set this repository secret before using Homebrew publishing:
+Before the first tagged release:
 
-- `HOMEBREW_TAP_TOKEN`: a token with write access to `leehyowon14/homebrew-klap`
+1. Create the public `leehyowon14/homebrew-klap` Tap repository.
+2. Set `HOMEBREW_TAP_TOKEN` to a token with write access to that repository.
+
+The release workflow is expected to fail at the Homebrew publish step until both prerequisites exist.
 
 ## Homebrew Tap
 
@@ -47,17 +57,17 @@ Expected tap repository:
 leehyowon14/homebrew-klap
 ```
 
-GoReleaser writes the formula to:
+GoReleaser writes the Cask to:
 
 ```text
-Formula/klap.rb
+Casks/klap.rb
 ```
 
-Install command after release:
+Install command after the Tap exists and the first release succeeds:
 
 ```sh
 brew tap leehyowon14/klap
-brew install klap
+brew install --cask klap
 ```
 
 ## macOS Bridge Packaging
@@ -68,11 +78,11 @@ The release archives include macOS Swift bridge scripts under:
 bridges/macos/
 ```
 
-The Homebrew formula wraps `klap` with these environment variables on macOS:
+The Homebrew Cask links `klap` from its staged archive. KLAP resolves that link to find the bundled scripts automatically. The following environment variables remain available as explicit overrides:
 
 - `KLAP_REMINDER_BRIDGE`
 - `KLAP_CALENDAR_BRIDGE`
 - `KLAP_CATEGORY_BRIDGE`
 - `KLAP_TRANSCRIPT_BRIDGE`
 
-`TranscriptBridge` is built in CI to catch Swift build failures, but the v0.1.0 Homebrew formula uses the script fallback for simpler packaging. Binary bridge packaging can be revisited before `v1.0.0`.
+`TranscriptBridge` is built in CI to catch Swift build failures, while release archives currently use the typechecked `transcribe.swift` entrypoint. Shipping the same compiled bridge artifact is tracked as a later adapter cleanup.

@@ -3,6 +3,22 @@
 광운대학교 KLAS를 대체하기 위한 크로스 플랫폼 CLI입니다.
 기본 실행은 Bubble Tea 기반 TUI이며, 세부 작업은 one-shot CLI 명령으로도 수행할 수 있다.
 
+## 설치
+
+Canonical repository는 `github.com/leehyowon14/KLAP-cli`이다.
+현재 공개 Release와 Homebrew Tap은 준비 중이므로 Go toolchain으로 설치한다.
+
+```sh
+go install github.com/leehyowon14/KLAP-cli/cmd/klap@latest
+```
+
+첫 tagged release와 `leehyowon14/homebrew-klap` Tap 준비가 끝난 뒤에는 다음 명령을 사용한다.
+
+```sh
+brew tap leehyowon14/klap
+brew install --cask klap
+```
+
 ## 초기 명령
 
 ```sh
