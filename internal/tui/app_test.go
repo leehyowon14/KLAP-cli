@@ -1362,6 +1362,39 @@ func TestLectureAttendShortcutAcceptsKoreanKeyboardKey(t *testing.T) {
 	}
 }
 
+func TestIntegratedAttendFlowStartsProgress(t *testing.T) {
+	m := model{
+		ctx:     context.Background(),
+		service: newTUITestService(t),
+		active:  screenLectures,
+		lectureRows: []app.LectureRow{{
+			ID:         "course/1:lecture/video",
+			CourseName: "운영체제",
+			Lecture: klas.Lecture{
+				ContentID: "video",
+				Title:     "프로세스",
+				Progress:  "25",
+			},
+		}},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = updated.(model)
+	if m.active != screenAttendConfirm || m.attendRow.ID != "course/1:lecture/video" {
+		t.Fatalf("confirm state active=%v row=%+v", m.active, m.attendRow)
+	}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(model)
+	if cmd == nil || m.active != screenAttendProgress || m.attendProgress == nil {
+		t.Fatalf("progress state active=%v progress nil=%t cmd nil=%t", m.active, m.attendProgress == nil, cmd == nil)
+	}
+	defer m.attendProgress.cancel()
+	if m.attendProgress.row.ID != "course/1:lecture/video" || m.attendProgress.progress.Progress != 25 {
+		t.Fatalf("attend progress = %+v", m.attendProgress)
+	}
+}
+
 func TestValidateLectureAttendRejectsInvalidStates(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.Local)
 	before := now.Add(time.Hour)
