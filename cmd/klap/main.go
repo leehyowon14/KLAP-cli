@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/kw-klap/klap-cli/internal/cli"
+	"github.com/leehyowon14/KLAP-cli/internal/cli"
 )
 
 func main() {

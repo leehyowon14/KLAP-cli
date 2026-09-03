@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
 )
 
 func TestNormalizeRoom(t *testing.T) {

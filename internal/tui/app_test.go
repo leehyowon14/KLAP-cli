@@ -14,9 +14,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/kw-klap/klap-cli/internal/account"
-	"github.com/kw-klap/klap-cli/internal/app"
-	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/account"
+	"github.com/leehyowon14/KLAP-cli/internal/app"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
 )
 
 func TestHomeViewShowsMenu(t *testing.T) {

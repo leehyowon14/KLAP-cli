@@ -21,15 +21,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kw-klap/klap-cli/internal/account"
-	"github.com/kw-klap/klap-cli/internal/cache"
-	klapcalendar "github.com/kw-klap/klap-cli/internal/calendar"
-	"github.com/kw-klap/klap-cli/internal/category"
-	"github.com/kw-klap/klap-cli/internal/klas"
-	"github.com/kw-klap/klap-cli/internal/reminder"
-	"github.com/kw-klap/klap-cli/internal/settings"
-	"github.com/kw-klap/klap-cli/internal/syncstate"
-	"github.com/kw-klap/klap-cli/internal/transcript"
+	"github.com/leehyowon14/KLAP-cli/internal/account"
+	"github.com/leehyowon14/KLAP-cli/internal/cache"
+	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
+	"github.com/leehyowon14/KLAP-cli/internal/category"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/reminder"
+	"github.com/leehyowon14/KLAP-cli/internal/settings"
+	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
+	"github.com/leehyowon14/KLAP-cli/internal/transcript"
 )
 
 type Service struct {

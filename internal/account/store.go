@@ -11,7 +11,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/zalando/go-keyring"
 )
 

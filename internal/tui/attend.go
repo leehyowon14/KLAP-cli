@@ -10,8 +10,8 @@ import (
 
 	bubblesprogress "github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/kw-klap/klap-cli/internal/app"
-	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/app"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
 )
 
 type lectureAttendModel struct {

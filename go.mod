@@ -1,4 +1,4 @@
-module github.com/kw-klap/klap-cli
+module github.com/leehyowon14/KLAP-cli
 
 go 1.25.5
 

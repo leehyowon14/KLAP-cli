@@ -15,9 +15,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/kw-klap/klap-cli/internal/app"
-	"github.com/kw-klap/klap-cli/internal/klas"
-	settingspkg "github.com/kw-klap/klap-cli/internal/settings"
+	"github.com/leehyowon14/KLAP-cli/internal/app"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	settingspkg "github.com/leehyowon14/KLAP-cli/internal/settings"
 )
 
 const menuNumberWidth = 3

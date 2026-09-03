@@ -14,11 +14,11 @@ import (
 	"time"
 
 	bubblesprogress "github.com/charmbracelet/bubbles/progress"
-	"github.com/kw-klap/klap-cli/internal/account"
-	"github.com/kw-klap/klap-cli/internal/app"
-	"github.com/kw-klap/klap-cli/internal/klas"
-	"github.com/kw-klap/klap-cli/internal/tui"
-	"github.com/kw-klap/klap-cli/internal/ui"
+	"github.com/leehyowon14/KLAP-cli/internal/account"
+	"github.com/leehyowon14/KLAP-cli/internal/app"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/tui"
+	"github.com/leehyowon14/KLAP-cli/internal/ui"
 )
 
 type commandMode int

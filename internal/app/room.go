@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kw-klap/klap-cli/internal/cache"
-	"github.com/kw-klap/klap-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/cache"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
 )
 
 const roomIndexConcurrency = 8
