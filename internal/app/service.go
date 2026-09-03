@@ -37,7 +37,7 @@ type Service struct {
 	sessions             sessionStore
 	settingsStore        *settings.Store
 	cacheStore           *cache.Store
-	syncStateStore       *syncstate.Store
+	syncStateStore       syncStateStore
 	newKlasClient        func() (*klas.Client, error)
 	login                func(context.Context, *klas.Client, string, string) (klas.Session, error)
 	reminderBridgePath   string
@@ -50,6 +50,11 @@ type sessionStore interface {
 	LoadPassword(context.Context, string) (string, error)
 	LoadSession(context.Context, string) (klas.Session, error)
 	SaveSession(context.Context, string, klas.Session) error
+}
+
+type syncStateStore interface {
+	Load(scope string, owner string) (syncstate.State, bool, error)
+	Save(scope string, owner string, state syncstate.State) error
 }
 
 type UserOption struct {
@@ -3522,16 +3527,9 @@ func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableOptio
 	return CalendarSyncResult{Result: syncResult, EligibleCount: len(events)}, nil
 }
 
-const syncSourceCacheTTL = 24 * 365 * 10 * time.Hour
+type syncSourceState = syncstate.State
 
-type syncSourceState struct {
-	Items map[string]syncSourceItem `json:"items"`
-}
-
-type syncSourceItem struct {
-	Hash        string `json:"hash"`
-	IgnoredHash string `json:"ignoredHash,omitempty"`
-}
+type syncSourceItem = syncstate.Item
 
 type preparedReminderSync struct {
 	Assignments []reminder.Assignment
@@ -3663,12 +3661,22 @@ func (s *Service) prepareCalendarSync(scope string, owner string, events []klapc
 
 func (s *Service) loadSyncSourceState(scope string, owner string) (syncSourceState, error) {
 	state := syncSourceState{Items: map[string]syncSourceItem{}}
+	if s.syncStateStore == nil {
+		return syncSourceState{}, errors.New("sync state store가 없습니다")
+	}
+	stored, ok, err := s.syncStateStore.Load(scope, owner)
+	if err != nil {
+		return syncSourceState{}, err
+	}
+	if ok {
+		return stored, nil
+	}
 	if s.cacheStore == nil {
 		return state, nil
 	}
-	_, ok, err := s.cacheStore.Get(syncSourceCacheKey(scope, owner), &state)
+	_, ok, err = s.cacheStore.Get(syncSourceCacheKey(scope, owner), &state)
 	if err != nil {
-		return syncSourceState{}, err
+		return syncSourceState{}, fmt.Errorf("legacy sync state migration 읽기 실패: %w", err)
 	}
 	if !ok || state.Items == nil {
 		state.Items = map[string]syncSourceItem{}
@@ -3677,13 +3685,21 @@ func (s *Service) loadSyncSourceState(scope string, owner string) (syncSourceSta
 }
 
 func (s *Service) saveSyncSourceState(scope string, owner string, state syncSourceState) error {
-	if s.cacheStore == nil {
-		return nil
+	if s.syncStateStore == nil {
+		return errors.New("sync state store가 없습니다")
 	}
 	if state.Items == nil {
 		state.Items = map[string]syncSourceItem{}
 	}
-	return s.cacheStore.Set(syncSourceCacheKey(scope, owner), syncSourceCacheTTL, state)
+	if err := s.syncStateStore.Save(scope, owner, state); err != nil {
+		return err
+	}
+	if s.cacheStore != nil {
+		if _, err := s.cacheStore.Delete(syncSourceCacheKey(scope, owner)); err != nil {
+			return fmt.Errorf("migrated legacy sync state 정리 실패: %w", err)
+		}
+	}
+	return nil
 }
 
 func syncSourceCacheKey(scope string, owner string) string {

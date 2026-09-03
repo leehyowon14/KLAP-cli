@@ -150,6 +150,33 @@ func TestStoreClearRejectsMismatchedKey(t *testing.T) {
 	}
 }
 
+func TestStoreDeleteRemovesOnlyExactKey(t *testing.T) {
+	store, err := NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	for _, key := range []string{"sync-source:user:assignment", "sync-source:user:lecture"} {
+		if err := store.Set(key, time.Hour, key); err != nil {
+			t.Fatalf("Set(%q) error = %v", key, err)
+		}
+	}
+	removed, err := store.Delete("sync-source:user:assignment")
+	if err != nil || !removed {
+		t.Fatalf("Delete() = %v, %v", removed, err)
+	}
+	var value string
+	if _, ok, err := store.Get("sync-source:user:assignment", &value); err != nil || ok {
+		t.Fatalf("Get(deleted) = %q, %v, %v", value, ok, err)
+	}
+	if _, ok, err := store.Get("sync-source:user:lecture", &value); err != nil || !ok || value != "sync-source:user:lecture" {
+		t.Fatalf("Get(preserved) = %q, %v, %v", value, ok, err)
+	}
+	removed, err = store.Delete("sync-source:user:assignment")
+	if err != nil || removed {
+		t.Fatalf("Delete(missing) = %v, %v", removed, err)
+	}
+}
+
 func storeWithMismatchedSyncKey(t *testing.T) (*Store, string) {
 	t.Helper()
 	store, err := NewStoreAt(t.TempDir())

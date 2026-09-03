@@ -36,6 +36,19 @@ type fakeSessionStore struct {
 	saveSession  func(context.Context, string, klas.Session) error
 }
 
+type fakeSyncStateStore struct {
+	load func(string, string) (syncstate.State, bool, error)
+	save func(string, string, syncstate.State) error
+}
+
+func (s *fakeSyncStateStore) Load(scope string, owner string) (syncstate.State, bool, error) {
+	return s.load(scope, owner)
+}
+
+func (s *fakeSyncStateStore) Save(scope string, owner string, state syncstate.State) error {
+	return s.save(scope, owner, state)
+}
+
 func (s *fakeSessionStore) LoadPassword(ctx context.Context, studentID string) (string, error) {
 	return s.loadPassword(ctx, studentID)
 }
@@ -46,6 +59,19 @@ func (s *fakeSessionStore) LoadSession(ctx context.Context, studentID string) (k
 
 func (s *fakeSessionStore) SaveSession(ctx context.Context, studentID string, session klas.Session) error {
 	return s.saveSession(ctx, studentID, session)
+}
+
+func newSyncStateTestService(t *testing.T) (*Service, *cache.Store, *syncstate.Store) {
+	t.Helper()
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("cache NewStoreAt() error = %v", err)
+	}
+	syncStateStore, err := syncstate.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("syncstate NewStoreAt() error = %v", err)
+	}
+	return &Service{cacheStore: cacheStore, syncStateStore: syncStateStore}, cacheStore, syncStateStore
 }
 
 func TestNewServicePropagatesSettingsStoreFailure(t *testing.T) {
@@ -343,11 +369,7 @@ func TestRefreshedClientPropagatesSessionSaveFailure(t *testing.T) {
 }
 
 func TestPrepareReminderSyncPromptsOnceForChangedSource(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
-	service := &Service{cacheStore: cacheStore}
+	service, _, _ := newSyncStateTestService(t)
 	dueAt := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
 	original := reminder.Assignment{ID: "assignment:1", Title: "기말 과제", Course: "오픈소스", DueAt: &dueAt, Notes: "old"}
 
@@ -405,11 +427,7 @@ func TestPrepareReminderSyncPromptsOnceForChangedSource(t *testing.T) {
 }
 
 func TestPrepareReminderSyncMigratesLegacyAssignmentBaseline(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
-	service := &Service{cacheStore: cacheStore}
+	service, cacheStore, syncStateStore := newSyncStateTestService(t)
 	dueAt := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
 	stableID := "assignment:v1:MjAyNiwx:Y291cnNlLTE:Nw"
 	legacy := reminder.Assignment{
@@ -423,8 +441,8 @@ func TestPrepareReminderSyncMigratesLegacyAssignmentBaseline(t *testing.T) {
 	state := syncSourceState{Items: map[string]syncSourceItem{
 		legacy.ID: {Hash: reminderSourceHash(legacy)},
 	}}
-	if err := service.saveSyncSourceState("assignment", "20260001", state); err != nil {
-		t.Fatalf("saveSyncSourceState() error = %v", err)
+	if err := cacheStore.Set(syncSourceCacheKey("assignment", "20260001"), time.Hour, state); err != nil {
+		t.Fatalf("legacy cache Set() error = %v", err)
 	}
 
 	stable := legacy
@@ -446,6 +464,32 @@ func TestPrepareReminderSyncMigratesLegacyAssignmentBaseline(t *testing.T) {
 	}
 	if got := prepared.State.Items[stable.ID].Hash; got != reminderSourceHash(stable) {
 		t.Fatalf("stable state hash = %q", got)
+	}
+	if err := service.saveSyncSourceState("assignment", "20260001", prepared.State); err != nil {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+	migrated, ok, err := syncStateStore.Load("assignment", "20260001")
+	if err != nil || !ok {
+		t.Fatalf("syncStateStore.Load() = %+v, %v, %v", migrated, ok, err)
+	}
+	if _, exists := migrated.Items[legacy.ID]; exists {
+		t.Fatalf("legacy state persisted in dedicated store: %+v", migrated.Items)
+	}
+	if migrated.Items[stable.ID].Hash != reminderSourceHash(stable) {
+		t.Fatalf("dedicated stable state = %+v", migrated.Items)
+	}
+	var removedLegacy syncSourceState
+	if _, ok, err := cacheStore.Get(syncSourceCacheKey("assignment", "20260001"), &removedLegacy); err != nil || ok {
+		t.Fatalf("legacy cache after successful migration = %+v, %v, %v", removedLegacy, ok, err)
+	}
+
+	legacyChanged := syncSourceState{Items: map[string]syncSourceItem{legacy.ID: {Hash: "changed-after-migration"}}}
+	if err := cacheStore.Set(syncSourceCacheKey("assignment", "20260001"), time.Hour, legacyChanged); err != nil {
+		t.Fatalf("legacy cache update error = %v", err)
+	}
+	reloaded, err := service.loadSyncSourceState("assignment", "20260001")
+	if err != nil || reloaded.Items[stable.ID].Hash != reminderSourceHash(stable) {
+		t.Fatalf("idempotent migration reload = %+v, %v", reloaded, err)
 	}
 }
 
@@ -472,11 +516,7 @@ func TestReplaceReminderNoteIDSupportsLegacySeparator(t *testing.T) {
 }
 
 func TestPrepareReminderSyncConflictsOnMismatchedLegacyBaseline(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
-	service := &Service{cacheStore: cacheStore}
+	service, _, _ := newSyncStateTestService(t)
 	state := syncSourceState{Items: map[string]syncSourceItem{
 		"lecture:2:content-123": {Hash: "another-course-hash"},
 	}}
@@ -506,11 +546,7 @@ func TestPrepareReminderSyncConflictsOnMismatchedLegacyBaseline(t *testing.T) {
 }
 
 func TestPrepareCalendarSyncWithoutBaselineDoesNotForceUpdate(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
-	service := &Service{cacheStore: cacheStore}
+	service, _, _ := newSyncStateTestService(t)
 	event := klapcalendar.Event{
 		ID:      "academic:2026:1",
 		Title:   "개강",
@@ -531,14 +567,10 @@ func TestPrepareCalendarSyncWithoutBaselineDoesNotForceUpdate(t *testing.T) {
 }
 
 func TestPrepareSyncRejectsCorruptedBaseline(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
+	service, cacheStore, _ := newSyncStateTestService(t)
 	if err := cacheStore.Set(syncSourceCacheKey("assignment", "20260001"), time.Minute, "invalid state"); err != nil {
 		t.Fatalf("Set() error = %v", err)
 	}
-	service := &Service{cacheStore: cacheStore}
 	assignment := reminder.Assignment{ID: "assignment:1", Title: "기말 과제"}
 
 	prepared, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{assignment}, nil)
@@ -547,6 +579,76 @@ func TestPrepareSyncRejectsCorruptedBaseline(t *testing.T) {
 	}
 	if len(prepared.Assignments) != 0 || len(prepared.Pending) != 0 {
 		t.Fatalf("prepareReminderSync() returned work after baseline error: %+v", prepared)
+	}
+}
+
+func TestSyncStateMigrationFailurePreservesLegacyCache(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("cache NewStoreAt() error = %v", err)
+	}
+	syncStateDir := t.TempDir()
+	syncStateStore, err := syncstate.NewStoreAt(syncStateDir)
+	if err != nil {
+		t.Fatalf("syncstate NewStoreAt() error = %v", err)
+	}
+	legacy := syncSourceState{Items: map[string]syncSourceItem{"assignment:1": {Hash: "source-hash"}}}
+	legacyKey := syncSourceCacheKey("assignment", "20260001")
+	if err := cacheStore.Set(legacyKey, time.Hour, legacy); err != nil {
+		t.Fatalf("legacy cache Set() error = %v", err)
+	}
+	corrupt := []byte(`{"version":1,"sources":`)
+	if err := os.WriteFile(filepath.Join(syncStateDir, "sync-state.json"), corrupt, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore, syncStateStore: syncStateStore}
+	if _, err := service.loadSyncSourceState("assignment", "20260001"); err == nil {
+		t.Fatal("loadSyncSourceState() expected dedicated store parse error")
+	}
+	var preserved syncSourceState
+	if _, ok, err := cacheStore.Get(legacyKey, &preserved); err != nil || !ok {
+		t.Fatalf("legacy cache Get() = %+v, %v, %v", preserved, ok, err)
+	}
+	if preserved.Items["assignment:1"].Hash != "source-hash" {
+		t.Fatalf("legacy cache changed after migration failure: %+v", preserved)
+	}
+	body, err := os.ReadFile(filepath.Join(syncStateDir, "sync-state.json"))
+	if err != nil || !bytes.Equal(body, corrupt) {
+		t.Fatalf("corrupt dedicated state overwritten: %q, %v", body, err)
+	}
+}
+
+func TestSyncStateSaveFailureDoesNotDeleteLegacyCache(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("cache NewStoreAt() error = %v", err)
+	}
+	legacyKey := syncSourceCacheKey("assignment", "20260001")
+	legacy := syncSourceState{Items: map[string]syncSourceItem{"assignment:1": {Hash: "source-hash"}}}
+	if err := cacheStore.Set(legacyKey, time.Hour, legacy); err != nil {
+		t.Fatalf("legacy cache Set() error = %v", err)
+	}
+	wantErr := errors.New("durable save failed")
+	service := &Service{
+		cacheStore: cacheStore,
+		syncStateStore: &fakeSyncStateStore{
+			load: func(string, string) (syncstate.State, bool, error) {
+				return syncstate.State{}, false, nil
+			},
+			save: func(string, string, syncstate.State) error {
+				return wantErr
+			},
+		},
+	}
+	if err := service.saveSyncSourceState("assignment", "20260001", legacy); !errors.Is(err, wantErr) {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+	var preserved syncSourceState
+	if _, ok, err := cacheStore.Get(legacyKey, &preserved); err != nil || !ok {
+		t.Fatalf("legacy cache Get() = %+v, %v, %v", preserved, ok, err)
+	}
+	if preserved.Items["assignment:1"].Hash != "source-hash" {
+		t.Fatalf("legacy cache changed after save failure: %+v", preserved)
 	}
 }
 
@@ -571,11 +673,7 @@ func TestCommitSyncSourceHashesRecordsOnlySyncedIDs(t *testing.T) {
 }
 
 func TestSkippedExistingWithoutBaselineRemainsProtected(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
-	service := &Service{cacheStore: cacheStore}
+	service, _, _ := newSyncStateTestService(t)
 	assignment := reminder.Assignment{ID: "assignment:1", Title: "기말 과제"}
 
 	first, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{assignment}, nil)
@@ -597,11 +695,7 @@ func TestSkippedExistingWithoutBaselineRemainsProtected(t *testing.T) {
 }
 
 func TestClearCachePreservesSyncSourceState(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
-	service := &Service{cacheStore: cacheStore}
+	service, cacheStore, _ := newSyncStateTestService(t)
 	want := syncSourceState{Items: map[string]syncSourceItem{
 		"assignment:1": {Hash: "source-hash"},
 	}}
@@ -631,11 +725,7 @@ func TestClearCachePreservesSyncSourceState(t *testing.T) {
 }
 
 func TestClearCacheScopePreservesSyncSourceState(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
-	service := &Service{cacheStore: cacheStore}
+	service, cacheStore, _ := newSyncStateTestService(t)
 	want := syncSourceState{Items: map[string]syncSourceItem{
 		"assignment:1": {Hash: "source-hash"},
 	}}
@@ -665,11 +755,7 @@ func TestClearCacheScopePreservesSyncSourceState(t *testing.T) {
 }
 
 func TestClearCacheScopeRejectsSyncSource(t *testing.T) {
-	cacheStore, err := cache.NewStoreAt(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStoreAt() error = %v", err)
-	}
-	service := &Service{cacheStore: cacheStore}
+	service, _, _ := newSyncStateTestService(t)
 	want := syncSourceState{Items: map[string]syncSourceItem{
 		"assignment:1": {Hash: "source-hash"},
 	}}

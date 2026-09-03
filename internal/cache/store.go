@@ -107,6 +107,31 @@ func (s *Store) Set(key string, ttl time.Duration, value any) error {
 	return nil
 }
 
+func (s *Store) Delete(key string) (bool, error) {
+	if s == nil {
+		return false, nil
+	}
+	path := s.pathFor(key)
+	body, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cache 읽기 실패: %w", err)
+	}
+	var cached entry
+	if err := json.Unmarshal(body, &cached); err != nil {
+		return false, fmt.Errorf("cache 파싱 실패: %w", err)
+	}
+	if cached.Key != key || s.pathFor(cached.Key) != path {
+		return false, errors.New("cache key가 일치하지 않습니다")
+	}
+	if err := os.Remove(path); err != nil {
+		return false, fmt.Errorf("cache 삭제 실패: %w", err)
+	}
+	return true, nil
+}
+
 func (s *Store) Clear() (int, error) {
 	return s.ClearPrefix("")
 }
