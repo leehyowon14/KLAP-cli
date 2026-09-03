@@ -2717,7 +2717,7 @@ func (m model) renderHomeView(width int) string {
 	logo := logoStyle.Render(klapLogo)
 	meta := lipgloss.JoinVertical(lipgloss.Left,
 		headerStyle.Render("Kwangwoon Learning Automation Project"),
-		headerStyle.Render("https://github.com/leehyowon14/KLAP-GoLang"),
+		headerStyle.Render("https://github.com/leehyowon14/KLAP-cli"),
 		taglineStyle.Render("Beyond KLAS, in your terminal."),
 	)
 	var top string
