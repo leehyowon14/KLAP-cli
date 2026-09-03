@@ -1565,7 +1565,7 @@ func TestIntegratedDownloadFlowStartsSelectedTranscript(t *testing.T) {
 	}
 	defer m.downloadProgress.cancel()
 	request := m.downloadProgress.request
-	if !request.All || !request.Transcribe || request.TranscriptLocale != "ko-KR" || len(request.LectureIDs) != 1 || request.LectureIDs[0] != "course/1:lecture/video" {
+	if !request.Transcribe || request.TranscriptLocale != "ko-KR" || len(request.LectureIDs) != 1 || request.LectureIDs[0] != "course/1:lecture/video" {
 		t.Fatalf("download request = %+v", request)
 	}
 }

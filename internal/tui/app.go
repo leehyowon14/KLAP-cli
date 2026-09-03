@@ -1573,8 +1573,6 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 		cancel:  cancel,
 		service: m.service,
 		request: LectureDownloadRequest{
-			All:                   true,
-			Rows:                  selectedRows,
 			LectureIDs:            m.selectedDownloadIDs(),
 			Concurrency:           settings.Concurrency,
 			Transcribe:            m.downloadTranscribe,

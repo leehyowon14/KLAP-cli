@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,11 +14,6 @@ import (
 )
 
 type LectureDownloadRequest struct {
-	Target                string
-	User                  app.UserOption
-	Dir                   string
-	All                   bool
-	Rows                  []app.LectureRow
 	LectureIDs            []string
 	Concurrency           int
 	Transcribe            bool
@@ -42,7 +36,6 @@ type lectureDownloadModel struct {
 	done                     bool
 	canceling                bool
 	err                      error
-	quitOnDone               bool
 	transcriptStarted        map[string]bool
 	transcriptRunning        map[string]bool
 	transcriptQueue          []app.LectureDownloadItem
@@ -73,10 +66,8 @@ type lectureDownloadProgressMsg struct {
 }
 
 type lectureDownloadDoneMsg struct {
-	single      app.LectureDownloadResult
-	all         app.LectureDownloadAllResult
-	transcripts app.LectureTranscriptResult
-	err         error
+	all app.LectureDownloadAllResult
+	err error
 }
 
 type lectureTranscriptDoneMsg struct {
@@ -85,34 +76,6 @@ type lectureTranscriptDoneMsg struct {
 }
 
 type lectureTranscriptStartMsg struct{}
-
-func RunLectureDownload(ctx context.Context, service *app.Service, request LectureDownloadRequest) error {
-	if service == nil {
-		return errors.New("다운로드 service가 없습니다")
-	}
-	runCtx, cancel := context.WithCancel(ctx)
-	model := lectureDownloadModel{
-		ctx:               runCtx,
-		cancel:            cancel,
-		service:           service,
-		request:           request,
-		updates:           make(chan tea.Msg, 64),
-		items:             initialDownloadStatusLines(request.Rows),
-		startedAt:         time.Now(),
-		quitOnDone:        true,
-		transcriptStarted: make(map[string]bool),
-		transcriptRunning: make(map[string]bool),
-	}
-	finalModel, err := tea.NewProgram(model).Run()
-	cancel()
-	if err != nil {
-		return err
-	}
-	if model, ok := finalModel.(lectureDownloadModel); ok && model.err != nil && !errors.Is(model.err, context.Canceled) {
-		return model.err
-	}
-	return nil
-}
 
 func (m lectureDownloadModel) Init() tea.Cmd {
 	return tea.Batch(m.runDownload(), waitLectureDownloadProgress(m.updates))
@@ -173,9 +136,6 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyFinalResult(msg)
 		cmds := m.enqueueTranscriptsForResult(msg)
 		m.markDoneIfIdle()
-		if m.done && m.quitOnDone {
-			return m, tea.Quit
-		}
 		return m, tea.Batch(cmds...)
 	case lectureTranscriptDoneMsg:
 		for _, key := range msg.keys {
@@ -187,9 +147,6 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyTranscriptResult(msg.result)
 		cmds := m.startTranscriptWorkers()
 		m.markDoneIfIdle()
-		if m.done && m.quitOnDone {
-			return m, tea.Quit
-		}
 		return m, tea.Batch(cmds...)
 	}
 	return m, nil
@@ -233,23 +190,12 @@ func (m lectureDownloadModel) runDownload() tea.Cmd {
 			default:
 			}
 		}
-		if m.request.All {
-			result, err := m.service.DownloadAllLectures(m.ctx, app.LectureDownloadAllOptions{
-				User:         m.request.User,
-				CourseFilter: m.request.Target,
-				Dir:          m.request.Dir,
-				OnProgress:   onProgress,
-				Concurrency:  m.request.Concurrency,
-				LectureIDs:   m.request.LectureIDs,
-			})
-			return lectureDownloadDoneMsg{all: result, err: err}
-		}
-		result, err := m.service.DownloadLecture(m.ctx, m.request.Target, app.LectureDownloadOptions{
-			User:       m.request.User,
-			Dir:        m.request.Dir,
-			OnProgress: onProgress,
+		result, err := m.service.DownloadAllLectures(m.ctx, app.LectureDownloadAllOptions{
+			OnProgress:  onProgress,
+			Concurrency: m.request.Concurrency,
+			LectureIDs:  m.request.LectureIDs,
 		})
-		return lectureDownloadDoneMsg{single: result, err: err}
+		return lectureDownloadDoneMsg{all: result, err: err}
 	}
 }
 
@@ -444,15 +390,6 @@ func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTr
 }
 
 func (m *lectureDownloadModel) applyFinalResult(msg lectureDownloadDoneMsg) {
-	if msg.single.Path != "" {
-		m.upsertStatusLine(app.LectureDownloadProgress{
-			Lecture:    msg.single.Lecture,
-			Path:       msg.single.Path,
-			Stage:      "done",
-			Bytes:      msg.single.Bytes,
-			TotalBytes: msg.single.Bytes,
-		})
-	}
 	for _, item := range msg.all.Items {
 		stage := "done"
 		if item.Skipped {
@@ -470,9 +407,6 @@ func (m *lectureDownloadModel) applyFinalResult(msg lectureDownloadDoneMsg) {
 			Skipped:    item.Skipped,
 			Err:        item.Err,
 		})
-	}
-	for _, item := range msg.transcripts.Items {
-		m.applyTranscriptItem(item)
 	}
 }
 
@@ -501,13 +435,6 @@ func (m *lectureDownloadModel) enqueueTranscriptsForResult(msg lectureDownloadDo
 		return nil
 	}
 	cmds := make([]tea.Cmd, 0)
-	if msg.single.Path != "" {
-		cmds = append(cmds, m.enqueueTranscriptItem(app.LectureDownloadItem{
-			Lecture: msg.single.Lecture,
-			Path:    msg.single.Path,
-			Bytes:   msg.single.Bytes,
-		})...)
-	}
 	for _, item := range msg.all.Items {
 		cmds = append(cmds, m.enqueueTranscriptItem(item)...)
 	}
