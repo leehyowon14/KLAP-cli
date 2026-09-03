@@ -1360,6 +1360,25 @@ func TestNormalizeCachedLectureRowsUsesCourseNameAfterReorder(t *testing.T) {
 	}
 }
 
+func TestLectureLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+		{Name: "B", Value: "course-b"},
+		{Name: "A", Value: "course-a"},
+	}}
+	rows, _, err := normalizeCachedLectureRows([]LectureRow{{
+		ID:         "1:content",
+		CourseName: "A",
+		Lecture:    klas.Lecture{ContentID: "content"},
+	}}, term)
+	if err != nil {
+		t.Fatalf("normalizeCachedLectureRows() error = %v", err)
+	}
+	selected := []selectedCourse{{Index: 1, Course: term.Courses[0]}}
+	if resourceIDsMatchSelected(lectureRowIDs(rows), "lecture", 1, selected, false) {
+		t.Fatalf("legacy numeric filter cache incorrectly matched current course: %+v", rows)
+	}
+}
+
 func TestLectureResourceKeyHasStableFallbackWithoutAttendID(t *testing.T) {
 	lecture := klas.Lecture{ModuleTitle: "1주차", Title: "오리엔테이션"}
 	first := lectureResourceKey(lecture)

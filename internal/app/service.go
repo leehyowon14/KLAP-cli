@@ -2462,16 +2462,28 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 		return nil, err
 	}
 
-	cacheKey := listCacheKey("lecture", studentID, term.Value, opts.CourseFilter)
+	cacheKey := courseResourceListCacheKey("lecture", studentID, term.Value, courses)
+	legacyCacheKey := listCacheKey("lecture", studentID, term.Value, opts.CourseFilter)
 	if !opts.Refresh {
 		var cached []LectureRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
 			rows, migrated, migrationErr := normalizeCachedLectureRows(cached, term)
-			if migrationErr == nil {
+			if migrationErr == nil && resourceIDsMatchSelected(lectureRowIDs(rows), "lecture", 1, courses, true) {
 				if migrated {
 					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
 				}
 				return rows, nil
+			}
+		}
+		if legacyCacheKey != cacheKey {
+			cached = nil
+			if _, ok, cacheErr := s.cacheStore.Get(legacyCacheKey, &cached); cacheErr == nil && ok {
+				rows, _, migrationErr := normalizeCachedLectureRows(cached, term)
+				allowEmpty := strings.TrimSpace(opts.CourseFilter) == ""
+				if migrationErr == nil && resourceIDsMatchSelected(lectureRowIDs(rows), "lecture", 1, courses, allowEmpty) {
+					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
+					return rows, nil
+				}
 			}
 		}
 	}
@@ -4515,6 +4527,14 @@ func assignmentRowIDs(rows []AssignmentRow) []string {
 }
 
 func noticeRowIDs(rows []NoticeRow) []string {
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	return ids
+}
+
+func lectureRowIDs(rows []LectureRow) []string {
 	ids := make([]string, 0, len(rows))
 	for _, row := range rows {
 		ids = append(ids, row.ID)
