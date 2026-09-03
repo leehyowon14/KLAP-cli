@@ -124,11 +124,14 @@ func replacingAssignmentID(in notes: String?, with id: String) -> String? {
 }
 
 func legacyResourcePart(from id: String) -> String? {
-    guard let separator = id.firstIndex(of: ":") else { return nil }
-    let prefix = id[..<separator]
-    guard Int(prefix) != nil else { return nil }
-    let resourcePart = id[id.index(after: separator)...]
-    return resourcePart.isEmpty ? nil : String(resourcePart)
+    let parts = id.split(separator: ":", omittingEmptySubsequences: false)
+    if parts.count >= 2, Int(parts[0]) != nil {
+        return parts.dropFirst().joined(separator: ":")
+    }
+    if parts.count >= 3, parts[0] == "lecture", Int(parts[1]) != nil {
+        return "lecture:" + parts.dropFirst(2).joined(separator: ":")
+    }
+    return nil
 }
 
 func reminderCourse(from reminder: EKReminder) -> String? {
@@ -189,11 +192,16 @@ for assignment in request.assignments {
     }
 
     let hasKnownSource = assignment.knownSourceHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    let candidateIds = [assignment.id] + (assignment.legacyIds ?? [])
-    let exactMatchedId = candidateIds.first(where: { known[$0] != nil })
+    let stableMatch = known[assignment.id].map { (assignment.id, $0) }
+    let legacyMatchById = (assignment.legacyIds ?? []).compactMap { id -> (String, EKReminder)? in
+        guard let reminder = known[id], reminderCourse(from: reminder) == assignment.course else { return nil }
+        return (id, reminder)
+    }.first
+    let exactMatch = stableMatch ?? legacyMatchById
+    let exactMatchedId = exactMatch?.0
     let fallbackMatch = exactMatchedId == nil ? legacyMatch(for: assignment, in: known) : nil
     let matchedId = exactMatchedId ?? fallbackMatch?.0
-    let matchedReminder = matchedId.flatMap { known[$0] } ?? fallbackMatch?.1
+    let matchedReminder = exactMatch?.1 ?? fallbackMatch?.1
     if let matchedId, let reminder = matchedReminder {
         if !hasKnownSource && assignment.forceUpdate != true {
             result.skipped += 1

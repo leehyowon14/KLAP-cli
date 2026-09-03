@@ -410,6 +410,40 @@ func TestPrepareReminderSyncMigratesLegacyAssignmentBaseline(t *testing.T) {
 	}
 }
 
+func TestPrepareReminderSyncDoesNotClaimMismatchedLegacyBaseline(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	state := syncSourceState{Items: map[string]syncSourceItem{
+		"lecture:2:content-123": {Hash: "another-course-hash"},
+	}}
+	if err := service.saveSyncSourceState("lecture", "20260001", state); err != nil {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+	assignment := reminder.Assignment{
+		ID:        "lecture:v1:stable",
+		LegacyIDs: []string{"lecture:2:content-123"},
+		Title:     "온라인 강의",
+		Course:    "컴퓨터그래픽스",
+		Notes:     "ID: lecture:v1:stable\n과목: 컴퓨터그래픽스",
+	}
+	prepared, err := service.prepareReminderSync("lecture", "20260001", []reminder.Assignment{assignment}, nil)
+	if err != nil {
+		t.Fatalf("prepareReminderSync() error = %v", err)
+	}
+	if len(prepared.Assignments) != 1 || prepared.Assignments[0].KnownSourceHash != "" {
+		t.Fatalf("prepareReminderSync() assignments = %+v", prepared.Assignments)
+	}
+	if _, exists := prepared.State.Items[assignment.ID]; exists {
+		t.Fatalf("mismatched legacy baseline moved to stable ID: %+v", prepared.State.Items)
+	}
+	if got := prepared.State.Items["lecture:2:content-123"].Hash; got != "another-course-hash" {
+		t.Fatalf("legacy baseline changed: %+v", prepared.State.Items)
+	}
+}
+
 func TestPrepareCalendarSyncWithoutBaselineDoesNotForceUpdate(t *testing.T) {
 	cacheStore, err := cache.NewStoreAt(t.TempDir())
 	if err != nil {
@@ -1016,6 +1050,17 @@ func TestAssignmentResourceIDAcceptsStableAndLegacyIDs(t *testing.T) {
 	}
 }
 
+func TestResolveResourceCourseRejectsStableIDFromDifferentTerm(t *testing.T) {
+	term := klas.Term{Value: "2026,2", Courses: []klas.Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
+	_, err := resolveResourceCourse(term, courseResourceLocator{
+		Ref:    CourseRef{TermValue: "2026,1", CourseID: "course-a"},
+		Stable: true,
+	})
+	if err == nil {
+		t.Fatal("resolveResourceCourse() expected term mismatch error")
+	}
+}
+
 func TestNormalizeCachedAssignmentRowsUsesCourseNameAfterReorder(t *testing.T) {
 	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
 		{Name: "오픈소스", Value: "course-b"},
@@ -1125,6 +1170,104 @@ func TestParseLectureID(t *testing.T) {
 	}
 	if courseIndex != 7 || contentID != "content-123" {
 		t.Fatalf("ParseLectureID() = %d, %q", courseIndex, contentID)
+	}
+}
+
+func TestLectureResourceIDAcceptsStableAndLegacyIDs(t *testing.T) {
+	ref := CourseRef{TermValue: "2026,1", CourseID: "course:id/01"}
+	stableID, err := StableLectureID(ref, "content-123")
+	if err != nil {
+		t.Fatalf("StableLectureID() error = %v", err)
+	}
+	locator, lectureKey, err := parseLectureResourceID(stableID)
+	if err != nil || !locator.Stable || locator.Ref != ref || lectureKey != "content-123" {
+		t.Fatalf("parseLectureResourceID(stable) = %+v, %q, %v", locator, lectureKey, err)
+	}
+	locator, lectureKey, err = parseLectureResourceID("7:content-123")
+	if err != nil || locator.Stable || locator.CourseIndex != 7 || lectureKey != "content-123" {
+		t.Fatalf("parseLectureResourceID(legacy) = %+v, %q, %v", locator, lectureKey, err)
+	}
+}
+
+func TestStableLectureTermValueRejectsMixedTerms(t *testing.T) {
+	first, err := StableLectureID(CourseRef{TermValue: "2026,1", CourseID: "course-a"}, "content-a")
+	if err != nil {
+		t.Fatalf("StableLectureID() first error = %v", err)
+	}
+	second, err := StableLectureID(CourseRef{TermValue: "2026,2", CourseID: "course-b"}, "content-b")
+	if err != nil {
+		t.Fatalf("StableLectureID() second error = %v", err)
+	}
+	if _, err := stableLectureTermValue([]string{first, second}); err == nil {
+		t.Fatal("stableLectureTermValue() expected mixed term error")
+	}
+	got, err := stableLectureTermValue([]string{"1:legacy", first})
+	if err != nil || got != "2026,1" {
+		t.Fatalf("stableLectureTermValue() = %q, %v", got, err)
+	}
+}
+
+func TestNewLectureRowIDIgnoresCourseOrder(t *testing.T) {
+	lecture := klas.Lecture{ContentID: "content-123", Title: "소개"}
+	course := klas.Course{Name: "컴퓨터그래픽스", Value: "course-a"}
+	first, err := newLectureRow("2026,1", selectedCourse{Index: 1, Course: course}, lecture)
+	if err != nil {
+		t.Fatalf("newLectureRow() first error = %v", err)
+	}
+	second, err := newLectureRow("2026,1", selectedCourse{Index: 4, Course: course}, lecture)
+	if err != nil {
+		t.Fatalf("newLectureRow() second error = %v", err)
+	}
+	if first.ID != second.ID || first.LegacyID != "1:content-123" || second.LegacyID != "4:content-123" {
+		t.Fatalf("newLectureRow() first %+v, second %+v", first, second)
+	}
+}
+
+func TestNormalizeCachedLectureRowsUsesCourseNameAfterReorder(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+		{Name: "오픈소스", Value: "course-b"},
+		{Name: "컴퓨터그래픽스", Value: "course-a"},
+	}}
+	rows, migrated, err := normalizeCachedLectureRows([]LectureRow{{
+		ID:         "1:content-123",
+		TermValue:  term.Value,
+		CourseName: "컴퓨터그래픽스",
+		Lecture:    klas.Lecture{ContentID: "content-123"},
+	}}, term)
+	if err != nil {
+		t.Fatalf("normalizeCachedLectureRows() error = %v", err)
+	}
+	if !migrated || len(rows) != 1 || rows[0].LegacyID != "1:content-123" {
+		t.Fatalf("normalizeCachedLectureRows() = %+v, migrated %v", rows, migrated)
+	}
+	ref, remoteParts, stable, err := parseStableCourseResourceID("lecture", rows[0].ID, 1)
+	if err != nil || !stable || ref.CourseID != "course-a" || len(remoteParts) != 1 || remoteParts[0] != "content-123" {
+		t.Fatalf("migrated ID = %q, ref %+v, parts %v, stable %v, error %v", rows[0].ID, ref, remoteParts, stable, err)
+	}
+	persisted, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(persisted, []byte("1:content-123")) {
+		t.Fatalf("persisted cache contains legacy ID: %s", persisted)
+	}
+}
+
+func TestLectureResourceKeyHasStableFallbackWithoutAttendID(t *testing.T) {
+	lecture := klas.Lecture{ModuleTitle: "1주차", Title: "오리엔테이션"}
+	first := lectureResourceKey(lecture)
+	second := lectureResourceKey(lecture)
+	if first == "" || first != second || !strings.HasPrefix(first, "meta-") {
+		t.Fatalf("lectureResourceKey() = %q, %q", first, second)
+	}
+}
+
+func TestLectureReminderIDDoesNotDuplicateStablePrefix(t *testing.T) {
+	if got := lectureReminderID("lecture:v1:stable"); got != "lecture:v1:stable" {
+		t.Fatalf("lectureReminderID(stable) = %q", got)
+	}
+	if got := lectureReminderID("7:content-123"); got != "lecture:7:content-123" {
+		t.Fatalf("lectureReminderID(legacy) = %q", got)
 	}
 }
 

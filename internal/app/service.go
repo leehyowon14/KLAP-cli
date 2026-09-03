@@ -413,6 +413,7 @@ type TermRow struct {
 
 type LectureRow struct {
 	ID         string
+	LegacyID   string `json:"-"`
 	TermValue  string
 	CourseName string
 	Lecture    klas.Lecture
@@ -2435,7 +2436,13 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 	if !opts.Refresh {
 		var cached []LectureRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
-			return cached, nil
+			rows, migrated, migrationErr := normalizeCachedLectureRows(cached, term)
+			if migrationErr == nil {
+				if migrated {
+					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
+				}
+				return rows, nil
+			}
 		}
 	}
 
@@ -2456,12 +2463,11 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 			return nil, err
 		}
 		for _, lecture := range lectures {
-			rows = append(rows, LectureRow{
-				ID:         lectureRowID(selectedCourse.Index, lecture),
-				TermValue:  term.Value,
-				CourseName: selectedCourse.Course.Name,
-				Lecture:    lecture,
-			})
+			row, err := newLectureRow(term.Value, selectedCourse, lecture)
+			if err != nil {
+				return nil, err
+			}
+			rows = append(rows, row)
 		}
 	}
 
@@ -2492,29 +2498,19 @@ func (s *Service) LectureOpenURL(ctx context.Context, id string, user UserOption
 	if err != nil {
 		return OpenURLResult{}, err
 	}
-	client, term, err := s.latestTerm(ctx, studentID)
+	resource, err := s.resolveLectureResource(ctx, studentID, id)
 	if err != nil {
 		return OpenURLResult{}, err
 	}
-
-	courseIndex, lectureKey, err := ParseLectureID(id)
-	if err != nil {
-		return OpenURLResult{}, err
-	}
-	if courseIndex < 1 || courseIndex > len(term.Courses) {
-		return OpenURLResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
-	}
-
-	course := term.Courses[courseIndex-1]
-	lectures, err := client.Lectures(ctx, term.Value, course)
+	lectures, err := resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
 		if refreshErr != nil {
 			return OpenURLResult{}, refreshErr
 		}
 		if refreshed {
-			client = refreshedClient
-			lectures, err = client.Lectures(ctx, term.Value, course)
+			resource.Client = refreshedClient
+			lectures, err = resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
 		}
 	}
 	if err != nil {
@@ -2522,7 +2518,7 @@ func (s *Service) LectureOpenURL(ctx context.Context, id string, user UserOption
 	}
 
 	for _, lecture := range lectures {
-		if !lectureMatchesKey(lecture, lectureKey) {
+		if !lectureMatchesKey(lecture, resource.Key) {
 			continue
 		}
 		if strings.TrimSpace(lecture.PlayURL) == "" {
@@ -2544,29 +2540,19 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 	if err != nil {
 		return LectureDownloadResult{}, err
 	}
-	client, term, err := s.latestTerm(ctx, studentID)
+	resource, err := s.resolveLectureResource(ctx, studentID, id)
 	if err != nil {
 		return LectureDownloadResult{}, err
 	}
-
-	courseIndex, contentID, err := ParseLectureID(id)
-	if err != nil {
-		return LectureDownloadResult{}, err
-	}
-	if courseIndex < 1 || courseIndex > len(term.Courses) {
-		return LectureDownloadResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
-	}
-
-	course := term.Courses[courseIndex-1]
-	lectures, err := client.Lectures(ctx, term.Value, course)
+	lectures, err := resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
 		if refreshErr != nil {
 			return LectureDownloadResult{}, refreshErr
 		}
 		if refreshed {
-			client = refreshedClient
-			lectures, err = client.Lectures(ctx, term.Value, course)
+			resource.Client = refreshedClient
+			lectures, err = resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
 		}
 	}
 	if err != nil {
@@ -2575,7 +2561,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 
 	var matched *klas.Lecture
 	for index := range lectures {
-		if strings.TrimSpace(lectures[index].ContentID) == contentID {
+		if strings.TrimSpace(lectures[index].ContentID) == resource.Key {
 			matched = &lectures[index]
 			break
 		}
@@ -2584,9 +2570,10 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		return LectureDownloadResult{}, fmt.Errorf("강의를 찾을 수 없습니다: %s", id)
 	}
 	row := LectureRow{
-		ID:         id,
-		TermValue:  term.Value,
-		CourseName: course.Name,
+		ID:         resource.ID,
+		LegacyID:   resource.LegacyID,
+		TermValue:  resource.Term.Value,
+		CourseName: resource.Course.Name,
 		Lecture:    *matched,
 	}
 	weekOrder := lectureWeekOrder(lectures, *matched)
@@ -2597,7 +2584,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		TotalItems:   1,
 	})
 
-	mediaURL, err := client.ResolveLectureMediaURL(ctx, contentID)
+	mediaURL, err := resource.Client.ResolveLectureMediaURL(ctx, resource.Key)
 	if err != nil {
 		return LectureDownloadResult{}, err
 	}
@@ -2611,7 +2598,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
 
-	path := lectureVideoPath(dir, course.Name, *matched, mediaURL, weekOrder)
+	path := lectureVideoPath(dir, resource.Course.Name, *matched, mediaURL, weekOrder)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
@@ -2677,7 +2664,20 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	if err != nil {
 		return LectureDownloadAllResult{}, err
 	}
-	client, term, err := s.latestTerm(ctx, studentID)
+	client, err := s.authenticatedClient(ctx, studentID)
+	if err != nil {
+		return LectureDownloadAllResult{}, err
+	}
+	stableTermValue, err := stableLectureTermValue(opts.LectureIDs)
+	if err != nil {
+		return LectureDownloadAllResult{}, err
+	}
+	var term klas.Term
+	if stableTermValue != "" {
+		term, client, err = s.termForSyllabus(ctx, studentID, client, stableTermValue)
+	} else {
+		term, client, err = s.selectedTerm(ctx, studentID, client)
+	}
 	if err != nil {
 		return LectureDownloadAllResult{}, err
 	}
@@ -2734,17 +2734,18 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 
 		rows := make([]LectureRow, 0, len(lectures))
 		for _, lecture := range lectures {
-			rows = append(rows, LectureRow{
-				ID:         lectureRowID(selectedCourse.Index, lecture),
-				TermValue:  term.Value,
-				CourseName: selectedCourse.Course.Name,
-				Lecture:    lecture,
-			})
+			row, err := newLectureRow(term.Value, selectedCourse, lecture)
+			if err != nil {
+				return LectureDownloadAllResult{}, err
+			}
+			rows = append(rows, row)
 		}
 		weekOrders := lectureRowWeekOrders(rows)
 		for _, row := range rows {
 			if len(selectedIDs) > 0 {
-				if _, ok := selectedIDs[row.ID]; !ok {
+				_, stableSelected := selectedIDs[row.ID]
+				_, legacySelected := selectedIDs[row.LegacyID]
+				if !stableSelected && !legacySelected {
 					continue
 				}
 			}
@@ -3126,29 +3127,19 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 	if err != nil {
 		return LectureAttendResult{}, err
 	}
-	client, term, err := s.latestTerm(ctx, studentID)
+	resource, err := s.resolveLectureResource(ctx, studentID, id)
 	if err != nil {
 		return LectureAttendResult{}, err
 	}
-
-	courseIndex, lectureKey, err := ParseLectureID(id)
-	if err != nil {
-		return LectureAttendResult{}, err
-	}
-	if courseIndex < 1 || courseIndex > len(term.Courses) {
-		return LectureAttendResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
-	}
-
-	course := term.Courses[courseIndex-1]
-	lectures, err := client.Lectures(ctx, term.Value, course)
+	lectures, err := resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
 		if refreshErr != nil {
 			return LectureAttendResult{}, refreshErr
 		}
 		if refreshed {
-			client = refreshedClient
-			lectures, err = client.Lectures(ctx, term.Value, course)
+			resource.Client = refreshedClient
+			lectures, err = resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
 		}
 	}
 	if err != nil {
@@ -3157,7 +3148,7 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 
 	var matched *klas.Lecture
 	for index := range lectures {
-		if lectureMatchesKey(lectures[index], lectureKey) {
+		if lectureMatchesKey(lectures[index], resource.Key) {
 			matched = &lectures[index]
 			break
 		}
@@ -3167,12 +3158,13 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 	}
 
 	row := LectureRow{
-		ID:         id,
-		TermValue:  term.Value,
-		CourseName: course.Name,
+		ID:         resource.ID,
+		LegacyID:   resource.LegacyID,
+		TermValue:  resource.Term.Value,
+		CourseName: resource.Course.Name,
 		Lecture:    *matched,
 	}
-	progress, err := attendLecture(ctx, client, row, opts.Interval, opts.OnProgress)
+	progress, err := attendLecture(ctx, resource.Client, row, opts.Interval, opts.OnProgress)
 	if err != nil {
 		return LectureAttendResult{}, err
 	}
@@ -3216,11 +3208,9 @@ func (s *Service) AttendAllLectures(ctx context.Context, opts LectureAttendAllOp
 			if !lectureNeedsAttendance(lecture, now) {
 				continue
 			}
-			row := LectureRow{
-				ID:         lectureRowID(selectedCourse.Index, lecture),
-				TermValue:  term.Value,
-				CourseName: selectedCourse.Course.Name,
-				Lecture:    lecture,
+			row, rowErr := newLectureRow(term.Value, selectedCourse, lecture)
+			if rowErr != nil {
+				return LectureAttendAllResult{}, rowErr
 			}
 			progress, err := attendLecture(ctx, client, row, opts.Interval, opts.OnProgress)
 			result.Items = append(result.Items, LectureAttendItem{
@@ -3329,7 +3319,8 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOpti
 			continue
 		}
 		assignments = append(assignments, reminder.Assignment{
-			ID:        "lecture:" + row.ID,
+			ID:        lectureReminderID(row.ID),
+			LegacyIDs: compactNonEmpty([]string{lectureReminderID(row.LegacyID)}),
 			Title:     firstNonEmpty(row.Lecture.Title, row.Lecture.ModuleTitle, "온라인 강의"),
 			Course:    row.CourseName,
 			DueAt:     row.Lecture.EndAt,
@@ -3559,10 +3550,11 @@ func (s *Service) prepareReminderSync(scope string, owner string, assignments []
 				if !legacyExists {
 					continue
 				}
-				if legacyItem.Hash == legacyReminderSourceHash(assignment, legacyID) {
-					legacyItem.Hash = hash
-					legacyItem.IgnoredHash = ""
+				if legacyItem.Hash != legacyReminderSourceHash(assignment, legacyID) {
+					continue
 				}
+				legacyItem.Hash = hash
+				legacyItem.IgnoredHash = ""
 				delete(state.Items, legacyID)
 				state.Items[assignment.ID] = legacyItem
 				item = legacyItem
@@ -3885,8 +3877,8 @@ func buildReminderNotes(result AssignmentDetailResult) string {
 func buildLectureReminderNotes(row LectureRow) string {
 	var builder strings.Builder
 	builder.WriteString("--- KLAP ---\n\n")
-	builder.WriteString("ID: lecture:")
-	builder.WriteString(row.ID)
+	builder.WriteString("ID: ")
+	builder.WriteString(lectureReminderID(row.ID))
 	builder.WriteString("\n")
 	builder.WriteString("과목: ")
 	builder.WriteString(row.CourseName)
@@ -4952,6 +4944,9 @@ func parseAssignmentResourceID(id string) (courseResourceLocator, string, error)
 
 func resolveResourceCourse(term klas.Term, locator courseResourceLocator) (klas.Course, error) {
 	if locator.Stable {
+		if strings.TrimSpace(term.Value) != strings.TrimSpace(locator.Ref.TermValue) {
+			return klas.Course{}, fmt.Errorf("stable ID 학기와 조회 학기가 다릅니다: %s != %s", locator.Ref.TermValue, term.Value)
+		}
 		for _, course := range term.Courses {
 			if strings.TrimSpace(course.Value) == locator.Ref.CourseID {
 				return course, nil
@@ -5128,6 +5123,187 @@ func LectureID(courseIndex int, lectureKey string) string {
 		return "-"
 	}
 	return fmt.Sprintf("%d:%s", courseIndex, lectureKey)
+}
+
+func StableLectureID(ref CourseRef, lectureKey string) (string, error) {
+	return stableCourseResourceID("lecture", ref, lectureKey)
+}
+
+func parseLectureResourceID(id string) (courseResourceLocator, string, error) {
+	ref, remoteParts, stable, err := parseStableCourseResourceID("lecture", id, 1)
+	if err != nil {
+		return courseResourceLocator{}, "", err
+	}
+	if stable {
+		return courseResourceLocator{Ref: ref, Stable: true}, remoteParts[0], nil
+	}
+	courseIndex, lectureKey, err := ParseLectureID(id)
+	if err != nil {
+		return courseResourceLocator{}, "", err
+	}
+	return courseResourceLocator{CourseIndex: courseIndex}, lectureKey, nil
+}
+
+func stableLectureTermValue(ids []string) (string, error) {
+	termValue := ""
+	for _, id := range ids {
+		ref, _, stable, err := parseStableCourseResourceID("lecture", id, 1)
+		if err != nil {
+			return "", err
+		}
+		if !stable {
+			continue
+		}
+		if termValue != "" && termValue != ref.TermValue {
+			return "", errors.New("서로 다른 학기의 강의를 한 번에 처리할 수 없습니다")
+		}
+		termValue = ref.TermValue
+	}
+	return termValue, nil
+}
+
+type resolvedLectureResource struct {
+	Client   *klas.Client
+	Term     klas.Term
+	Course   klas.Course
+	Key      string
+	ID       string
+	LegacyID string
+}
+
+func (s *Service) resolveLectureResource(ctx context.Context, studentID string, id string) (resolvedLectureResource, error) {
+	client, err := s.authenticatedClient(ctx, studentID)
+	if err != nil {
+		return resolvedLectureResource{}, err
+	}
+	locator, lectureKey, err := parseLectureResourceID(id)
+	if err != nil {
+		return resolvedLectureResource{}, err
+	}
+	var term klas.Term
+	if locator.Stable {
+		term, client, err = s.termForSyllabus(ctx, studentID, client, locator.Ref.TermValue)
+	} else {
+		term, client, err = s.selectedTerm(ctx, studentID, client)
+	}
+	if err != nil {
+		return resolvedLectureResource{}, err
+	}
+	course, err := resolveResourceCourse(term, locator)
+	if err != nil {
+		return resolvedLectureResource{}, err
+	}
+	ref, err := NewCourseRef(term.Value, course)
+	if err != nil {
+		return resolvedLectureResource{}, err
+	}
+	stableID, err := StableLectureID(ref, lectureKey)
+	if err != nil {
+		return resolvedLectureResource{}, err
+	}
+	courseIndex, err := courseIndexByID(term, course.Value)
+	if err != nil {
+		return resolvedLectureResource{}, err
+	}
+	return resolvedLectureResource{
+		Client:   client,
+		Term:     term,
+		Course:   course,
+		Key:      lectureKey,
+		ID:       stableID,
+		LegacyID: LectureID(courseIndex, lectureKey),
+	}, nil
+}
+
+func newLectureRow(termValue string, selected selectedCourse, lecture klas.Lecture) (LectureRow, error) {
+	ref, err := NewCourseRef(termValue, selected.Course)
+	if err != nil {
+		return LectureRow{}, err
+	}
+	lectureKey := lectureResourceKey(lecture)
+	id, err := StableLectureID(ref, lectureKey)
+	if err != nil {
+		return LectureRow{}, err
+	}
+	legacyID := lectureRowID(selected.Index, lecture)
+	if legacyID == "-" {
+		legacyID = ""
+	}
+	return LectureRow{
+		ID:         id,
+		LegacyID:   legacyID,
+		TermValue:  strings.TrimSpace(termValue),
+		CourseName: selected.Course.Name,
+		Lecture:    lecture,
+	}, nil
+}
+
+func normalizeCachedLectureRows(rows []LectureRow, term klas.Term) ([]LectureRow, bool, error) {
+	migrated := false
+	for index := range rows {
+		locator, lectureKey, parseErr := parseLectureResourceID(rows[index].ID)
+		legacyID := ""
+		if parseErr != nil && strings.TrimSpace(rows[index].ID) != "-" {
+			return nil, false, parseErr
+		}
+		var course klas.Course
+		var err error
+		if parseErr == nil && locator.Stable {
+			course, err = resolveResourceCourse(term, locator)
+			if err != nil {
+				return nil, false, err
+			}
+		} else {
+			course, err = resolveLegacyCachedCourse(term, locator.CourseIndex, rows[index].CourseName)
+			if err != nil {
+				return nil, false, err
+			}
+			legacyID = strings.TrimSpace(rows[index].ID)
+			if legacyID == "-" {
+				legacyID = ""
+			}
+			lectureKey = lectureResourceKey(rows[index].Lecture)
+			ref, err := NewCourseRef(term.Value, course)
+			if err != nil {
+				return nil, false, err
+			}
+			rows[index].ID, err = StableLectureID(ref, lectureKey)
+			if err != nil {
+				return nil, false, err
+			}
+			rows[index].TermValue = term.Value
+			migrated = true
+		}
+		if legacyID == "" {
+			courseIndex, err := courseIndexByID(term, course.Value)
+			if err != nil {
+				return nil, false, err
+			}
+			legacyID = LectureID(courseIndex, lectureKey)
+		}
+		rows[index].LegacyID = legacyID
+	}
+	return rows, migrated, nil
+}
+
+func courseIndexByID(term klas.Term, courseID string) (int, error) {
+	for index, course := range term.Courses {
+		if strings.TrimSpace(course.Value) == strings.TrimSpace(courseID) {
+			return index + 1, nil
+		}
+	}
+	return 0, fmt.Errorf("학기 %s에서 과목을 찾을 수 없습니다: %s", term.Value, courseID)
+}
+
+func lectureReminderID(rowID string) string {
+	rowID = strings.TrimSpace(rowID)
+	if rowID == "" {
+		return ""
+	}
+	if strings.HasPrefix(rowID, "lecture:") {
+		return rowID
+	}
+	return "lecture:" + rowID
 }
 
 func ParseLectureID(id string) (int, string, error) {
@@ -5545,13 +5721,34 @@ func lectureAttendKey(lecture klas.Lecture) string {
 	return ""
 }
 
+func lectureResourceKey(lecture klas.Lecture) string {
+	if key := lectureAttendKey(lecture); key != "" {
+		return key
+	}
+	if fileID := strings.TrimSpace(lecture.FileID); fileID != "" {
+		return "file-" + fileID
+	}
+	if weekNo := strings.TrimSpace(lecture.WeekNo); weekNo != "" || strings.TrimSpace(lecture.WeeklySeq) != "" {
+		return "week-" + weekNo + "-" + strings.TrimSpace(lecture.WeeklySeq)
+	}
+	startAt := ""
+	if lecture.StartAt != nil {
+		startAt = lecture.StartAt.UTC().Format(time.RFC3339Nano)
+	}
+	endAt := ""
+	if lecture.EndAt != nil {
+		endAt = lecture.EndAt.UTC().Format(time.RFC3339Nano)
+	}
+	return "meta-" + hashSyncParts(lecture.ModuleTitle, lecture.Title, startAt, endAt)[:24]
+}
+
 func lectureRowID(courseIndex int, lecture klas.Lecture) string {
 	return LectureID(courseIndex, lectureAttendKey(lecture))
 }
 
 func lectureMatchesKey(lecture klas.Lecture, key string) bool {
 	key = strings.TrimSpace(key)
-	return key != "" && (strings.TrimSpace(lecture.ContentID) == key || lectureAttendKey(lecture) == key)
+	return key != "" && lectureResourceKey(lecture) == key
 }
 
 func defaultReminderBridgePath() string {
