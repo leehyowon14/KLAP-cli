@@ -3,6 +3,7 @@ import Foundation
 
 struct Assignment: Codable {
     let id: String
+    let legacyIds: [String]?
     let title: String
     let course: String
     let dueAt: Date?
@@ -113,6 +114,45 @@ func assignmentID(from reminder: EKReminder) -> String? {
     return String(notes[rangeStart.upperBound..<rangeEnd.lowerBound])
 }
 
+func replacingAssignmentID(in notes: String?, with id: String) -> String? {
+    guard let notes else { return nil }
+    var lines = notes.components(separatedBy: .newlines)
+    if let index = lines.firstIndex(where: { $0.hasPrefix("ID: ") }) {
+        lines[index] = "ID: \(id)"
+    }
+    return lines.joined(separator: "\n")
+}
+
+func legacyResourcePart(from id: String) -> String? {
+    guard let separator = id.firstIndex(of: ":") else { return nil }
+    let prefix = id[..<separator]
+    guard Int(prefix) != nil else { return nil }
+    let resourcePart = id[id.index(after: separator)...]
+    return resourcePart.isEmpty ? nil : String(resourcePart)
+}
+
+func reminderCourse(from reminder: EKReminder) -> String? {
+    guard let notes = reminder.notes else { return nil }
+    for line in notes.components(separatedBy: .newlines) where line.hasPrefix("과목: ") {
+        return String(line.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return nil
+}
+
+func legacyMatch(for assignment: Assignment, in known: [String: EKReminder]) -> (String, EKReminder)? {
+    let resourceParts = Set((assignment.legacyIds ?? []).compactMap(legacyResourcePart))
+    guard !resourceParts.isEmpty else { return nil }
+    let matches = known.compactMap { id, reminder -> (String, EKReminder)? in
+        guard let resourcePart = legacyResourcePart(from: id),
+              resourceParts.contains(resourcePart),
+              reminderCourse(from: reminder) == assignment.course else {
+            return nil
+        }
+        return (id, reminder)
+    }
+    return matches.count == 1 ? matches[0] : nil
+}
+
 func applyDueDate(_ dueAt: Date, to reminder: EKReminder) {
     let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueAt)
     reminder.dueDateComponents = components
@@ -149,7 +189,12 @@ for assignment in request.assignments {
     }
 
     let hasKnownSource = assignment.knownSourceHash?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    if let reminder = known[assignment.id] {
+    let candidateIds = [assignment.id] + (assignment.legacyIds ?? [])
+    let exactMatchedId = candidateIds.first(where: { known[$0] != nil })
+    let fallbackMatch = exactMatchedId == nil ? legacyMatch(for: assignment, in: known) : nil
+    let matchedId = exactMatchedId ?? fallbackMatch?.0
+    let matchedReminder = matchedId.flatMap { known[$0] } ?? fallbackMatch?.1
+    if let matchedId, let reminder = matchedReminder {
         if !hasKnownSource && assignment.forceUpdate != true {
             result.skipped += 1
             continue
@@ -161,6 +206,8 @@ for assignment in request.assignments {
             reminder.url = URL(string: assignment.detailUrl)
             applyDueDate(dueAt, to: reminder)
             applyAlarm(dueAt, beforeMinutes: request.alarmBeforeMin, to: reminder)
+        } else if matchedId != assignment.id {
+            reminder.notes = replacingAssignmentID(in: reminder.notes, with: assignment.id)
         }
         if assignment.submitted && !reminder.isCompleted {
             reminder.isCompleted = true

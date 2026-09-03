@@ -12,6 +12,7 @@ import (
 
 type Assignment struct {
 	ID              string     `json:"id"`
+	LegacyIDs       []string   `json:"legacyIds,omitempty"`
 	Title           string     `json:"title"`
 	Course          string     `json:"course"`
 	DueAt           *time.Time `json:"dueAt"`

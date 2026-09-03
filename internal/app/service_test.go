@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -361,6 +362,51 @@ func TestPrepareReminderSyncPromptsOnceForChangedSource(t *testing.T) {
 	}
 	if len(again.Conflicts) != 0 || len(again.Assignments) != 0 || again.Skipped != 1 {
 		t.Fatalf("again prepare = %+v", again)
+	}
+}
+
+func TestPrepareReminderSyncMigratesLegacyAssignmentBaseline(t *testing.T) {
+	cacheStore, err := cache.NewStoreAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreAt() error = %v", err)
+	}
+	service := &Service{cacheStore: cacheStore}
+	dueAt := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
+	stableID := "assignment:v1:MjAyNiwx:Y291cnNlLTE:Nw"
+	legacy := reminder.Assignment{
+		ID:        "1:7",
+		Title:     "기말 과제",
+		Course:    "오픈소스",
+		DueAt:     &dueAt,
+		DetailURL: "https://example.test/assignment/7",
+		Notes:     "--- KLAP ---\n\nID: 1:7\n과목: 오픈소스",
+	}
+	state := syncSourceState{Items: map[string]syncSourceItem{
+		legacy.ID: {Hash: reminderSourceHash(legacy)},
+	}}
+	if err := service.saveSyncSourceState("assignment", "20260001", state); err != nil {
+		t.Fatalf("saveSyncSourceState() error = %v", err)
+	}
+
+	stable := legacy
+	stable.ID = stableID
+	stable.LegacyIDs = []string{legacy.ID}
+	stable.Notes = replaceReminderNoteID(stable.Notes, stable.ID)
+	prepared, err := service.prepareReminderSync("assignment", "20260001", []reminder.Assignment{stable}, nil)
+	if err != nil {
+		t.Fatalf("prepareReminderSync() error = %v", err)
+	}
+	if len(prepared.Conflicts) != 0 || len(prepared.Assignments) != 1 {
+		t.Fatalf("prepareReminderSync() = %+v", prepared)
+	}
+	if prepared.Assignments[0].KnownSourceHash != reminderSourceHash(stable) {
+		t.Fatalf("KnownSourceHash = %q, want migrated stable hash", prepared.Assignments[0].KnownSourceHash)
+	}
+	if _, exists := prepared.State.Items[legacy.ID]; exists {
+		t.Fatalf("legacy state key still exists: %+v", prepared.State.Items)
+	}
+	if got := prepared.State.Items[stable.ID].Hash; got != reminderSourceHash(stable) {
+		t.Fatalf("stable state hash = %q", got)
 	}
 }
 
@@ -951,6 +997,69 @@ func TestParseAssignmentID(t *testing.T) {
 	}
 	if courseIndex != 3 || ordSeq != "7" {
 		t.Fatalf("ParseAssignmentID() = %d, %q", courseIndex, ordSeq)
+	}
+}
+
+func TestAssignmentResourceIDAcceptsStableAndLegacyIDs(t *testing.T) {
+	ref := CourseRef{TermValue: "2026,1", CourseID: "course:id/01"}
+	stableID, err := StableAssignmentID(ref, "7")
+	if err != nil {
+		t.Fatalf("StableAssignmentID() error = %v", err)
+	}
+	locator, ordSeq, err := parseAssignmentResourceID(stableID)
+	if err != nil || !locator.Stable || locator.Ref != ref || ordSeq != "7" {
+		t.Fatalf("parseAssignmentResourceID(stable) = %+v, %q, %v", locator, ordSeq, err)
+	}
+	locator, ordSeq, err = parseAssignmentResourceID("3:7")
+	if err != nil || locator.Stable || locator.CourseIndex != 3 || ordSeq != "7" {
+		t.Fatalf("parseAssignmentResourceID(legacy) = %+v, %q, %v", locator, ordSeq, err)
+	}
+}
+
+func TestNormalizeCachedAssignmentRowsUsesCourseNameAfterReorder(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+		{Name: "오픈소스", Value: "course-b"},
+		{Name: "컴퓨터그래픽스", Value: "course-a"},
+	}}
+	rows, migrated, err := normalizeCachedAssignmentRows([]AssignmentRow{{
+		ID:         "1:7",
+		TermValue:  term.Value,
+		CourseName: "컴퓨터그래픽스",
+	}}, term)
+	if err != nil {
+		t.Fatalf("normalizeCachedAssignmentRows() error = %v", err)
+	}
+	if !migrated || len(rows) != 1 || rows[0].LegacyID != "1:7" {
+		t.Fatalf("normalizeCachedAssignmentRows() = %+v, migrated %v", rows, migrated)
+	}
+	ref, _, stable, err := parseStableCourseResourceID("assignment", rows[0].ID, 1)
+	if err != nil || !stable || ref.CourseID != "course-a" {
+		t.Fatalf("migrated ID = %q, ref %+v, stable %v, error %v", rows[0].ID, ref, stable, err)
+	}
+	persisted, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(persisted, []byte("1:7")) || bytes.Contains(persisted, []byte("LegacyID")) {
+		t.Fatalf("persisted cache contains legacy ID: %s", persisted)
+	}
+}
+
+func TestNormalizeCachedStableAssignmentHydratesCurrentAlias(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+		{Name: "오픈소스", Value: "course-b"},
+		{Name: "컴퓨터그래픽스", Value: "course-a"},
+	}}
+	id, err := StableAssignmentID(CourseRef{TermValue: term.Value, CourseID: "course-a"}, "7")
+	if err != nil {
+		t.Fatalf("StableAssignmentID() error = %v", err)
+	}
+	rows, migrated, err := normalizeCachedAssignmentRows([]AssignmentRow{{ID: id}}, term)
+	if err != nil {
+		t.Fatalf("normalizeCachedAssignmentRows() error = %v", err)
+	}
+	if migrated || rows[0].LegacyID != "2:7" {
+		t.Fatalf("normalizeCachedAssignmentRows() = %+v, migrated %v", rows, migrated)
 	}
 }
 

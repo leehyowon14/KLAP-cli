@@ -197,6 +197,7 @@ type UserRow struct {
 
 type AssignmentRow struct {
 	ID         string
+	LegacyID   string `json:"-"`
 	TermValue  string
 	CourseName string
 	DetailURL  string
@@ -1546,7 +1547,13 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 	if !opts.Refresh {
 		var cached []AssignmentRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
-			return cached, nil
+			rows, migrated, migrationErr := normalizeCachedAssignmentRows(cached, term)
+			if migrationErr == nil {
+				if migrated {
+					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
+				}
+				return rows, nil
+			}
 		}
 	}
 
@@ -1567,9 +1574,17 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 			return nil, err
 		}
 		for _, assignment := range assignments {
-			id := AssignmentID(selectedCourse.Index, assignment.OrdSeq)
+			ref, err := NewCourseRef(term.Value, selectedCourse.Course)
+			if err != nil {
+				return nil, err
+			}
+			id, err := StableAssignmentID(ref, assignment.OrdSeq)
+			if err != nil {
+				return nil, err
+			}
 			rows = append(rows, AssignmentRow{
 				ID:         id,
+				LegacyID:   AssignmentID(selectedCourse.Index, assignment.OrdSeq),
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				DetailURL:  assignmentDetailURL(term.Value, selectedCourse.Course, assignment.OrdSeq),
@@ -1602,20 +1617,36 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
-	client, term, err := s.latestTerm(ctx, studentID)
+	client, err := s.authenticatedClient(ctx, studentID)
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
 
-	courseIndex, ordSeq, err := ParseAssignmentID(id)
+	locator, ordSeq, err := parseAssignmentResourceID(id)
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
-	if courseIndex < 1 || courseIndex > len(term.Courses) {
-		return AssignmentDetailResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
+	var term klas.Term
+	if locator.Stable {
+		term, client, err = s.termForSyllabus(ctx, studentID, client, locator.Ref.TermValue)
+	} else {
+		term, client, err = s.selectedTerm(ctx, studentID, client)
 	}
-
-	course := term.Courses[courseIndex-1]
+	if err != nil {
+		return AssignmentDetailResult{}, err
+	}
+	course, err := resolveResourceCourse(term, locator)
+	if err != nil {
+		return AssignmentDetailResult{}, err
+	}
+	ref, err := NewCourseRef(term.Value, course)
+	if err != nil {
+		return AssignmentDetailResult{}, err
+	}
+	canonicalID, err := StableAssignmentID(ref, ordSeq)
+	if err != nil {
+		return AssignmentDetailResult{}, err
+	}
 	detail, err := client.AssignmentDetail(ctx, term.Value, course, ordSeq)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
@@ -1649,7 +1680,7 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 	}
 
 	return AssignmentDetailResult{
-		ID:         id,
+		ID:         canonicalID,
 		TermValue:  term.Value,
 		CourseName: course.Name,
 		DetailURL:  assignmentDetailURL(term.Value, course, ordSeq),
@@ -3199,7 +3230,8 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 			return ReminderSyncResult{}, detailErr
 		}
 		assignments = append(assignments, reminder.Assignment{
-			ID:        row.ID,
+			ID:        detail.ID,
+			LegacyIDs: compactNonEmpty([]string{row.LegacyID}),
 			Title:     detail.Detail.Title,
 			Course:    detail.CourseName,
 			DueAt:     detail.Detail.DueAt,
@@ -3491,7 +3523,23 @@ func (s *Service) prepareReminderSync(scope string, owner string, assignments []
 	}
 	for _, assignment := range assignments {
 		hash := reminderSourceHash(assignment)
-		item := state.Items[assignment.ID]
+		item, exists := state.Items[assignment.ID]
+		if !exists {
+			for _, legacyID := range assignment.LegacyIDs {
+				legacyItem, legacyExists := state.Items[legacyID]
+				if !legacyExists {
+					continue
+				}
+				if legacyItem.Hash == legacyReminderSourceHash(assignment, legacyID) {
+					legacyItem.Hash = hash
+					legacyItem.IgnoredHash = ""
+				}
+				delete(state.Items, legacyID)
+				state.Items[assignment.ID] = legacyItem
+				item = legacyItem
+				break
+			}
+		}
 		assignment.KnownSourceHash = item.Hash
 		key := syncConflictKey(scope, assignment.ID)
 		if item.Hash != "" && item.Hash != hash {
@@ -3634,6 +3682,23 @@ func reminderSourceHash(assignment reminder.Assignment) string {
 		assignment.DetailURL,
 		assignment.Notes,
 	)
+}
+
+func legacyReminderSourceHash(assignment reminder.Assignment, legacyID string) string {
+	assignment.ID = strings.TrimSpace(legacyID)
+	assignment.Notes = replaceReminderNoteID(assignment.Notes, assignment.ID)
+	return reminderSourceHash(assignment)
+}
+
+func replaceReminderNoteID(notes string, id string) string {
+	lines := strings.Split(notes, "\n")
+	for index, line := range lines {
+		if strings.HasPrefix(line, "ID: ") {
+			lines[index] = "ID: " + strings.TrimSpace(id)
+			break
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func calendarSourceHash(event klapcalendar.Event) string {
@@ -4829,6 +4894,110 @@ func selectAttendanceRows(rows []AttendanceRow, selector string) []AttendanceRow
 
 func AssignmentID(courseIndex int, ordSeq string) string {
 	return fmt.Sprintf("%d:%s", courseIndex, strings.TrimSpace(ordSeq))
+}
+
+func StableAssignmentID(ref CourseRef, ordSeq string) (string, error) {
+	return stableCourseResourceID("assignment", ref, ordSeq)
+}
+
+type courseResourceLocator struct {
+	Ref         CourseRef
+	CourseIndex int
+	Stable      bool
+}
+
+func parseAssignmentResourceID(id string) (courseResourceLocator, string, error) {
+	ref, remoteParts, stable, err := parseStableCourseResourceID("assignment", id, 1)
+	if err != nil {
+		return courseResourceLocator{}, "", err
+	}
+	if stable {
+		return courseResourceLocator{Ref: ref, Stable: true}, remoteParts[0], nil
+	}
+	courseIndex, ordSeq, err := ParseAssignmentID(id)
+	if err != nil {
+		return courseResourceLocator{}, "", err
+	}
+	return courseResourceLocator{CourseIndex: courseIndex}, ordSeq, nil
+}
+
+func resolveResourceCourse(term klas.Term, locator courseResourceLocator) (klas.Course, error) {
+	if locator.Stable {
+		for _, course := range term.Courses {
+			if strings.TrimSpace(course.Value) == locator.Ref.CourseID {
+				return course, nil
+			}
+		}
+		return klas.Course{}, fmt.Errorf("학기 %s에서 과목을 찾을 수 없습니다: %s", term.Value, locator.Ref.CourseID)
+	}
+	if locator.CourseIndex < 1 || locator.CourseIndex > len(term.Courses) {
+		return klas.Course{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", locator.CourseIndex)
+	}
+	return term.Courses[locator.CourseIndex-1], nil
+}
+
+func normalizeCachedAssignmentRows(rows []AssignmentRow, term klas.Term) ([]AssignmentRow, bool, error) {
+	migrated := false
+	for index := range rows {
+		locator, ordSeq, err := parseAssignmentResourceID(rows[index].ID)
+		if err != nil {
+			return nil, false, err
+		}
+		if locator.Stable {
+			course, err := resolveResourceCourse(term, locator)
+			if err != nil {
+				return nil, false, err
+			}
+			for courseIndex, candidate := range term.Courses {
+				if strings.TrimSpace(candidate.Value) == strings.TrimSpace(course.Value) {
+					rows[index].LegacyID = AssignmentID(courseIndex+1, ordSeq)
+					break
+				}
+			}
+			continue
+		}
+		course, err := resolveLegacyCachedCourse(term, locator.CourseIndex, rows[index].CourseName)
+		if err != nil {
+			return nil, false, err
+		}
+		ref, err := NewCourseRef(term.Value, course)
+		if err != nil {
+			return nil, false, err
+		}
+		stableID, err := StableAssignmentID(ref, ordSeq)
+		if err != nil {
+			return nil, false, err
+		}
+		rows[index].LegacyID = rows[index].ID
+		rows[index].ID = stableID
+		rows[index].TermValue = term.Value
+		migrated = true
+	}
+	return rows, migrated, nil
+}
+
+func resolveLegacyCachedCourse(term klas.Term, courseIndex int, courseName string) (klas.Course, error) {
+	normalizedName := strings.TrimSpace(courseName)
+	if courseIndex >= 1 && courseIndex <= len(term.Courses) {
+		candidate := term.Courses[courseIndex-1]
+		if normalizedName == "" || strings.EqualFold(strings.TrimSpace(candidate.Name), normalizedName) {
+			return candidate, nil
+		}
+	}
+	var match *klas.Course
+	for index := range term.Courses {
+		if !strings.EqualFold(strings.TrimSpace(term.Courses[index].Name), normalizedName) {
+			continue
+		}
+		if match != nil {
+			return klas.Course{}, fmt.Errorf("legacy cache 과목명이 여러 과목과 일치합니다: %s", courseName)
+		}
+		match = &term.Courses[index]
+	}
+	if match != nil {
+		return *match, nil
+	}
+	return klas.Course{}, fmt.Errorf("legacy cache 과목을 찾을 수 없습니다: %s", courseName)
 }
 
 func ParseAssignmentID(id string) (int, string, error) {
