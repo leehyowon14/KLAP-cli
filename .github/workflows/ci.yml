@@ -69,12 +69,19 @@ jobs:
           version: v2.12.2
 
   swift-bridge:
-    name: Swift bridge build
+    name: Swift bridge verification
     runs-on: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Typecheck distributed bridge scripts
+        run: |
+          swiftc -typecheck bridges/macos/reminder.swift
+          swiftc -typecheck bridges/macos/calendar.swift
+          swiftc -typecheck bridges/macos/categories.swift
+          swiftc -typecheck bridges/macos/transcribe.swift
 
       - name: Build TranscriptBridge
         run: swift build -c release --package-path bridges/macos

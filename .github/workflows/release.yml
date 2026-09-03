@@ -26,7 +26,12 @@ jobs:
           cache: true
 
       - name: Setup Swift bridge
-        run: swift build -c release --package-path bridges/macos
+        run: |
+          swiftc -typecheck bridges/macos/reminder.swift
+          swiftc -typecheck bridges/macos/calendar.swift
+          swiftc -typecheck bridges/macos/categories.swift
+          swiftc -typecheck bridges/macos/transcribe.swift
+          swift build -c release --package-path bridges/macos
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
