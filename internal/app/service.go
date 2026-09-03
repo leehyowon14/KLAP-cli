@@ -2131,7 +2131,7 @@ func (s *Service) EvaluationList(ctx context.Context, opts EvaluationListOptions
 		return EvaluationListResult{}, err
 	}
 
-	cacheKey := listCacheKey("evaluation", studentID, "", "")
+	cacheKey := listCacheKeyVersion("evaluation", "v2", studentID, "", "")
 	if !opts.Refresh {
 		var cached EvaluationListResult
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {

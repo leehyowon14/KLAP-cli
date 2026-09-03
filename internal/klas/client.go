@@ -209,7 +209,7 @@ type EvaluationCourse struct {
 	OpenGrade       string
 	OpenGwamokNo    string
 	BunbanNo        string
-	Raw             evaluationCourseItem
+	Raw             evaluationCourseItem `json:"-"`
 }
 
 type EvaluationForm struct {

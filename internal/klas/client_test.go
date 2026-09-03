@@ -191,6 +191,32 @@ func TestRankJSONOmitsRawPayload(t *testing.T) {
 	}
 }
 
+func TestEvaluationCourseJSONOmitsRawPayload(t *testing.T) {
+	course := EvaluationCourse{
+		Name:         "정규화 과목",
+		Professor:    "정규화 교수",
+		OpenGwamokNo: "subject-1",
+		Evaluated:    true,
+		ThisYear:     "2026",
+		Hakgi:        "1",
+		Raw:          evaluationCourseItem{Name: "raw-secret-course"},
+	}
+	payload, err := json.Marshal(course)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret")) || bytes.Contains(payload, []byte(`"Raw"`)) {
+		t.Fatalf("EvaluationCourse JSON contains Raw payload: %s", payload)
+	}
+	var roundTrip EvaluationCourse
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.Name != course.Name || roundTrip.Professor != course.Professor || roundTrip.OpenGwamokNo != course.OpenGwamokNo || !roundTrip.Evaluated || roundTrip.ThisYear != course.ThisYear || roundTrip.Hakgi != course.Hakgi {
+		t.Fatalf("EvaluationCourse round trip = %+v", roundTrip)
+	}
+}
+
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
 		name string
