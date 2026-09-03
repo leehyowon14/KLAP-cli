@@ -1255,6 +1255,21 @@ func TestNormalizeCachedNoticeRowsUsesCourseNameAfterReorder(t *testing.T) {
 	}
 }
 
+func TestNoticeLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
+	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+		{Name: "B", Value: "course-b"},
+		{Name: "A", Value: "course-a"},
+	}}
+	rows, _, err := normalizeCachedNoticeRows([]NoticeRow{{ID: "1:board:master", CourseName: "A"}}, term)
+	if err != nil {
+		t.Fatalf("normalizeCachedNoticeRows() error = %v", err)
+	}
+	selected := []selectedCourse{{Index: 1, Course: term.Courses[0]}}
+	if resourceIDsMatchSelected(noticeRowIDs(rows), "notice", 2, selected, false) {
+		t.Fatalf("legacy numeric filter cache incorrectly matched current course: %+v", rows)
+	}
+}
+
 func TestParseLectureID(t *testing.T) {
 	courseIndex, contentID, err := ParseLectureID("7:content-123")
 	if err != nil {
