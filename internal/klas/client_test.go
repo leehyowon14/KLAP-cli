@@ -33,6 +33,34 @@ func TestAssignmentJSONOmitsRawPayload(t *testing.T) {
 	}
 }
 
+func TestNoticeJSONOmitsRawPayload(t *testing.T) {
+	registered := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	notice := Notice{
+		BoardNo:    "board",
+		MasterNo:   "master",
+		Title:      "정규화 제목",
+		Registered: &registered,
+		Raw: noticeItem{
+			Content:  "raw-secret-content",
+			UserName: "raw-secret-author",
+		},
+	}
+	payload, err := json.Marshal(notice)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret")) || bytes.Contains(payload, []byte(`"Raw"`)) {
+		t.Fatalf("Notice JSON contains Raw payload: %s", payload)
+	}
+	var roundTrip Notice
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.BoardNo != notice.BoardNo || roundTrip.MasterNo != notice.MasterNo || roundTrip.Title != notice.Title || roundTrip.Registered == nil || !roundTrip.Registered.Equal(registered) {
+		t.Fatalf("Notice round trip = %+v", roundTrip)
+	}
+}
+
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
 		name string

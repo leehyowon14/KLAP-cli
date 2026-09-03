@@ -1718,8 +1718,7 @@ func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]Not
 		return nil, err
 	}
 
-	cacheKey := courseResourceListCacheKey("notice", studentID, term.Value, courses)
-	legacyCacheKey := listCacheKey("notice", studentID, term.Value, opts.CourseFilter)
+	cacheKey := courseResourceListCacheKeyVersion("notice", "v2", studentID, term.Value, courses)
 	if !opts.Refresh {
 		var cached []NoticeRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
@@ -1729,17 +1728,6 @@ func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]Not
 					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
 				}
 				return rows, nil
-			}
-		}
-		if legacyCacheKey != cacheKey {
-			cached = nil
-			if _, ok, cacheErr := s.cacheStore.Get(legacyCacheKey, &cached); cacheErr == nil && ok {
-				rows, _, migrationErr := normalizeCachedNoticeRows(cached, term)
-				allowEmpty := strings.TrimSpace(opts.CourseFilter) == ""
-				if migrationErr == nil && resourceIDsMatchSelected(noticeRowIDs(rows), "notice", 2, courses, allowEmpty) {
-					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
-					return rows, nil
-				}
 			}
 		}
 	}

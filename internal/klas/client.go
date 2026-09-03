@@ -70,7 +70,7 @@ type Notice struct {
 	Top        bool
 	ReadCount  string
 	FileCount  string
-	Raw        noticeItem
+	Raw        noticeItem `json:"-"`
 }
 
 type TimetableEntry struct {
@@ -328,7 +328,7 @@ type NoticeDetail struct {
 	Top         bool
 	ReadCount   string
 	Attachment  string
-	Raw         noticeDetailResponse
+	Raw         noticeDetailResponse `json:"-"`
 }
 
 type fieldError struct {

@@ -1301,6 +1301,15 @@ func TestNoticeLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
 	}
 }
 
+func TestNoticeCacheVersionMissesRawLegacySchema(t *testing.T) {
+	courses := []selectedCourse{{Index: 1, Course: klas.Course{Name: "A", Value: "course-a"}}}
+	legacyKey := courseResourceListCacheKey("notice", "20260001", "2026,1", courses)
+	currentKey := courseResourceListCacheKeyVersion("notice", "v2", "20260001", "2026,1", courses)
+	if legacyKey == currentKey || !strings.Contains(currentKey, "notice:v2:") {
+		t.Fatalf("notice cache keys = legacy %q, current %q", legacyKey, currentKey)
+	}
+}
+
 func TestParseLectureID(t *testing.T) {
 	courseIndex, contentID, err := ParseLectureID("7:content-123")
 	if err != nil {
