@@ -141,7 +141,7 @@ type GradeSummary struct {
 	DeletedCredits        int
 	GPA                   string
 	RetakeGPA             string
-	Raw                   gradeSummaryItem
+	Raw                   gradeSummaryItem `json:"-"`
 }
 
 type GradeTerm struct {
@@ -149,7 +149,7 @@ type GradeTerm struct {
 	Hakgi   string
 	Label   string
 	Courses []GradeCourse
-	Raw     gradeTermItem
+	Raw     gradeTermItem `json:"-"`
 }
 
 type GradeCourse struct {
@@ -165,7 +165,7 @@ type GradeCourse struct {
 	GradePublic   bool
 	TermCheckOpen bool
 	TermFinished  bool
-	Raw           gradeCourseItem
+	Raw           gradeCourseItem `json:"-"`
 }
 
 type Rank struct {

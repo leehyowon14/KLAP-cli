@@ -129,6 +129,42 @@ func TestAttendanceJSONOmitsRawPayload(t *testing.T) {
 	}
 }
 
+func TestGradeReportJSONOmitsRawPayload(t *testing.T) {
+	report := GradeReport{
+		Summary: GradeSummary{
+			EarnedCredits: 18,
+			GPA:           "4.0",
+			Raw:           gradeSummaryItem{GPA: 1.23},
+		},
+		Terms: []GradeTerm{{
+			Year:  "2026",
+			Hakgi: "1",
+			Label: "2026-1",
+			Raw:   gradeTermItem{HakgiOrder: "raw-secret-term"},
+			Courses: []GradeCourse{{
+				Name:       "정규화 과목",
+				CourseCode: "COURSE-1",
+				Grade:      "A0",
+				Raw:        gradeCourseItem{Name: "raw-secret-course"},
+			}},
+		}},
+	}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if bytes.Contains(payload, []byte("raw-secret")) || bytes.Contains(payload, []byte(`"Raw"`)) {
+		t.Fatalf("GradeReport JSON contains Raw payload: %s", payload)
+	}
+	var roundTrip GradeReport
+	if err := json.Unmarshal(payload, &roundTrip); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if roundTrip.Summary.EarnedCredits != report.Summary.EarnedCredits || roundTrip.Summary.GPA != report.Summary.GPA || len(roundTrip.Terms) != 1 || roundTrip.Terms[0].Label != report.Terms[0].Label || len(roundTrip.Terms[0].Courses) != 1 || roundTrip.Terms[0].Courses[0].Grade != "A0" {
+		t.Fatalf("GradeReport round trip = %+v", roundTrip)
+	}
+}
+
 func TestLooksLikeLoginHTML(t *testing.T) {
 	cases := []struct {
 		name string

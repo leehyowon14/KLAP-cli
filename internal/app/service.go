@@ -2035,7 +2035,7 @@ func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, er
 		return GradeResult{}, err
 	}
 
-	cacheKey := listCacheKey("grade", studentID, termValue, "")
+	cacheKey := listCacheKeyVersion("grade", "v2", studentID, termValue, "")
 	if !opts.Refresh {
 		var cached GradeResult
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
