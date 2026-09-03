@@ -1715,7 +1715,13 @@ func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]Not
 	if !opts.Refresh {
 		var cached []NoticeRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
-			return cached, nil
+			rows, migrated, migrationErr := normalizeCachedNoticeRows(cached, term)
+			if migrationErr == nil {
+				if migrated {
+					_ = s.cacheStore.Set(cacheKey, listCacheTTL(), rows)
+				}
+				return rows, nil
+			}
 		}
 	}
 
@@ -1736,7 +1742,14 @@ func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]Not
 			return nil, err
 		}
 		for _, notice := range notices {
-			id := NoticeID(selectedCourse.Index, notice.BoardNo, notice.MasterNo)
+			ref, err := NewCourseRef(term.Value, selectedCourse.Course)
+			if err != nil {
+				return nil, err
+			}
+			id, err := StableNoticeID(ref, notice.BoardNo, notice.MasterNo)
+			if err != nil {
+				return nil, err
+			}
 			rows = append(rows, NoticeRow{
 				ID:         id,
 				TermValue:  term.Value,
@@ -1774,20 +1787,36 @@ func (s *Service) NoticeDetail(ctx context.Context, id string, user UserOption) 
 	if err != nil {
 		return NoticeDetailResult{}, err
 	}
-	client, term, err := s.latestTerm(ctx, studentID)
+	client, err := s.authenticatedClient(ctx, studentID)
 	if err != nil {
 		return NoticeDetailResult{}, err
 	}
 
-	courseIndex, boardNo, masterNo, err := ParseNoticeID(id)
+	locator, boardNo, masterNo, err := parseNoticeResourceID(id)
 	if err != nil {
 		return NoticeDetailResult{}, err
 	}
-	if courseIndex < 1 || courseIndex > len(term.Courses) {
-		return NoticeDetailResult{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", courseIndex)
+	var term klas.Term
+	if locator.Stable {
+		term, client, err = s.termForSyllabus(ctx, studentID, client, locator.Ref.TermValue)
+	} else {
+		term, client, err = s.selectedTerm(ctx, studentID, client)
 	}
-
-	course := term.Courses[courseIndex-1]
+	if err != nil {
+		return NoticeDetailResult{}, err
+	}
+	course, err := resolveResourceCourse(term, locator)
+	if err != nil {
+		return NoticeDetailResult{}, err
+	}
+	ref, err := NewCourseRef(term.Value, course)
+	if err != nil {
+		return NoticeDetailResult{}, err
+	}
+	canonicalID, err := StableNoticeID(ref, boardNo, masterNo)
+	if err != nil {
+		return NoticeDetailResult{}, err
+	}
 	detail, err := client.NoticeDetail(ctx, term.Value, course, boardNo, masterNo)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
@@ -1804,7 +1833,7 @@ func (s *Service) NoticeDetail(ctx context.Context, id string, user UserOption) 
 	}
 
 	return NoticeDetailResult{
-		ID:         id,
+		ID:         canonicalID,
 		TermValue:  term.Value,
 		CourseName: course.Name,
 		DetailURL:  noticeDetailURL(term.Value, course, boardNo, masterNo),
@@ -5019,6 +5048,57 @@ func ParseAssignmentID(id string) (int, string, error) {
 
 func NoticeID(courseIndex int, boardNo string, masterNo string) string {
 	return fmt.Sprintf("%d:%s:%s", courseIndex, strings.TrimSpace(boardNo), strings.TrimSpace(masterNo))
+}
+
+func StableNoticeID(ref CourseRef, boardNo string, masterNo string) (string, error) {
+	return stableCourseResourceID("notice", ref, boardNo, masterNo)
+}
+
+func parseNoticeResourceID(id string) (courseResourceLocator, string, string, error) {
+	ref, remoteParts, stable, err := parseStableCourseResourceID("notice", id, 2)
+	if err != nil {
+		return courseResourceLocator{}, "", "", err
+	}
+	if stable {
+		return courseResourceLocator{Ref: ref, Stable: true}, remoteParts[0], remoteParts[1], nil
+	}
+	courseIndex, boardNo, masterNo, err := ParseNoticeID(id)
+	if err != nil {
+		return courseResourceLocator{}, "", "", err
+	}
+	return courseResourceLocator{CourseIndex: courseIndex}, boardNo, masterNo, nil
+}
+
+func normalizeCachedNoticeRows(rows []NoticeRow, term klas.Term) ([]NoticeRow, bool, error) {
+	migrated := false
+	for index := range rows {
+		locator, boardNo, masterNo, err := parseNoticeResourceID(rows[index].ID)
+		if err != nil {
+			return nil, false, err
+		}
+		if locator.Stable {
+			if _, err := resolveResourceCourse(term, locator); err != nil {
+				return nil, false, err
+			}
+			continue
+		}
+		course, err := resolveLegacyCachedCourse(term, locator.CourseIndex, rows[index].CourseName)
+		if err != nil {
+			return nil, false, err
+		}
+		ref, err := NewCourseRef(term.Value, course)
+		if err != nil {
+			return nil, false, err
+		}
+		stableID, err := StableNoticeID(ref, boardNo, masterNo)
+		if err != nil {
+			return nil, false, err
+		}
+		rows[index].ID = stableID
+		rows[index].TermValue = term.Value
+		migrated = true
+	}
+	return rows, migrated, nil
 }
 
 func ParseNoticeID(id string) (int, string, string, error) {
