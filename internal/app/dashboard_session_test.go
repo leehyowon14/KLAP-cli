@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -27,6 +28,9 @@ func aggregateSessionFixture(t *testing.T) (*Service, *aggregateSessionCounts) {
 	})
 	t.Cleanup(func() { http.DefaultTransport = previous })
 	deps := testDependencies(t)
+	deps.Academic = &fakeAcademicSource{fetch: func(context.Context, string) (AcademicListResult, error) {
+		return AcademicListResult{}, errors.New("fixture academic section unavailable")
+	}}
 	deps.Accounts = currentAccountStub{current: func() (string, error) { counts.users++; return "student", nil }}
 	deps.Sessions = &fakeSessionStore{loadSession: func(context.Context, string) (klas.Session, error) { counts.sessions++; return klas.Session{}, nil }}
 	deps.NewKlasClient = func() (*klas.Client, error) { counts.clients++; return klas.NewClient() }

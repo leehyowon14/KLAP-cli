@@ -3,6 +3,7 @@ package testsupport
 
 import (
 	"context"
+	"github.com/leehyowon14/KLAP-cli/internal/academic"
 	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
@@ -38,6 +39,7 @@ func NewService(t *testing.T) *app.Service {
 		t.Fatal(err)
 	}
 	service, err := app.NewService(app.Dependencies{
+		Academic:          academic.NewClient(nil),
 		Media:             kwcommons.NewClient(nil),
 		AssignmentGateway: func(c *klas.Client) app.AssignmentGateway { return c },
 		Accounts:          store, Sessions: store, Settings: settingsStore, Cache: cacheStore, SyncState: syncStore,

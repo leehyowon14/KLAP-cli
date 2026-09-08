@@ -7,6 +7,7 @@ import (
 )
 
 type Service struct {
+	academic          AcademicSource
 	media             MediaResolver
 	requestSession    *requestSession
 	assignmentGateway func(*klas.Client) AssignmentGateway

@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"github.com/leehyowon14/KLAP-cli/internal/academic"
 	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
@@ -44,6 +45,7 @@ func newService(store *account.Store, factories serviceStoreFactories) (*app.Ser
 		return nil, fmt.Errorf("sync state store 초기화 실패: %w", err)
 	}
 	return app.NewService(app.Dependencies{
+		Academic:          academic.NewClient(nil),
 		Media:             kwcommons.NewClient(nil),
 		AssignmentGateway: func(c *klas.Client) app.AssignmentGateway { return c },
 		Accounts:          store,

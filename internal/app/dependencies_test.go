@@ -20,6 +20,10 @@ func testDependencies(t *testing.T) Dependencies {
 	t.Helper()
 	store := &account.Store{}
 	return Dependencies{
+		Academic: &fakeAcademicSource{fetch: func(context.Context, string) (AcademicListResult, error) {
+			t.Fatal("constructor fetched academic source")
+			return AcademicListResult{}, nil
+		}},
 		Media:             kwcommons.NewClient(nil),
 		AssignmentGateway: func(c *klas.Client) AssignmentGateway { return c },
 		Accounts:          store, Sessions: store, Settings: &settings.Store{}, Cache: &cache.Store{},
