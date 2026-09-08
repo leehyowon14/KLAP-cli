@@ -18,13 +18,13 @@ import (
 	"time"
 )
 
-func runConfig(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runConfig(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		settings, err := service.ConfigSettings()
 		if err != nil {
 			return err
 		}
-		printConfigSettings(settings)
+		r.printConfigSettings(settings)
 		return nil
 	}
 
@@ -34,7 +34,7 @@ func runConfig(ctx context.Context, service *app.Service, args []string) error {
 		if err != nil {
 			return err
 		}
-		printConfigSettings(settings)
+		r.printConfigSettings(settings)
 		return nil
 	case "set":
 		if len(args) < 3 {
@@ -44,7 +44,7 @@ func runConfig(ctx context.Context, service *app.Service, args []string) error {
 		if err != nil {
 			return err
 		}
-		printConfigSettings(settings)
+		r.printConfigSettings(settings)
 		return nil
 	case "reset":
 		if len(args) != 1 {
@@ -54,18 +54,18 @@ func runConfig(ctx context.Context, service *app.Service, args []string) error {
 		if err != nil {
 			return err
 		}
-		printConfigSettings(settings)
+		r.printConfigSettings(settings)
 		return nil
 	case "reminder":
-		return runConfigReminder(ctx, service, args[1:])
+		return r.runConfigReminder(ctx, service, args[1:])
 	case "download":
-		return runConfigDownload(ctx, service, args[1:])
+		return r.runConfigDownload(ctx, service, args[1:])
 	default:
 		return fmt.Errorf("unknown config command: %s", args[0])
 	}
 }
 
-func runConfigReminder(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runConfigReminder(ctx context.Context, service *app.Service, args []string) error {
 	_ = ctx
 
 	if len(args) == 0 {
@@ -73,7 +73,7 @@ func runConfigReminder(ctx context.Context, service *app.Service, args []string)
 		if err != nil {
 			return err
 		}
-		printReminderSettings(settings)
+		r.printReminderSettings(settings)
 		return nil
 	}
 
@@ -86,21 +86,21 @@ func runConfigReminder(ctx context.Context, service *app.Service, args []string)
 		if err != nil {
 			return err
 		}
-		printReminderSettings(settings)
+		r.printReminderSettings(settings)
 		return nil
 	}
 
 	return errors.New(`usage: klap config reminder [--name "Kwangwoon Univ." [--use-existing-list]]`)
 }
 
-func runConfigDownload(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runConfigDownload(ctx context.Context, service *app.Service, args []string) error {
 	_ = ctx
 	if len(args) == 0 {
 		settings, err := service.DownloadSettings()
 		if err != nil {
 			return err
 		}
-		printDownloadSettings(settings)
+		r.printDownloadSettings(settings)
 		return nil
 	}
 
@@ -115,7 +115,7 @@ func runConfigDownload(ctx context.Context, service *app.Service, args []string)
 	if err != nil {
 		return err
 	}
-	printDownloadSettings(settings)
+	r.printDownloadSettings(settings)
 	return nil
 }
 
@@ -1591,30 +1591,30 @@ func truncateForLine(value string, max int) string {
 	return string(runes[:max-3]) + "..."
 }
 
-func printReminderSettings(settings app.ReminderSettings) {
-	fmt.Printf("리마인더 목록: %s\n", settings.ListName)
-	fmt.Printf("기존 목록만 사용: %s\n", yesNo(settings.UseExistingList))
-	fmt.Printf("알림: 마감 %d분 전\n", settings.AlarmBeforeMin)
+func (r Runner) printReminderSettings(settings app.ReminderSettings) {
+	_, _ = fmt.Fprintf(r.Out, "리마인더 목록: %s\n", settings.ListName)
+	_, _ = fmt.Fprintf(r.Out, "기존 목록만 사용: %s\n", yesNo(settings.UseExistingList))
+	_, _ = fmt.Fprintf(r.Out, "알림: 마감 %d분 전\n", settings.AlarmBeforeMin)
 }
 
-func printDownloadSettings(settings app.DownloadSettings) {
-	fmt.Printf("다운로드 폴더: %s\n", settings.Dir)
-	fmt.Printf("동시 다운로드: %d\n", settings.Concurrency)
-	fmt.Printf("절전 방지: %s\n", yesNo(settings.Caffeinate))
-	fmt.Printf("부분 파일 보존: %s\n", yesNo(settings.KeepPartial))
+func (r Runner) printDownloadSettings(settings app.DownloadSettings) {
+	_, _ = fmt.Fprintf(r.Out, "다운로드 폴더: %s\n", settings.Dir)
+	_, _ = fmt.Fprintf(r.Out, "동시 다운로드: %d\n", settings.Concurrency)
+	_, _ = fmt.Fprintf(r.Out, "절전 방지: %s\n", yesNo(settings.Caffeinate))
+	_, _ = fmt.Fprintf(r.Out, "부분 파일 보존: %s\n", yesNo(settings.KeepPartial))
 }
 
-func printConfigSettings(settings app.ConfigSettings) {
-	fmt.Println("설정")
-	fmt.Printf("term: %s\n", emptyFallback(settings.Term.Value, "자동"))
-	fmt.Printf("reminder.name: %s\n", settings.Reminder.ListName)
-	fmt.Printf("reminder.use-existing-list: %s\n", yesNo(settings.Reminder.UseExistingList))
-	fmt.Printf("reminder.alarm-before-min: %d\n", settings.Reminder.AlarmBeforeMin)
-	fmt.Printf("download.dir: %s\n", settings.Download.Dir)
-	fmt.Printf("download.concurrency: %d\n", settings.Download.Concurrency)
-	fmt.Printf("download.caffeinate: %s\n", yesNo(settings.Download.Caffeinate))
-	fmt.Printf("download.keep-partial: %s\n", yesNo(settings.Download.KeepPartial))
-	fmt.Printf("transcript.concurrency: %d\n", settings.Transcript.Concurrency)
+func (r Runner) printConfigSettings(settings app.ConfigSettings) {
+	_, _ = fmt.Fprintln(r.Out, "설정")
+	_, _ = fmt.Fprintf(r.Out, "term: %s\n", emptyFallback(settings.Term.Value, "자동"))
+	_, _ = fmt.Fprintf(r.Out, "reminder.name: %s\n", settings.Reminder.ListName)
+	_, _ = fmt.Fprintf(r.Out, "reminder.use-existing-list: %s\n", yesNo(settings.Reminder.UseExistingList))
+	_, _ = fmt.Fprintf(r.Out, "reminder.alarm-before-min: %d\n", settings.Reminder.AlarmBeforeMin)
+	_, _ = fmt.Fprintf(r.Out, "download.dir: %s\n", settings.Download.Dir)
+	_, _ = fmt.Fprintf(r.Out, "download.concurrency: %d\n", settings.Download.Concurrency)
+	_, _ = fmt.Fprintf(r.Out, "download.caffeinate: %s\n", yesNo(settings.Download.Caffeinate))
+	_, _ = fmt.Fprintf(r.Out, "download.keep-partial: %s\n", yesNo(settings.Download.KeepPartial))
+	_, _ = fmt.Fprintf(r.Out, "transcript.concurrency: %d\n", settings.Transcript.Concurrency)
 }
 
 func printDashboard(result app.DashboardResult) {
