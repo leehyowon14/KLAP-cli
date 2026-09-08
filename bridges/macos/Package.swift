@@ -14,7 +14,9 @@ let package = Package(
         .executable(name: "CategoryBridge", targets: ["CategoryBridge"])
     ],
     targets: [
-        .executableTarget(name: "TranscriptBridge"),
+        .target(name: "SpeechCore"),
+        .executableTarget(name: "TranscriptBridge", dependencies: ["SpeechCore"]),
+        .testTarget(name: "SpeechCoreTests", dependencies: ["SpeechCore"]),
         // Preserve the distributed EventKit scripts' Swift 5 language mode.
         .target(name: "EventKitCore", swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(name: "ReminderBridge", dependencies: ["EventKitCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
