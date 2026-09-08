@@ -563,7 +563,7 @@ func (r Runner) runRank(ctx context.Context, service *app.Service, args []string
 	return nil
 }
 
-func runEvaluation(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runEvaluation(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap evaluation <list|submit>")
 	}
@@ -578,7 +578,7 @@ func runEvaluation(ctx context.Context, service *app.Service, args []string) err
 		if err != nil {
 			return err
 		}
-		printEvaluationList(result)
+		r.printEvaluationList(result)
 		return nil
 	case "submit":
 		opts, err := evaluationSubmitOptions(args[1:])
@@ -589,7 +589,7 @@ func runEvaluation(ctx context.Context, service *app.Service, args []string) err
 		if err != nil {
 			return err
 		}
-		printEvaluationSubmitResult(result)
+		r.printEvaluationSubmitResult(result)
 		return nil
 	default:
 		return fmt.Errorf("unknown evaluation command: %s", args[0])
@@ -2227,13 +2227,13 @@ func (r Runner) printRank(result app.RankResult) {
 	}
 }
 
-func printEvaluationList(result app.EvaluationListResult) {
-	fmt.Println("수업평가")
+func (r Runner) printEvaluationList(result app.EvaluationListResult) {
+	_, _ = fmt.Fprintln(r.Out, "수업평가")
 	if !result.Term.TermEnabled {
-		fmt.Println("수업평가 기간이 아닙니다")
+		_, _ = fmt.Fprintln(r.Out, "수업평가 기간이 아닙니다")
 		return
 	}
-	fmt.Printf("%s (%s) | %s | %s ~ %s\n",
+	_, _ = fmt.Fprintf(r.Out, "%s (%s) | %s | %s ~ %s\n",
 		emptyFallback(result.Term.Label, result.Term.Value),
 		emptyFallback(result.Term.Value, "-"),
 		emptyFallback(result.Term.JudgeName, result.Term.JudgeChasu),
@@ -2241,14 +2241,14 @@ func printEvaluationList(result app.EvaluationListResult) {
 		formatCompactDate(result.Term.ToDate),
 	)
 	if len(result.Rows) == 0 {
-		fmt.Println("수업평가 과목이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "수업평가 과목이 없습니다")
 		return
 	}
 
-	fmt.Println("번호 | 상태 | 공학인증 | 과목 | 교수 | 이수/학점")
+	_, _ = fmt.Fprintln(r.Out, "번호 | 상태 | 공학인증 | 과목 | 교수 | 이수/학점")
 	for _, row := range result.Rows {
 		course := row.Course
-		fmt.Printf("%d. %s | %s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%d. %s | %s | %s | %s | %s\n",
 			row.Index,
 			evaluationStatusLabel(course),
 			yesNo(course.Engineering),
@@ -2259,19 +2259,19 @@ func printEvaluationList(result app.EvaluationListResult) {
 	}
 }
 
-func printEvaluationSubmitResult(result app.EvaluationSubmitResult) {
+func (r Runner) printEvaluationSubmitResult(result app.EvaluationSubmitResult) {
 	if !result.Term.TermEnabled {
-		fmt.Println("수업평가 기간이 아닙니다")
+		_, _ = fmt.Fprintln(r.Out, "수업평가 기간이 아닙니다")
 		return
 	}
 	if !result.Submitted {
-		fmt.Println("수업평가 미리보기")
-		fmt.Println("실제 제출하려면 같은 명령에 --yes를 붙이세요.")
+		_, _ = fmt.Fprintln(r.Out, "수업평가 미리보기")
+		_, _ = fmt.Fprintln(r.Out, "실제 제출하려면 같은 명령에 --yes를 붙이세요.")
 	} else {
-		fmt.Println("수업평가 제출 결과")
+		_, _ = fmt.Fprintln(r.Out, "수업평가 제출 결과")
 	}
 	if len(result.Items) == 0 {
-		fmt.Println("처리할 수업평가 과목이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "처리할 수업평가 과목이 없습니다")
 		return
 	}
 
@@ -2284,13 +2284,13 @@ func printEvaluationSubmitResult(result app.EvaluationSubmitResult) {
 		switch {
 		case item.Err != nil:
 			failed++
-			fmt.Printf("실패: %s (%v)\n", label, item.Err)
+			_, _ = fmt.Fprintf(r.Out, "실패: %s (%v)\n", label, item.Err)
 		case item.Skipped:
 			skipped++
-			fmt.Printf("건너뜀: %s (%s)\n", label, item.Reason)
+			_, _ = fmt.Fprintf(r.Out, "건너뜀: %s (%s)\n", label, item.Reason)
 		case result.Submitted:
 			done++
-			fmt.Printf("완료: %s\n", label)
+			_, _ = fmt.Fprintf(r.Out, "완료: %s\n", label)
 		default:
 			ready++
 			parts := []string{
@@ -2301,14 +2301,14 @@ func printEvaluationSubmitResult(result app.EvaluationSubmitResult) {
 			if item.Row.Course.Engineering {
 				parts = append(parts, "공학인증문항=제외")
 			}
-			fmt.Printf("제출 가능: %s | %s\n", label, strings.Join(parts, " | "))
+			_, _ = fmt.Fprintf(r.Out, "제출 가능: %s | %s\n", label, strings.Join(parts, " | "))
 		}
 	}
 	if result.Submitted {
-		fmt.Printf("요약: 완료 %d, 건너뜀 %d, 실패 %d\n", done, skipped, failed)
+		_, _ = fmt.Fprintf(r.Out, "요약: 완료 %d, 건너뜀 %d, 실패 %d\n", done, skipped, failed)
 		return
 	}
-	fmt.Printf("요약: 제출 가능 %d, 건너뜀 %d, 실패 %d\n", ready, skipped, failed)
+	_, _ = fmt.Fprintf(r.Out, "요약: 제출 가능 %d, 건너뜀 %d, 실패 %d\n", ready, skipped, failed)
 }
 
 func formatClassRank(row klas.Rank) string {
