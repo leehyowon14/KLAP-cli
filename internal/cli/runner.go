@@ -74,7 +74,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "evaluation":
 		return r.runEvaluation(ctx, service, args[1:])
 	case "syllabus":
-		return runSyllabus(ctx, service, args[1:])
+		return r.runSyllabus(ctx, service, args[1:])
 	case "room":
 		return runRoom(ctx, service, args[1:])
 	case "lecture":

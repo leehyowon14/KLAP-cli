@@ -596,7 +596,7 @@ func (r Runner) runEvaluation(ctx context.Context, service *app.Service, args []
 	}
 }
 
-func runSyllabus(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runSyllabus(ctx context.Context, service *app.Service, args []string) error {
 	opts, err := syllabusOptions(args)
 	if err != nil {
 		return err
@@ -605,7 +605,7 @@ func runSyllabus(ctx context.Context, service *app.Service, args []string) error
 	if err != nil {
 		return err
 	}
-	printSyllabus(result)
+	r.printSyllabus(result)
 	return nil
 }
 
@@ -2443,52 +2443,52 @@ func numericString(value string) bool {
 	return value != ""
 }
 
-func printSyllabus(result app.SyllabusResult) {
+func (r Runner) printSyllabus(result app.SyllabusResult) {
 	syllabus := result.Syllabus
-	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
-	fmt.Printf("과목: %s\n", emptyFallback(syllabus.FullName, emptyFallback(syllabus.KoreanName, result.Course.Name)))
-	fmt.Printf("학정번호: %s\n", emptyFallback(syllabus.CourseCode, "확인 필요"))
-	fmt.Printf("과목ID: %s\n", result.SubjectID)
+	_, _ = fmt.Fprintf(r.Out, "%s (%s)\n", result.Term.Label, result.Term.Value)
+	_, _ = fmt.Fprintf(r.Out, "과목: %s\n", emptyFallback(syllabus.FullName, emptyFallback(syllabus.KoreanName, result.Course.Name)))
+	_, _ = fmt.Fprintf(r.Out, "학정번호: %s\n", emptyFallback(syllabus.CourseCode, "확인 필요"))
+	_, _ = fmt.Fprintf(r.Out, "과목ID: %s\n", result.SubjectID)
 	if syllabus.CourseType != "" || syllabus.Credits != "" {
-		fmt.Printf("이수/학점: %s / %s\n", emptyFallback(syllabus.CourseType, "-"), emptyFallback(syllabus.Credits, "-"))
+		_, _ = fmt.Fprintf(r.Out, "이수/학점: %s / %s\n", emptyFallback(syllabus.CourseType, "-"), emptyFallback(syllabus.Credits, "-"))
 	}
 	if syllabus.Professor != "" {
 		professor := syllabus.Professor
 		if syllabus.ProfessorTitle != "" {
 			professor += " (" + syllabus.ProfessorTitle + ")"
 		}
-		fmt.Printf("담당교수: %s\n", professor)
+		_, _ = fmt.Fprintf(r.Out, "담당교수: %s\n", professor)
 	}
 	if len(syllabus.Times) > 0 {
-		fmt.Printf("강의시간: %s\n", formatSyllabusTimes(syllabus.Times))
+		_, _ = fmt.Fprintf(r.Out, "강의시간: %s\n", formatSyllabusTimes(syllabus.Times))
 	}
 	if syllabus.Operation != "" {
-		fmt.Printf("운영방식: %s\n", syllabus.Operation)
+		_, _ = fmt.Fprintf(r.Out, "운영방식: %s\n", syllabus.Operation)
 	}
 	if syllabus.Competency != "" {
-		fmt.Printf("대표역량: %s\n", syllabus.Competency)
+		_, _ = fmt.Fprintf(r.Out, "대표역량: %s\n", syllabus.Competency)
 	}
 	if syllabus.Summary != "" {
-		fmt.Printf("\n개요\n%s\n", syllabus.Summary)
+		_, _ = fmt.Fprintf(r.Out, "\n개요\n%s\n", syllabus.Summary)
 	}
 	if syllabus.Purpose != "" {
-		fmt.Printf("\n학습목표\n%s\n", syllabus.Purpose)
+		_, _ = fmt.Fprintf(r.Out, "\n학습목표\n%s\n", syllabus.Purpose)
 	}
 	if syllabus.Outcome != "" {
-		fmt.Printf("\n학습성과\n%s\n", syllabus.Outcome)
+		_, _ = fmt.Fprintf(r.Out, "\n학습성과\n%s\n", syllabus.Outcome)
 	}
 	if syllabus.BookName != "" {
-		fmt.Printf("\n교재: %s\n", syllabus.BookName)
+		_, _ = fmt.Fprintf(r.Out, "\n교재: %s\n", syllabus.BookName)
 	}
-	fmt.Printf("\n평가: %s\n", formatSyllabusEvaluation(syllabus.Evaluation))
+	_, _ = fmt.Fprintf(r.Out, "\n평가: %s\n", formatSyllabusEvaluation(syllabus.Evaluation))
 	if len(syllabus.Schedule) > 0 {
-		fmt.Println("\n주차별 계획")
+		_, _ = fmt.Fprintln(r.Out, "\n주차별 계획")
 		for _, week := range syllabus.Schedule {
-			fmt.Printf("  %d주차 | %s", week.Week, strings.ReplaceAll(week.Topic, "\n", " / "))
+			_, _ = fmt.Fprintf(r.Out, "  %d주차 | %s", week.Week, strings.ReplaceAll(week.Topic, "\n", " / "))
 			if week.SubNote != "" {
-				fmt.Printf(" | %s", strings.ReplaceAll(week.SubNote, "\n", " / "))
+				_, _ = fmt.Fprintf(r.Out, " | %s", strings.ReplaceAll(week.SubNote, "\n", " / "))
 			}
-			fmt.Println()
+			_, _ = fmt.Fprintln(r.Out)
 		}
 	}
 }
