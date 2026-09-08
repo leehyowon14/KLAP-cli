@@ -50,7 +50,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "search":
 		return r.runSearch(ctx, service, args[1:])
 	case "due":
-		return runDue(ctx, service, args[1:])
+		return r.runDue(ctx, service, args[1:])
 	case "cache":
 		return runCache(ctx, service, args[1:])
 	case "course":

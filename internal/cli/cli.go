@@ -276,7 +276,7 @@ func (r Runner) runSearch(ctx context.Context, service *app.Service, args []stri
 	return nil
 }
 
-func runDue(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runDue(ctx context.Context, service *app.Service, args []string) error {
 	opts, err := dueOptions(args)
 	if err != nil {
 		return err
@@ -285,7 +285,7 @@ func runDue(ctx context.Context, service *app.Service, args []string) error {
 	if err != nil {
 		return err
 	}
-	printDue(result)
+	r.printDue(result)
 	return nil
 }
 
@@ -1818,13 +1818,13 @@ func (r Runner) printSearch(result app.SearchResult) {
 	}
 }
 
-func printDue(result app.DueResult) {
-	fmt.Printf("데드라인: %s ~ %s\n",
+func (r Runner) printDue(result app.DueResult) {
+	_, _ = fmt.Fprintf(r.Out, "데드라인: %s ~ %s\n",
 		result.From.Format("2006-01-02"),
 		result.Until.Format("2006-01-02"),
 	)
 	if len(result.Items) == 0 {
-		fmt.Println("예정된 데드라인이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "예정된 데드라인이 없습니다")
 	}
 	for _, item := range result.Items {
 		course := ""
@@ -1839,7 +1839,7 @@ func printDue(result app.DueResult) {
 		if item.ID != "" {
 			id = " | " + item.ID
 		}
-		fmt.Printf("%s | %s%s | %s%s%s\n",
+		_, _ = fmt.Fprintf(r.Out, "%s | %s%s | %s%s%s\n",
 			item.DueAt.Format("2006-01-02 15:04"),
 			item.Kind,
 			id,
@@ -1849,9 +1849,9 @@ func printDue(result app.DueResult) {
 		)
 	}
 	if len(result.Errors) > 0 {
-		fmt.Println("\n확인 실패")
+		_, _ = fmt.Fprintln(r.Out, "\n확인 실패")
 		for _, sectionError := range result.Errors {
-			fmt.Printf("  %s: %v\n", sectionError.Section, sectionError.Err)
+			_, _ = fmt.Fprintf(r.Out, "  %s: %v\n", sectionError.Section, sectionError.Err)
 		}
 	}
 }
