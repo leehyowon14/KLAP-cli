@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -114,7 +113,7 @@ func (c *Client) EvaluationStudent(ctx context.Context) (evaluationStudentItem, 
 		return evaluationStudentItem{}, err
 	}
 	var item evaluationStudentItem
-	if err := json.Unmarshal(body, &item); err != nil {
+	if err := decodeResponseJSON(body, &item); err != nil {
 		return evaluationStudentItem{}, fmt.Errorf("수업평가 학적 응답 파싱 실패: %w", err)
 	}
 	return item, nil
@@ -128,7 +127,7 @@ func (c *Client) EvaluationCourses(ctx context.Context, term EvaluationTerm) ([]
 	}
 
 	var response []evaluationCourseItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("수업평가 과목 응답 파싱 실패: %w", err)
 	}
 	courses := make([]EvaluationCourse, 0, len(response))
@@ -293,11 +292,11 @@ func (c *Client) checkEvaluationTarget(ctx context.Context, payload map[string]a
 		return err
 	}
 	var response []map[string]any
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return fmt.Errorf("수업평가 대상자 응답 파싱 실패: %w", err)
 	}
 	if len(response) == 0 {
-		return errors.New("수업평가 대상자가 아닙니다")
+		return &Error{Kind: ErrorRemoteBusiness, Err: errors.New("수업평가 대상자가 아닙니다")}
 	}
 	return nil
 }
@@ -311,10 +310,10 @@ func (c *Client) evaluationMap(ctx context.Context, path string, payload map[str
 		if allowEmpty {
 			return map[string]any{}, nil
 		}
-		return nil, errors.New("빈 응답입니다")
+		return nil, schemaError(errors.New("빈 응답입니다"))
 	}
 	var response map[string]any
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, err
 	}
 	return response, nil
@@ -330,10 +329,10 @@ func (c *Client) evaluationString(ctx context.Context, path string, payload map[
 		if allowEmpty {
 			return "", nil
 		}
-		return "", errors.New("빈 응답입니다")
+		return "", schemaError(errors.New("빈 응답입니다"))
 	}
 	var text string
-	if err := json.Unmarshal(body, &text); err == nil {
+	if err := decodeResponseJSON(body, &text); err == nil {
 		return strings.TrimSpace(text), nil
 	}
 	return strings.Trim(trimmed, `"`), nil
@@ -346,12 +345,12 @@ func parseEvaluationTerm(body []byte) (evaluationTermItem, bool, error) {
 	}
 
 	var item evaluationTermItem
-	if err := json.Unmarshal(body, &item); err == nil && strings.TrimSpace(item.ThisYear+item.Hakgi+item.JudgeChasu) != "" {
+	if err := decodeResponseJSON(body, &item); err == nil && strings.TrimSpace(item.ThisYear+item.Hakgi+item.JudgeChasu) != "" {
 		return item, true, nil
 	}
 
 	var items []evaluationTermItem
-	if err := json.Unmarshal(body, &items); err != nil {
+	if err := decodeResponseJSON(body, &items); err != nil {
 		return evaluationTermItem{}, false, fmt.Errorf("수업평가 기간 응답 파싱 실패: %w", err)
 	}
 	switch len(items) {
@@ -360,7 +359,7 @@ func parseEvaluationTerm(body []byte) (evaluationTermItem, bool, error) {
 	case 1:
 		return items[0], true, nil
 	default:
-		return evaluationTermItem{}, false, errors.New("수업평가 기간이 중복으로 내려왔습니다")
+		return evaluationTermItem{}, false, schemaError(errors.New("수업평가 기간이 중복으로 내려왔습니다"))
 	}
 }
 
