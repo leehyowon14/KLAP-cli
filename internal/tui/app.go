@@ -1153,10 +1153,11 @@ func copySyncDecisions(source map[string]app.SyncDecision) map[string]app.SyncDe
 
 func (m model) syncDashboard(decisions map[string]app.SyncDecision) tea.Cmd {
 	return func() tea.Msg {
-		assignments, assignmentErr := m.service.SyncAssignmentReminders(m.ctx, app.AssignmentListOptions{SyncDecisions: decisions})
-		lectures, lectureErr := m.service.SyncLectureReminders(m.ctx, app.LectureListOptions{SyncDecisions: decisions})
-		academic, academicErr := m.service.SyncAcademicCalendar(m.ctx, app.AcademicListOptions{SyncDecisions: decisions})
-		timetable, timetableErr := m.service.SyncTimetableCalendar(m.ctx, app.TimetableOptions{SyncDecisions: decisions})
+		result := m.service.SyncDashboard(m.ctx, app.DashboardSyncOptions{Decisions: decisions})
+		assignments, assignmentErr := result.Assignments, result.AssignmentError
+		lectures, lectureErr := result.Lectures, result.LectureError
+		academic, academicErr := result.Academic, result.AcademicError
+		timetable, timetableErr := result.Timetable, result.TimetableError
 		conflicts := syncConflictsFromErrors(assignmentErr, lectureErr, academicErr, timetableErr)
 		if len(conflicts) > 0 {
 			return syncMsg{conflicts: conflicts}
