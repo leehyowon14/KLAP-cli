@@ -18,6 +18,11 @@ type AssignmentListOptions struct {
 	SyncDecisions map[string]SyncDecision
 }
 
+type AssignmentGateway interface {
+	Assignments(context.Context, string, klas.Course) ([]klas.Assignment, error)
+	AssignmentDetail(context.Context, string, klas.Course, string) (klas.AssignmentDetail, error)
+}
+
 type AssignmentRow struct {
 	ID         string
 	LegacyID   string `json:"-"`
@@ -66,7 +71,7 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 
 	rows := make([]AssignmentRow, 0)
 	for _, selectedCourse := range courses {
-		assignments, err := client.Assignments(ctx, term.Value, selectedCourse.Course)
+		assignments, err := s.assignmentGateway(client).Assignments(ctx, term.Value, selectedCourse.Course)
 		if err != nil {
 			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
 			if refreshErr != nil {
@@ -74,7 +79,7 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 			}
 			if refreshed {
 				client = refreshedClient
-				assignments, err = client.Assignments(ctx, term.Value, selectedCourse.Course)
+				assignments, err = s.assignmentGateway(client).Assignments(ctx, term.Value, selectedCourse.Course)
 			}
 		}
 		if err != nil {
@@ -154,7 +159,7 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
-	detail, err := client.AssignmentDetail(ctx, term.Value, course, ordSeq)
+	detail, err := s.assignmentGateway(client).AssignmentDetail(ctx, term.Value, course, ordSeq)
 	if err != nil {
 		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
 		if refreshErr != nil {
@@ -162,14 +167,14 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 		}
 		if refreshed {
 			client = refreshedClient
-			detail, err = client.AssignmentDetail(ctx, term.Value, course, ordSeq)
+			detail, err = s.assignmentGateway(client).AssignmentDetail(ctx, term.Value, course, ordSeq)
 		}
 	}
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
 	if detail.DueAt == nil || detail.StartAt == nil {
-		assignments, listErr := client.Assignments(ctx, term.Value, course)
+		assignments, listErr := s.assignmentGateway(client).Assignments(ctx, term.Value, course)
 		if listErr == nil {
 			for _, assignment := range assignments {
 				if strings.TrimSpace(assignment.OrdSeq) != ordSeq {

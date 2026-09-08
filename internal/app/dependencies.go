@@ -37,17 +37,18 @@ type CacheStore interface {
 // Dependencies supplies the resources used by the application facade.
 // Construction does not access the filesystem, Keychain, network, or bridges.
 type Dependencies struct {
-	Accounts      AccountStore
-	Sessions      sessionStore
-	Settings      SettingsStore
-	Cache         CacheStore
-	SyncState     syncStateStore
-	NewKlasClient func() (*klas.Client, error)
-	Login         func(context.Context, *klas.Client, string, string) (klas.Session, error)
-	Reminder      ReminderSyncer
-	Calendar      CalendarSyncer
-	Categories    CategoryLister
-	Transcriber   Transcriber
+	AssignmentGateway func(*klas.Client) AssignmentGateway
+	Accounts          AccountStore
+	Sessions          sessionStore
+	Settings          SettingsStore
+	Cache             CacheStore
+	SyncState         syncStateStore
+	NewKlasClient     func() (*klas.Client, error)
+	Login             func(context.Context, *klas.Client, string, string) (klas.Session, error)
+	Reminder          ReminderSyncer
+	Calendar          CalendarSyncer
+	Categories        CategoryLister
+	Transcriber       Transcriber
 }
 
 func NewService(deps Dependencies) (*Service, error) {
@@ -59,6 +60,7 @@ func NewService(deps Dependencies) (*Service, error) {
 		{"settings", deps.Settings}, {"cache", deps.Cache},
 		{"sync state", deps.SyncState}, {"KLAS client factory", deps.NewKlasClient},
 		{"login", deps.Login},
+		{"assignment gateway", deps.AssignmentGateway},
 		{"transcript", deps.Transcriber},
 		{"category", deps.Categories},
 		{"calendar", deps.Calendar},
@@ -69,7 +71,8 @@ func NewService(deps Dependencies) (*Service, error) {
 		}
 	}
 	return &Service{
-		store: deps.Accounts, sessions: deps.Sessions, settingsStore: deps.Settings,
+		assignmentGateway: deps.AssignmentGateway,
+		store:             deps.Accounts, sessions: deps.Sessions, settingsStore: deps.Settings,
 		cacheStore: deps.Cache, syncStateStore: deps.SyncState,
 		newKlasClient: deps.NewKlasClient, login: deps.Login,
 		reminderSyncer: deps.Reminder, calendarSyncer: deps.Calendar,

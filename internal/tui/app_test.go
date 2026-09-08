@@ -47,7 +47,8 @@ func newTUITestService(t *testing.T) *app.Service {
 		t.Fatal(err)
 	}
 	service, err := app.NewService(app.Dependencies{
-		Accounts: store, Sessions: store, Settings: settingsStore, Cache: cacheStore, SyncState: syncStore,
+		AssignmentGateway: func(c *klas.Client) app.AssignmentGateway { return c },
+		Accounts:          store, Sessions: store, Settings: settingsStore, Cache: cacheStore, SyncState: syncStore,
 		Reminder:      reminder.NewMacOSBridge("unused"),
 		Calendar:      klapcalendar.NewMacOSBridge("unused"),
 		Categories:    category.NewMacOSBridge("unused"),

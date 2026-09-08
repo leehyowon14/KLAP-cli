@@ -43,12 +43,13 @@ func newService(store *account.Store, factories serviceStoreFactories) (*app.Ser
 		return nil, fmt.Errorf("sync state store 초기화 실패: %w", err)
 	}
 	return app.NewService(app.Dependencies{
-		Accounts:      store,
-		Sessions:      store,
-		Settings:      settingsStore,
-		Cache:         cacheStore,
-		SyncState:     syncStateStore,
-		NewKlasClient: klas.NewClient,
+		AssignmentGateway: func(c *klas.Client) app.AssignmentGateway { return c },
+		Accounts:          store,
+		Sessions:          store,
+		Settings:          settingsStore,
+		Cache:             cacheStore,
+		SyncState:         syncStateStore,
+		NewKlasClient:     klas.NewClient,
 		Login: func(ctx context.Context, client *klas.Client, studentID string, password string) (klas.Session, error) {
 			return client.Login(ctx, studentID, password)
 		},

@@ -19,7 +19,8 @@ func testDependencies(t *testing.T) Dependencies {
 	t.Helper()
 	store := &account.Store{}
 	return Dependencies{
-		Accounts: store, Sessions: store, Settings: &settings.Store{}, Cache: &cache.Store{},
+		AssignmentGateway: func(c *klas.Client) AssignmentGateway { return c },
+		Accounts:          store, Sessions: store, Settings: &settings.Store{}, Cache: &cache.Store{},
 		SyncState:     &fakeSyncStateStore{},
 		Reminder:      reminder.NewMacOSBridge("unused"),
 		Calendar:      klapcalendar.NewMacOSBridge("unused"),
