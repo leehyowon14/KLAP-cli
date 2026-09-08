@@ -4,8 +4,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 )
+
+type schemaResponseTransport string
+
+func (body schemaResponseTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(body)))}, nil
+}
+
+func schemaResponseClient(body string) *Client {
+	return &Client{baseURL: &url.URL{Scheme: "https", Host: "klas.example"}, httpClient: &http.Client{Transport: schemaResponseTransport(body)}}
+}
 
 func TestErrorKindPreservesCauseAndMessage(t *testing.T) {
 	cause := errors.New("original message")

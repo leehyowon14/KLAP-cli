@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -87,7 +86,7 @@ func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Cours
 	}
 
 	var response []assignmentListItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("과제 목록 응답 파싱 실패: %w", err)
 	}
 
@@ -130,11 +129,11 @@ func (c *Client) AssignmentDetail(ctx context.Context, yearHakgi string, course 
 	}
 
 	var response assignmentDetailResponse
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return AssignmentDetail{}, fmt.Errorf("과제 상세 응답 파싱 실패: %w", err)
 	}
 	if strings.TrimSpace(response.Report.Title) == "" && strings.TrimSpace(response.Report.Contents) == "" {
-		return AssignmentDetail{}, errors.New("과제 상세 응답에 rpt 본문이 없습니다")
+		return AssignmentDetail{}, schemaError(errors.New("과제 상세 응답에 rpt 본문이 없습니다"))
 	}
 
 	return AssignmentDetail{
