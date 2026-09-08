@@ -1429,19 +1429,8 @@ func (m model) loadRoomAvailableResults(refresh bool) tea.Cmd {
 	days := m.selectedRoomDays()
 	periods := m.selectedRoomPeriods()
 	return func() tea.Msg {
-		results := make([]app.RoomAvailableResult, 0, len(days))
-		for index, weekday := range days {
-			result, err := m.service.RoomAvailable(m.ctx, app.RoomAvailableOptions{
-				Refresh: refresh && index == 0,
-				Day:     app.RoomWeekdayLabel(weekday),
-				Periods: periods,
-			})
-			if err != nil {
-				return roomAvailableResultsMsg{err: err}
-			}
-			results = append(results, result)
-		}
-		return roomAvailableResultsMsg{results: results}
+		results, err := m.service.RoomAvailabilityForDays(m.ctx, app.RoomAvailabilityForDaysOptions{Days: days, Periods: periods, Refresh: refresh})
+		return roomAvailableResultsMsg{results: results, err: err}
 	}
 }
 
