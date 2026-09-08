@@ -68,7 +68,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "attendance":
 		return r.runAttendance(ctx, service, args[1:])
 	case "grade":
-		return runGrade(ctx, service, args[1:])
+		return r.runGrade(ctx, service, args[1:])
 	case "rank":
 		return runRank(ctx, service, args[1:])
 	case "evaluation":

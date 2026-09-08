@@ -529,7 +529,7 @@ func (r Runner) runAttendance(ctx context.Context, service *app.Service, args []
 	return nil
 }
 
-func runGrade(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runGrade(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) > 0 && args[0] == "list" {
 		args = args[1:]
 	}
@@ -542,7 +542,7 @@ func runGrade(ctx context.Context, service *app.Service, args []string) error {
 	if err != nil {
 		return err
 	}
-	printGrade(result)
+	r.printGrade(result)
 	return nil
 }
 
@@ -2138,46 +2138,46 @@ func (r Runner) printCdpAttendance(result app.CdpAttendanceResult) {
 	_, _ = fmt.Fprintln(r.Out, "* 출석내역은 출석 후 약 일주일 후에 반영됩니다.")
 }
 
-func printGrade(result app.GradeResult) {
+func (r Runner) printGrade(result app.GradeResult) {
 	report := result.Report
 	summary := report.Summary
-	fmt.Println("성적")
+	_, _ = fmt.Fprintln(r.Out, "성적")
 	if strings.TrimSpace(result.TermValue) == "" {
-		fmt.Printf("신청 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
+		_, _ = fmt.Fprintf(r.Out, "신청 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
 			summary.AppliedCredits,
 			summary.MajorAppliedCredits,
 			summary.CultureAppliedCredits,
 			summary.EtcAppliedCredits,
 		)
-		fmt.Printf("취득 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
+		_, _ = fmt.Fprintf(r.Out, "취득 학점: 전체 %d / 전공 %d / 교양 %d / 기타 %d\n",
 			summary.EarnedCredits,
 			summary.MajorEarnedCredits,
 			summary.CultureEarnedCredits,
 			summary.EtcEarnedCredits,
 		)
-		fmt.Printf("평점: 학적부 기준 %s / 성적증명서 기준 %s\n",
+		_, _ = fmt.Fprintf(r.Out, "평점: 학적부 기준 %s / 성적증명서 기준 %s\n",
 			emptyFallback(summary.GPA, "-"),
 			emptyFallback(summary.RetakeGPA, "-"),
 		)
 		if summary.DeletedCredits > 0 {
-			fmt.Printf("삭제 학점: %d\n", summary.DeletedCredits)
+			_, _ = fmt.Fprintf(r.Out, "삭제 학점: %d\n", summary.DeletedCredits)
 		}
 	}
 
 	if len(report.Terms) == 0 {
-		fmt.Println("\n성적 내역이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "\n성적 내역이 없습니다")
 		return
 	}
 
 	showSummary := strings.TrimSpace(result.TermValue) == ""
 	for index, term := range report.Terms {
 		if showSummary || index > 0 {
-			fmt.Println()
+			_, _ = fmt.Fprintln(r.Out)
 		}
-		fmt.Printf("%s\n", emptyFallback(term.Label, "-"))
-		fmt.Println("과목 | 이수구분 | 학점 | 성적 | 재수강 | 학정번호")
+		_, _ = fmt.Fprintf(r.Out, "%s\n", emptyFallback(term.Label, "-"))
+		_, _ = fmt.Fprintln(r.Out, "과목 | 이수구분 | 학점 | 성적 | 재수강 | 학정번호")
 		for _, course := range term.Courses {
-			fmt.Printf("%s | %s | %d | %s | %s | %s\n",
+			_, _ = fmt.Fprintf(r.Out, "%s | %s | %d | %s | %s | %s\n",
 				course.Name,
 				emptyFallback(course.CourseType, "-"),
 				course.Credits,
