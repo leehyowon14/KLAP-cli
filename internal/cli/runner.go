@@ -48,7 +48,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "dashboard":
 		return r.runDashboard(ctx, service, args[1:])
 	case "search":
-		return runSearch(ctx, service, args[1:])
+		return r.runSearch(ctx, service, args[1:])
 	case "due":
 		return runDue(ctx, service, args[1:])
 	case "cache":

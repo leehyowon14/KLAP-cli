@@ -263,7 +263,7 @@ func (r Runner) runDashboard(ctx context.Context, service *app.Service, args []s
 	return nil
 }
 
-func runSearch(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runSearch(ctx context.Context, service *app.Service, args []string) error {
 	opts, err := searchOptions(args)
 	if err != nil {
 		return err
@@ -272,7 +272,7 @@ func runSearch(ctx context.Context, service *app.Service, args []string) error {
 	if err != nil {
 		return err
 	}
-	printSearch(result)
+	r.printSearch(result)
 	return nil
 }
 
@@ -1733,22 +1733,22 @@ func printCacheStatus(result app.CacheStatusResult) {
 	fmt.Printf("크기: %s\n", formatBytes(result.Bytes))
 }
 
-func printSearch(result app.SearchResult) {
-	fmt.Printf("검색: %s", result.Query)
+func (r Runner) printSearch(result app.SearchResult) {
+	_, _ = fmt.Fprintf(r.Out, "검색: %s", result.Query)
 	if result.Type != "" {
-		fmt.Printf(" (%s)", result.Type)
+		_, _ = fmt.Fprintf(r.Out, " (%s)", result.Type)
 	}
-	fmt.Println()
+	_, _ = fmt.Fprintln(r.Out)
 
 	total := len(result.Courses) + len(result.Assignments) + len(result.Notices) + len(result.Lectures) + len(result.Academics)
 	if total == 0 {
-		fmt.Println("검색 결과가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "검색 결과가 없습니다")
 	}
 
 	if len(result.Courses) > 0 {
-		fmt.Println("\n과목")
+		_, _ = fmt.Fprintln(r.Out, "\n과목")
 		for _, row := range result.Courses {
-			fmt.Printf("  %d. %s | %s (%s)\n",
+			_, _ = fmt.Fprintf(r.Out, "  %d. %s | %s (%s)\n",
 				row.Index,
 				emptyFallback(row.Course.Name, "-"),
 				row.Term.Label,
@@ -1758,13 +1758,13 @@ func printSearch(result app.SearchResult) {
 	}
 
 	if len(result.Assignments) > 0 {
-		fmt.Println("\n과제")
+		_, _ = fmt.Fprintln(r.Out, "\n과제")
 		for _, row := range result.Assignments {
 			status := "미제출"
 			if row.Assignment.Submitted {
 				status = "제출"
 			}
-			fmt.Printf("  %s | %s | %s | %s | %s\n",
+			_, _ = fmt.Fprintf(r.Out, "  %s | %s | %s | %s | %s\n",
 				row.ID,
 				formatTime(row.Assignment.DueAt),
 				status,
@@ -1775,9 +1775,9 @@ func printSearch(result app.SearchResult) {
 	}
 
 	if len(result.Notices) > 0 {
-		fmt.Println("\n공지")
+		_, _ = fmt.Fprintln(r.Out, "\n공지")
 		for _, row := range result.Notices {
-			fmt.Printf("  %s | %s | %s | %s\n",
+			_, _ = fmt.Fprintf(r.Out, "  %s | %s | %s | %s\n",
 				row.ID,
 				formatNoticeTime(row.Notice.Registered),
 				row.CourseName,
@@ -1787,9 +1787,9 @@ func printSearch(result app.SearchResult) {
 	}
 
 	if len(result.Lectures) > 0 {
-		fmt.Println("\n온라인 강의")
+		_, _ = fmt.Fprintln(r.Out, "\n온라인 강의")
 		for _, row := range result.Lectures {
-			fmt.Printf("  %s | %s | %s | %s | %s\n",
+			_, _ = fmt.Fprintf(r.Out, "  %s | %s | %s | %s | %s\n",
 				row.ID,
 				formatLectureRange(row.Lecture.StartAt, row.Lecture.EndAt),
 				row.CourseName,
@@ -1800,20 +1800,20 @@ func printSearch(result app.SearchResult) {
 	}
 
 	if len(result.Academics) > 0 {
-		fmt.Println("\n학사일정")
+		_, _ = fmt.Fprintln(r.Out, "\n학사일정")
 		for _, event := range result.Academics {
-			fmt.Printf("  %s %s | %s", event.Month, event.Date, event.Title)
+			_, _ = fmt.Fprintf(r.Out, "  %s %s | %s", event.Month, event.Date, event.Title)
 			if event.Note != "" {
-				fmt.Printf(" | %s", event.Note)
+				_, _ = fmt.Fprintf(r.Out, " | %s", event.Note)
 			}
-			fmt.Println()
+			_, _ = fmt.Fprintln(r.Out)
 		}
 	}
 
 	if len(result.Errors) > 0 {
-		fmt.Println("\n검색 실패")
+		_, _ = fmt.Fprintln(r.Out, "\n검색 실패")
 		for _, sectionError := range result.Errors {
-			fmt.Printf("  %s: %v\n", sectionError.Section, sectionError.Err)
+			_, _ = fmt.Fprintf(r.Out, "  %s: %v\n", sectionError.Section, sectionError.Err)
 		}
 	}
 }
