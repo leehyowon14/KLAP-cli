@@ -546,7 +546,7 @@ func (r Runner) runGrade(ctx context.Context, service *app.Service, args []strin
 	return nil
 }
 
-func runRank(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runRank(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) > 0 && args[0] == "list" {
 		args = args[1:]
 	}
@@ -559,7 +559,7 @@ func runRank(ctx context.Context, service *app.Service, args []string) error {
 	if err != nil {
 		return err
 	}
-	printRank(result)
+	r.printRank(result)
 	return nil
 }
 
@@ -2206,16 +2206,16 @@ func yesNo(value bool) string {
 	return "N"
 }
 
-func printRank(result app.RankResult) {
-	fmt.Println("석차")
+func (r Runner) printRank(result app.RankResult) {
+	_, _ = fmt.Fprintln(r.Out, "석차")
 	if len(result.Rows) == 0 {
-		fmt.Println("석차 내역이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "석차 내역이 없습니다")
 		return
 	}
 
-	fmt.Println("학기 | 신청학점 | 총점 | 평점 | 백분율 | 학과석차 | 학사경고")
+	_, _ = fmt.Fprintln(r.Out, "학기 | 신청학점 | 총점 | 평점 | 백분율 | 학과석차 | 학사경고")
 	for _, row := range result.Rows {
-		fmt.Printf("%s | %s | %s | %s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%s | %s | %s | %s | %s | %s | %s\n",
 			emptyFallback(row.TermLabel, row.TermValue),
 			emptyFallback(row.AppliedCredits, "-"),
 			emptyFallback(row.TotalScore, "-"),
