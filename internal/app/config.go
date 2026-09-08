@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
-	"strconv"
 	"strings"
 )
 
@@ -254,111 +253,6 @@ func (s *Service) ResetConfigSettings() (ConfigSettings, error) {
 	return s.ConfigSettings()
 }
 
-func (s *Service) SetConfigValue(key string, value string) (ConfigSettings, error) {
-	key = strings.ToLower(strings.TrimSpace(key))
-	value = strings.TrimSpace(value)
-	if key == "" {
-		return ConfigSettings{}, errors.New("설정 키가 필요합니다")
-	}
-	current, err := s.loadSettings()
-	if err != nil {
-		return ConfigSettings{}, err
-	}
-	switch key {
-	case "reminder.name", "reminder.list", "reminder.list-name":
-		if value == "" {
-			return ConfigSettings{}, errors.New("리마인더 목록 이름은 비워둘 수 없습니다")
-		}
-		current.Reminder.ListName = value
-	case "reminder.use-existing-list":
-		parsed, err := parseConfigBool(value)
-		if err != nil {
-			return ConfigSettings{}, err
-		}
-		current.Reminder.UseExistingList = parsed
-	case "reminder.alarm-before-min", "reminder.alarm-before":
-		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed <= 0 {
-			return ConfigSettings{}, errors.New("reminder.alarm-before-min에는 1 이상의 정수가 필요합니다")
-		}
-		current.Reminder.AlarmBeforeMin = parsed
-	case "calendar.name", "calendar.list", "calendar.list-name":
-		if value == "" {
-			return ConfigSettings{}, errors.New("캘린더 이름은 비워둘 수 없습니다")
-		}
-		current.Calendar.AcademicName = value
-	case "calendar.use-existing-list":
-		parsed, err := parseConfigBool(value)
-		if err != nil {
-			return ConfigSettings{}, err
-		}
-		current.Calendar.AcademicUseExistingList = parsed
-	case "calendar.academic.name", "academic-calendar.name", "academic-calendar.list":
-		if value == "" {
-			return ConfigSettings{}, errors.New("학사일정 캘린더 이름은 비워둘 수 없습니다")
-		}
-		current.Calendar.AcademicName = value
-	case "calendar.academic.use-existing-list", "academic-calendar.use-existing-list":
-		parsed, err := parseConfigBool(value)
-		if err != nil {
-			return ConfigSettings{}, err
-		}
-		current.Calendar.AcademicUseExistingList = parsed
-	case "calendar.timetable.name", "timetable-calendar.name", "timetable-calendar.list":
-		if value == "" {
-			return ConfigSettings{}, errors.New("시간표 캘린더 이름은 비워둘 수 없습니다")
-		}
-		current.Calendar.TimetableName = value
-	case "calendar.timetable.use-existing-list", "timetable-calendar.use-existing-list":
-		parsed, err := parseConfigBool(value)
-		if err != nil {
-			return ConfigSettings{}, err
-		}
-		current.Calendar.TimetableUseExistingList = parsed
-	case "download.dir", "download.path":
-		if value == "" {
-			return ConfigSettings{}, errors.New("다운로드 폴더 경로가 필요합니다")
-		}
-		current.Download.Dir = value
-	case "download.concurrency", "download.workers":
-		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed <= 0 {
-			return ConfigSettings{}, errors.New("download.concurrency에는 1 이상의 정수가 필요합니다")
-		}
-		current.Download.Concurrency = parsed
-	case "download.caffeinate", "download.prevent-sleep", "download.keep-awake":
-		parsed, err := parseConfigBool(value)
-		if err != nil {
-			return ConfigSettings{}, err
-		}
-		current.Download.Caffeinate = &parsed
-	case "download.keep-partial", "download.resume", "download.partial":
-		parsed, err := parseConfigBool(value)
-		if err != nil {
-			return ConfigSettings{}, err
-		}
-		current.Download.KeepPartial = parsed
-	case "transcript.concurrency", "transcript.workers":
-		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed < 1 || parsed > settings.MaxTranscriptConcurrency {
-			return ConfigSettings{}, fmt.Errorf("transcript.concurrency에는 1~%d 사이의 정수가 필요합니다", settings.MaxTranscriptConcurrency)
-		}
-		current.Transcript.Concurrency = parsed
-	case "term", "term.value":
-		normalized, err := normalizeTermValue(value)
-		if err != nil {
-			return ConfigSettings{}, err
-		}
-		current.Term.Value = normalized
-	default:
-		return ConfigSettings{}, fmt.Errorf("지원하지 않는 설정 키입니다: %s", key)
-	}
-	if err := s.saveSettings(current); err != nil {
-		return ConfigSettings{}, err
-	}
-	return s.ConfigSettings()
-}
-
 func (s *Service) loadSettings() (settings.Settings, error) {
 	if s.settingsStore == nil {
 		return settings.Default(), nil
@@ -371,17 +265,6 @@ func (s *Service) saveSettings(value settings.Settings) error {
 		return errors.New("settings store가 초기화되지 않았습니다")
 	}
 	return s.settingsStore.Save(value)
-}
-
-func parseConfigBool(value string) (bool, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "true", "t", "1", "yes", "y", "on":
-		return true, nil
-	case "false", "f", "0", "no", "n", "off":
-		return false, nil
-	default:
-		return false, fmt.Errorf("boolean 값이 필요합니다: %s", value)
-	}
 }
 
 type CategoryLister interface {
