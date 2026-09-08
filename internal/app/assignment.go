@@ -280,7 +280,7 @@ func normalizeCachedAssignmentRows(rows []AssignmentRow, term Term) ([]Assignmen
 func ParseAssignmentID(id string) (int, string, error) {
 	parts := strings.SplitN(strings.TrimSpace(id), ":", 2)
 	if len(parts) != 2 {
-		return 0, "", errors.New("과제ID는 course list 번호와 ordseq를 조합한 <과목번호>:<ordseq> 형식이어야 합니다")
+		return 0, "", errors.New("과제ID는 과목 목록 번호와 ordseq를 조합한 <과목번호>:<ordseq> 형식이어야 합니다")
 	}
 
 	courseIndex, err := strconv.Atoi(parts[0])
