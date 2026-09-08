@@ -252,7 +252,7 @@ func normalizeCachedNoticeRows(rows []NoticeRow, term Term) ([]NoticeRow, bool, 
 func ParseNoticeID(id string) (int, string, string, error) {
 	parts := strings.Split(strings.TrimSpace(id), ":")
 	if len(parts) != 3 {
-		return 0, "", "", errors.New("공지ID는 course list 번호, boardNo, masterNo를 조합한 <과목번호>:<boardNo>:<masterNo> 형식이어야 합니다")
+		return 0, "", "", errors.New("공지ID는 과목 목록 번호, boardNo, masterNo를 조합한 <과목번호>:<boardNo>:<masterNo> 형식이어야 합니다")
 	}
 
 	courseIndex, err := strconv.Atoi(parts[0])
