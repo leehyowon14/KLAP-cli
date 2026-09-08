@@ -9,6 +9,7 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
 	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
 	category "github.com/leehyowon14/KLAP-cli/internal/category"
+	"github.com/leehyowon14/KLAP-cli/internal/download"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/kwcommons"
 	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
@@ -45,6 +46,7 @@ func newService(store *account.Store, factories serviceStoreFactories) (*app.Ser
 		return nil, fmt.Errorf("sync state store 초기화 실패: %w", err)
 	}
 	return app.NewService(app.Dependencies{
+		Downloader:        download.NewClient(nil),
 		Academic:          academic.NewClient(nil),
 		Media:             kwcommons.NewClient(nil),
 		AssignmentGateway: func(c *klas.Client) app.AssignmentGateway { return c },

@@ -7,6 +7,7 @@ import (
 )
 
 type Service struct {
+	downloader        Downloader
 	academic          AcademicSource
 	media             MediaResolver
 	requestSession    *requestSession

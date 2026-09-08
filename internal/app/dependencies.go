@@ -42,6 +42,7 @@ type CacheStore interface {
 // Dependencies supplies the resources used by the application facade.
 // Construction does not access the filesystem, Keychain, network, or bridges.
 type Dependencies struct {
+	Downloader        Downloader
 	Academic          AcademicSource
 	Media             MediaResolver
 	AssignmentGateway func(*klas.Client) AssignmentGateway
@@ -69,6 +70,7 @@ func NewService(deps Dependencies) (*Service, error) {
 		{"login", deps.Login},
 		{"media", deps.Media},
 		{"academic", deps.Academic},
+		{"downloader", deps.Downloader},
 		{"assignment gateway", deps.AssignmentGateway},
 		{"transcript", deps.Transcriber},
 		{"category", deps.Categories},
@@ -80,6 +82,7 @@ func NewService(deps Dependencies) (*Service, error) {
 		}
 	}
 	return &Service{
+		downloader:        deps.Downloader,
 		academic:          deps.Academic,
 		media:             deps.Media,
 		assignmentGateway: deps.AssignmentGateway,

@@ -37,11 +37,11 @@ func TestDownloadTaskUsesInjectedMediaResolver(t *testing.T) {
 	}}
 	row := LectureRow{Lecture: Lecture{ContentID: "content"}}
 	var stages []LectureTransferStage
-	result := downloadLectureTask(ctx, media, t.TempDir(), false, 1, 1, Course{}, row, 1, func(p LectureDownloadProgress) { stages = append(stages, p.Stage) })
+	result := downloadLectureTask(ctx, media, nil, t.TempDir(), false, 1, 1, Course{}, row, 1, func(p LectureDownloadProgress) { stages = append(stages, p.Stage) })
 	if calls != 1 || !errors.Is(result.Err, context.Canceled) || len(stages) != 2 || stages[0] != LectureStageResolve || stages[1] != LectureStageError {
 		t.Fatalf("calls=%d result=%+v stages=%v", calls, result, stages)
 	}
-	result = downloadLectureTask(ctx, media, t.TempDir(), false, 1, 1, Course{}, LectureRow{}, 1, nil)
+	result = downloadLectureTask(ctx, media, nil, t.TempDir(), false, 1, 1, Course{}, LectureRow{}, 1, nil)
 	if calls != 1 || !result.Skipped || result.Err == nil {
 		t.Fatalf("empty content calls=%d result=%+v", calls, result)
 	}

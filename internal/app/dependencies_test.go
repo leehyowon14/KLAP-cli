@@ -20,6 +20,10 @@ func testDependencies(t *testing.T) Dependencies {
 	t.Helper()
 	store := &account.Store{}
 	return Dependencies{
+		Downloader: &fakeDownloader{download: func(context.Context, string, string, bool, func(int64, int64)) (int64, error) {
+			t.Fatal("constructor downloaded file")
+			return 0, nil
+		}},
 		Academic: &fakeAcademicSource{fetch: func(context.Context, string) (AcademicListResult, error) {
 			t.Fatal("constructor fetched academic source")
 			return AcademicListResult{}, nil
