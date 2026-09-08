@@ -27,7 +27,9 @@ for product in "${products[@]}"; do
   lipo -create "$arm_dir/$product" "$intel_dir/$product" -output "$artifact_dir/$product"
   chmod +x "$artifact_dir/$product"
   codesign --force --sign - "$artifact_dir/$product"
-  lipo -verify_arch arm64 x86_64 "$artifact_dir/$product"
+  for arch in arm64 x86_64; do
+    lipo "$artifact_dir/$product" -verify_arch "$arch"
+  done
 done
 bash "$repo_root/scripts/verify-bridge-metadata.sh" "$artifact_dir"
 bash "$repo_root/scripts/verify-transcript-binary.sh" "$artifact_dir/TranscriptBridge"
