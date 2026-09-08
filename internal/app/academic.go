@@ -211,11 +211,11 @@ func validateAcademicYear(year string) error {
 		return nil
 	}
 	if len(year) != 4 {
-		return errors.New("--year에는 YYYY 형식의 연도가 필요합니다")
+		return errors.New("연도에는 YYYY 형식의 연도가 필요합니다")
 	}
 	for _, r := range year {
 		if r < '0' || r > '9' {
-			return errors.New("--year에는 YYYY 형식의 연도가 필요합니다")
+			return errors.New("연도에는 YYYY 형식의 연도가 필요합니다")
 		}
 	}
 	return nil
