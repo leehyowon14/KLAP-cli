@@ -42,7 +42,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 
 	switch args[0] {
 	case "auth":
-		return runAuth(ctx, service)
+		return r.runAuth(ctx, service)
 	case "user":
 		return runUser(ctx, service, args[1:])
 	case "dashboard":

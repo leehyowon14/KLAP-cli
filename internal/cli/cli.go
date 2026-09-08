@@ -189,7 +189,7 @@ func parseReminderConfigArgs(args []string) (name string, useExistingList bool, 
 	return name, useExistingList, true, nil
 }
 
-func runAuth(ctx context.Context, service *app.Service) error {
+func (r Runner) runAuth(ctx context.Context, service *app.Service) error {
 	credentials, err := ui.RunAuthForm()
 	if err != nil {
 		return err
@@ -198,7 +198,7 @@ func runAuth(ctx context.Context, service *app.Service) error {
 		return err
 	}
 
-	fmt.Printf("저장 완료: %s\n", credentials.StudentID)
+	_, _ = fmt.Fprintf(r.Out, "저장 완료: %s\n", credentials.StudentID)
 	return nil
 }
 
