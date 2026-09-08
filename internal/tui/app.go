@@ -49,8 +49,7 @@ const (
 type model struct {
 	ctx                 context.Context
 	service             *app.Service
-	menu                []menuItem
-	cursor              int
+	home                homeModel
 	active              screen
 	loading             bool
 	loadedScreens       map[screen]bool
@@ -247,16 +246,7 @@ func Run(ctx context.Context, service *app.Service) error {
 		loadingScreens: map[screen]bool{},
 		screenErrors:   map[screen]error{},
 		authInputs:     newAuthInputs(),
-		menu: []menuItem{
-			{title: "Dashboard", help: "현재 학기 요약", screen: screenDashboard},
-			{title: "Due", help: "다가오는 일정", screen: screenDue},
-			{title: "Assignments", help: "과제 목록", screen: screenAssignments},
-			{title: "Notices", help: "공지 목록", screen: screenNotices},
-			{title: "Lectures", help: "강의 상태", screen: screenLectures},
-			{title: "Academic", help: "학사일정", screen: screenAcademic},
-			{title: "Rooms", help: "빈 강의실 조회", screen: screenRoomDay},
-			{title: "Config", help: "설정", screen: screenConfig},
-		},
+		home:           newHomeModel(),
 	}
 	_, err := tea.NewProgram(initial, tea.WithAltScreen()).Run()
 	return err
@@ -341,6 +331,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		}
+		if m.active == screenHome {
+			if action, handled := m.home.Update(msg); handled {
+				return m.applyChildAction(action)
+			}
+		}
 		key := msg.String()
 		switch {
 		case keyMatches(key, "q", "ㅂ"):
@@ -368,9 +363,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loading = false
 			}
 		case key == "up" || (keyMatches(key, "k", "ㅏ") && !m.canOpenKlasURL()):
-			if m.active == screenHome && m.cursor > 0 {
-				m.cursor--
-			} else if m.active == screenConfig && !m.loading {
+			if m.active == screenConfig && !m.loading {
 				m.moveConfigCursor(-1)
 			} else if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultCursor(-1)
@@ -388,9 +381,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveContentCursor(-1)
 			}
 		case key == "down" || keyMatches(key, "j", "ㅓ"):
-			if m.active == screenHome && m.cursor < len(m.menu)-1 {
-				m.cursor++
-			} else if m.active == screenConfig && !m.loading {
+			if m.active == screenConfig && !m.loading {
 				m.moveConfigCursor(1)
 			} else if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultCursor(1)
@@ -444,13 +435,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.adjustConfigCurrent(-1)
 			}
 		case key == "enter":
-			if m.active == screenHome && len(m.menu) > 0 {
-				target := m.menu[m.cursor].screen
-				if target == screenRoomDay {
-					return m.startRoomFlow()
-				}
-				return m.enterScreen(target)
-			}
 			if m.active == screenAssignments && !m.loading {
 				return m.openAssignmentDetail()
 			}
@@ -2499,7 +2483,7 @@ func (m model) View() string {
 		return appStyle.Render(m.renderRoomPeriodView(contentWidth))
 	}
 	if m.active == screenHome {
-		return appStyle.Render(m.renderHomeView(contentWidth))
+		return appStyle.Render(m.home.View(contentWidth))
 	}
 
 	header := m.renderHeader(contentWidth)
