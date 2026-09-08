@@ -234,7 +234,7 @@ func (s *Service) CategoryOptions() (CategoryOptions, error) {
 	if err != nil {
 		return CategoryOptions{}, err
 	}
-	options, err := category.NewMacOSBridge(s.categoryBridgePath).List()
+	options, err := s.categoryLister.List()
 	if err != nil {
 		return CategoryOptions{
 			Reminders: uniqueNonEmpty(current.Reminder.ListName, settings.DefaultReminderListName),
@@ -382,4 +382,8 @@ func parseConfigBool(value string) (bool, error) {
 	default:
 		return false, fmt.Errorf("boolean 값이 필요합니다: %s", value)
 	}
+}
+
+type CategoryLister interface {
+	List() (category.Options, error)
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
 	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
+	category "github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
@@ -21,6 +22,7 @@ func testDependencies(t *testing.T) Dependencies {
 		SyncState:     &fakeSyncStateStore{},
 		Reminder:      reminder.NewMacOSBridge("unused"),
 		Calendar:      klapcalendar.NewMacOSBridge("unused"),
+		Categories:    category.NewMacOSBridge("unused"),
 		NewKlasClient: func() (*klas.Client, error) { t.Fatal("constructor called client factory"); return nil, nil },
 		Login: func(context.Context, *klas.Client, string, string) (klas.Session, error) {
 			t.Fatal("constructor called login")
@@ -85,6 +87,17 @@ func TestDependenciesRequireCalendar(t *testing.T) {
 	for _, value := range []CalendarSyncer{nil, (*klapcalendar.MacOSBridge)(nil)} {
 		deps := testDependencies(t)
 		deps.Calendar = value
+		s, err := NewService(deps)
+		if s != nil || err == nil {
+			t.Fatalf("service=%v error=%v", s, err)
+		}
+	}
+}
+
+func TestDependenciesRequireCategories(t *testing.T) {
+	for _, value := range []CategoryLister{nil, (*category.MacOSBridge)(nil)} {
+		deps := testDependencies(t)
+		deps.Categories = value
 		s, err := NewService(deps)
 		if s != nil || err == nil {
 			t.Fatalf("service=%v error=%v", s, err)

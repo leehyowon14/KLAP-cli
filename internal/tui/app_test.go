@@ -18,6 +18,7 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
 	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
+	category "github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
@@ -48,6 +49,7 @@ func newTUITestService(t *testing.T) *app.Service {
 		Accounts: store, Sessions: store, Settings: settingsStore, Cache: cacheStore, SyncState: syncStore,
 		Reminder:      reminder.NewMacOSBridge("unused"),
 		Calendar:      klapcalendar.NewMacOSBridge("unused"),
+		Categories:    category.NewMacOSBridge("unused"),
 		NewKlasClient: klas.NewClient,
 		Login: func(ctx context.Context, c *klas.Client, id, password string) (klas.Session, error) {
 			return c.Login(ctx, id, password)
