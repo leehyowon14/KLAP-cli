@@ -82,7 +82,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "attend":
 		return runAttend(ctx, service, args[1:])
 	case "academic":
-		return runAcademic(ctx, service, args[1:])
+		return r.runAcademic(ctx, service, args[1:])
 	case "config":
 		return r.runConfig(ctx, service, args[1:])
 	case "help", "-h", "--help":
