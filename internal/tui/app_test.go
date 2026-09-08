@@ -1031,7 +1031,7 @@ func TestSyllabusLinesShowCoursePlan(t *testing.T) {
 		Term:      app.Term{Value: "2026,1", Label: "2026년도 1학기"},
 		SubjectID: "U202613951I040013",
 		Course:    app.Course{Name: "컴퓨터그래픽스"},
-		Syllabus: klas.Syllabus{
+		Syllabus: app.Syllabus{
 			CourseCode:     "I040-3-3951-01",
 			FullName:       "컴퓨터그래픽스",
 			CourseType:     "전공선택",
@@ -1043,9 +1043,9 @@ func TestSyllabusLinesShowCoursePlan(t *testing.T) {
 			Summary:        "그래픽스의 기본 원리를 학습한다.",
 			Purpose:        "렌더링 파이프라인을 이해한다.",
 			BookName:       "Computer Graphics",
-			Times:          []klas.SyllabusTime{{Weekday: "월", Periods: []int{1, 2}, Room: "새빛관 101"}},
-			Evaluation:     klas.SyllabusEvaluation{Attendance: 10, Midterm: 30, Final: 30, Report: 30},
-			Schedule:       []klas.SyllabusWeek{{Week: 1, Topic: "그래픽스 개요", SubNote: "실습 환경 구성"}},
+			Times:          []app.SyllabusTime{{Weekday: "월", Periods: []int{1, 2}, Room: "새빛관 101"}},
+			Evaluation:     app.SyllabusEvaluation{Attendance: 10, Midterm: 30, Final: 30, Report: 30},
+			Schedule:       []app.SyllabusWeek{{Week: 1, Topic: "그래픽스 개요", SubNote: "실습 환경 구성"}},
 		},
 	}
 	lines := syllabusLines(result, 96)

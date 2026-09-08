@@ -3830,7 +3830,7 @@ func syllabusLines(result app.SyllabusResult, width int) []string {
 	return lines
 }
 
-func formatSyllabusTimes(times []klas.SyllabusTime) string {
+func formatSyllabusTimes(times []app.SyllabusTime) string {
 	parts := make([]string, 0, len(times))
 	for _, item := range times {
 		label := strings.TrimSpace(item.Weekday)
@@ -3849,7 +3849,7 @@ func formatSyllabusTimes(times []klas.SyllabusTime) string {
 	return strings.Join(parts, ", ")
 }
 
-func formatSyllabusEvaluation(evaluation klas.SyllabusEvaluation) string {
+func formatSyllabusEvaluation(evaluation app.SyllabusEvaluation) string {
 	return fmt.Sprintf("출석 %d / 학습 %d / 중간 %d / 기말 %d / 과제 %d / 퀴즈 %d / 기타 %d",
 		evaluation.Attendance,
 		evaluation.Learning,

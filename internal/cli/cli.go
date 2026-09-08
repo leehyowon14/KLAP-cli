@@ -2517,7 +2517,7 @@ func (r Runner) printAcademicList(result app.AcademicListResult) {
 	}
 }
 
-func formatSyllabusTimes(times []klas.SyllabusTime) string {
+func formatSyllabusTimes(times []app.SyllabusTime) string {
 	parts := make([]string, 0, len(times))
 	for _, item := range times {
 		label := item.Weekday
@@ -2536,7 +2536,7 @@ func formatSyllabusTimes(times []klas.SyllabusTime) string {
 	return strings.Join(parts, ", ")
 }
 
-func formatSyllabusEvaluation(evaluation klas.SyllabusEvaluation) string {
+func formatSyllabusEvaluation(evaluation app.SyllabusEvaluation) string {
 	parts := []string{
 		"출석 " + strconv.Itoa(evaluation.Attendance),
 		"학습 " + strconv.Itoa(evaluation.Learning),

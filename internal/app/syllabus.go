@@ -25,7 +25,7 @@ type SyllabusResult struct {
 	Term      Term
 	SubjectID string
 	Course    Course
-	Syllabus  klas.Syllabus
+	Syllabus  Syllabus
 }
 
 type SubjectSearchResult struct {
@@ -38,7 +38,7 @@ type SubjectSearchRow struct {
 	SubjectID  string
 	Name       string
 	Professor  string
-	Times      []klas.SyllabusTime
+	Times      []SyllabusTime
 	Err        error
 }
 
@@ -98,7 +98,7 @@ func (s *Service) Syllabus(ctx context.Context, opts SyllabusOptions) (SyllabusR
 		Term:      term,
 		SubjectID: subjectID,
 		Course:    course,
-		Syllabus:  syllabus,
+		Syllabus:  syllabusModel(syllabus),
 	}, nil
 }
 
@@ -145,7 +145,7 @@ func (s *Service) SubjectSearch(ctx context.Context, opts SubjectSearchOptions) 
 			})
 			row.Err = detailErr
 			if row.Err == nil {
-				row.Times = syllabus.Times
+				row.Times = syllabusTimeModels(syllabus.Times)
 				if strings.TrimSpace(row.Name) == "" {
 					row.Name = firstNonEmpty(syllabus.KoreanName, syllabus.FullName)
 				}
