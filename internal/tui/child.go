@@ -28,6 +28,12 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 		m.err = action.err
 	}
 	if action.navigate {
+		if (m.active == screenConfig || m.active == screenConfigChoice || m.active == screenConfigInput) && (action.target == screenConfig || action.target == screenConfigChoice || action.target == screenConfigInput) {
+			m.active = action.target
+			m.loading = false
+			return m, action.cmd
+		}
+
 		if action.target == screenDownloadSelect {
 			m.active = screenDownloadSelect
 			m.loading = true

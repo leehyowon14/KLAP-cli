@@ -1,15 +1,13 @@
 package tui
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type configRow struct {
@@ -34,108 +32,7 @@ var configPageLabels = []string{"일반", "일정", "다운로드"}
 
 const directInputChoice = "[직접 입력]"
 
-func (m model) updateConfigChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	switch {
-	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
-		return m, tea.Quit
-	case key == "esc" || keyMatches(key, "b", "ㅠ"):
-		m.active = screenConfig
-		m.configChoiceKey = ""
-		m.configChoiceCursor = 0
-		m.err = nil
-	case key == "up" || keyMatches(key, "k", "ㅏ"):
-		choices := m.currentConfigChoices()
-		if len(choices) == 0 {
-			m.configChoiceCursor = 0
-		} else if m.configChoiceCursor <= 0 {
-			m.configChoiceCursor = len(choices) - 1
-		} else {
-			m.configChoiceCursor--
-		}
-	case key == "down" || keyMatches(key, "j", "ㅓ"):
-		choices := m.currentConfigChoices()
-		if len(choices) == 0 || m.configChoiceCursor >= len(choices)-1 {
-			m.configChoiceCursor = 0
-		} else {
-			m.configChoiceCursor++
-		}
-	case key == "enter":
-		choices := m.currentConfigChoices()
-		if len(choices) == 0 {
-			return m, nil
-		}
-		if m.configChoiceCursor < 0 {
-			m.configChoiceCursor = 0
-		}
-		if m.configChoiceCursor >= len(choices) {
-			m.configChoiceCursor = len(choices) - 1
-		}
-		choice := choices[m.configChoiceCursor]
-		row := configRow{key: m.configChoiceKey, label: configInputLabel(m.configChoiceKey), editable: true}
-		if choice == directInputChoice {
-			return m.startConfigEdit(row)
-		}
-		if err := m.applyConfigCategoryChoice(m.configChoiceKey, choice); err != nil {
-			m.err = err
-			return m, nil
-		}
-		m.err = nil
-		m.active = screenConfig
-		m.configChoiceKey = ""
-		m.configChoiceCursor = 0
-		m.refreshConfigContent()
-	}
-	return m, nil
-}
-
-func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	switch {
-	case key == "ctrl+c":
-		return m, tea.Quit
-	case key == "esc":
-		m.active = screenConfig
-		m.configEditing = ""
-		m.err = nil
-		return m, nil
-	case key == "enter":
-		value := strings.TrimSpace(m.configInput.Value())
-		var err error
-		switch m.configEditing {
-		case "download.dir":
-			_, err = m.service.SetDownloadConfig(value, 0, nil, nil)
-		case "reminder.name":
-			_, err = m.service.SetReminderConfig(value, false)
-		case "calendar.name":
-			_, err = m.service.SetAcademicCalendarConfig(value, false)
-		case "timetable-calendar.name":
-			_, err = m.service.SetTimetableCalendarConfig(value, false)
-		case "reminder.alarm-before-min":
-			var minutes int
-			minutes, err = strconv.Atoi(value)
-			if err != nil {
-				err = errors.New("알림 시간에는 1 이상의 정수가 필요합니다")
-			} else {
-				_, err = m.service.UpdateConfig(app.ConfigUpdate{ReminderAlarmBeforeMin: &minutes})
-			}
-		}
-		if err != nil {
-			m.err = err
-		} else {
-			m.err = nil
-			m.active = screenConfig
-			m.configEditing = ""
-			m.refreshConfigContent()
-		}
-		return m, nil
-	}
-	var cmd tea.Cmd
-	m.configInput, cmd = m.configInput.Update(msg)
-	return m, cmd
-}
-
-func (m *model) moveConfigCursor(delta int) {
+func (m *configScreenModel) moveConfigCursor(delta int) {
 	rows := m.currentConfigRows()
 	if len(rows) == 0 {
 		m.configCursor = 0
@@ -144,7 +41,7 @@ func (m *model) moveConfigCursor(delta int) {
 	m.configCursor = (m.configCursor + delta + len(rows)) % len(rows)
 }
 
-func (m *model) moveConfigPage(delta int) {
+func (m *configScreenModel) moveConfigPage(delta int) {
 	if len(configPageLabels) == 0 {
 		m.configPage = 0
 		m.configCursor = 0
@@ -155,69 +52,7 @@ func (m *model) moveConfigPage(delta int) {
 	m.clampConfigCursor()
 }
 
-func (m model) activateConfigCurrent() (tea.Model, tea.Cmd) {
-	row, ok := m.currentConfigRow()
-	if !ok {
-		return m, nil
-	}
-	if row.reset {
-		return m.resetConfigSettings()
-	}
-	if row.cycle {
-		return m.startConfigChoice(row)
-	}
-	if row.editable {
-		return m.startConfigEdit(row)
-	}
-	return m.adjustConfigCurrent(1)
-}
-
-func (m model) adjustConfigCurrent(delta int) (tea.Model, tea.Cmd) {
-	row, ok := m.currentConfigRow()
-	if !ok {
-		return m, nil
-	}
-	switch row.key {
-	case "reminder.name":
-		return m.startConfigChoice(row)
-	case "calendar.name":
-		return m.startConfigChoice(row)
-	case "timetable-calendar.name":
-		return m.startConfigChoice(row)
-	case "reminder.alarm-before-min":
-		next := m.configSettings.Reminder.AlarmBeforeMin + delta*60
-		if next < 1 {
-			next = 1
-		}
-		if _, err := m.service.UpdateConfig(app.ConfigUpdate{ReminderAlarmBeforeMin: &next}); err != nil {
-			m.err = err
-			return m, nil
-		}
-	case "download.concurrency":
-		return m.adjustDownloadConcurrency(delta)
-	case "download.caffeinate":
-		return m.toggleDownloadCaffeinate()
-	case "download.keep-partial":
-		return m.toggleDownloadKeepPartial()
-	case "transcript.concurrency":
-		return m.adjustTranscriptConcurrency(delta)
-	default:
-		return m, nil
-	}
-	m.err = nil
-	m.refreshConfigContent()
-	return m, nil
-}
-
-func (m model) startConfigChoice(row configRow) (tea.Model, tea.Cmd) {
-	m.active = screenConfigChoice
-	m.configChoiceKey = row.key
-	m.configChoiceCursor = m.currentConfigChoiceIndex()
-	m.err = nil
-	return m, nil
-}
-
-func (m model) startConfigEdit(row configRow) (tea.Model, tea.Cmd) {
+func (m *configScreenModel) startConfigEdit(row configRow) childAction {
 	input := textinput.New()
 	switch row.key {
 	case "download.dir":
@@ -241,117 +76,13 @@ func (m model) startConfigEdit(row configRow) (tea.Model, tea.Cmd) {
 	}
 	input.Prompt = row.key + " "
 	input.Focus()
-	m.active = screenConfigInput
 	m.configEditing = row.key
 	m.configChoiceKey = ""
 	m.configInput = input
-	return m, nil
+	return configRoute(screenConfigInput)
 }
 
-func (m model) startDownloadDirEdit() (tea.Model, tea.Cmd) {
-	row := configRow{key: "download.dir", label: "다운로드 폴더", editable: true}
-	return m.startConfigEdit(row)
-}
-
-func (m model) adjustDownloadConcurrency(delta int) (tea.Model, tea.Cmd) {
-	settings, err := m.service.DownloadSettings()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	next := settings.Concurrency + delta
-	if next < 1 {
-		next = 1
-	}
-	if _, err := m.service.SetDownloadConfig("", next, nil, nil); err != nil {
-		m.err = err
-		return m, nil
-	}
-	m.err = nil
-	m.refreshConfigContent()
-	return m, nil
-}
-
-func (m model) adjustTranscriptConcurrency(delta int) (tea.Model, tea.Cmd) {
-	settings, err := m.service.TranscriptSettings()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	next := settings.Concurrency + delta
-	if next < 1 {
-		next = 1
-	}
-	if next > app.MaxTranscriptConcurrency {
-		next = app.MaxTranscriptConcurrency
-	}
-	if _, err := m.service.SetTranscriptConfig(next); err != nil {
-		m.err = err
-		return m, nil
-	}
-	m.err = nil
-	m.refreshConfigContent()
-	return m, nil
-}
-
-func (m model) toggleDownloadCaffeinate() (tea.Model, tea.Cmd) {
-	settings, err := m.service.DownloadSettings()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	next := !settings.Caffeinate
-	if _, err := m.service.SetDownloadConfig("", 0, &next, nil); err != nil {
-		m.err = err
-		return m, nil
-	}
-	m.err = nil
-	m.refreshConfigContent()
-	return m, nil
-}
-
-func (m model) toggleDownloadKeepPartial() (tea.Model, tea.Cmd) {
-	settings, err := m.service.DownloadSettings()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	next := !settings.KeepPartial
-	if _, err := m.service.SetDownloadConfig("", 0, nil, &next); err != nil {
-		m.err = err
-		return m, nil
-	}
-	m.err = nil
-	m.refreshConfigContent()
-	return m, nil
-}
-
-func (m model) resetConfigSettings() (tea.Model, tea.Cmd) {
-	if _, err := m.service.ResetConfigSettings(); err != nil {
-		m.err = err
-		return m, nil
-	}
-	m.err = nil
-	m.refreshConfigContent()
-	return m, nil
-}
-
-func (m *model) refreshConfigContent() {
-	msg := m.loadConfigMsg()
-	if msg.err != nil {
-		m.err = msg.err
-		return
-	}
-	m.configSettings = msg.config
-	m.configOptions = msg.categories
-	m.configUsers = msg.users
-	m.configTerms = msg.terms
-	m.clampConfigCursor()
-	m.content = msg.content
-	m.loadedAt = time.Now()
-}
-
-func (m model) currentConfigRows() []configRow {
+func (m configScreenModel) currentConfigRows() []configRow {
 	rows := configRowsForPage(m.configSettings, m.configOptions, m.configPage)
 	for index := range rows {
 		switch rows[index].key {
@@ -364,7 +95,7 @@ func (m model) currentConfigRows() []configRow {
 	return rows
 }
 
-func (m model) currentConfigChoices() []string {
+func (m configScreenModel) currentConfigChoices() []string {
 	switch m.configChoiceKey {
 	case "user.current":
 		return userChoices(m.configUsers)
@@ -381,7 +112,7 @@ func (m model) currentConfigChoices() []string {
 	}
 }
 
-func (m model) currentConfigChoiceIndex() int {
+func (m configScreenModel) currentConfigChoiceIndex() int {
 	current := ""
 	switch m.configChoiceKey {
 	case "user.current":
@@ -415,7 +146,7 @@ func (m model) currentConfigChoiceIndex() int {
 	return index
 }
 
-func (m model) currentConfigOptionsForKey() []string {
+func (m configScreenModel) currentConfigOptionsForKey() []string {
 	switch m.configChoiceKey {
 	case "user.current":
 		return userChoices(m.configUsers)
@@ -430,37 +161,7 @@ func (m model) currentConfigOptionsForKey() []string {
 	}
 }
 
-func (m model) applyConfigCategoryChoice(key string, value string) error {
-	useExisting := containsString(uniqueStrings(m.currentConfigOptionsForKey()), value)
-	switch key {
-	case "user.current":
-		if err := m.service.SelectUser(m.ctx, strings.TrimSpace(value)); err != nil {
-			return err
-		}
-		m.resetLoadedMainScreens()
-		return nil
-	case "term.current":
-		selector := termSelectorFromChoice(value)
-		if _, err := m.service.SelectTerm(m.ctx, selector, app.UserOption{}); err != nil {
-			return err
-		}
-		m.resetLoadedMainScreens()
-		return nil
-	case "reminder.name":
-		_, err := m.service.SetReminderConfig(value, useExisting)
-		return err
-	case "calendar.name":
-		_, err := m.service.SetAcademicCalendarConfig(value, useExisting)
-		return err
-	case "timetable-calendar.name":
-		_, err := m.service.SetTimetableCalendarConfig(value, useExisting)
-		return err
-	default:
-		return nil
-	}
-}
-
-func (m *model) clampConfigCursor() {
+func (m *configScreenModel) clampConfigCursor() {
 	rows := m.currentConfigRows()
 	if len(rows) == 0 {
 		m.configCursor = 0
@@ -475,7 +176,7 @@ func (m *model) clampConfigCursor() {
 	}
 }
 
-func (m model) currentConfigRow() (configRow, bool) {
+func (m configScreenModel) currentConfigRow() (configRow, bool) {
 	rows := m.currentConfigRows()
 	if len(rows) == 0 {
 		return configRow{}, false
@@ -489,9 +190,9 @@ func (m model) currentConfigRow() (configRow, bool) {
 	return rows[m.configCursor], true
 }
 
-func (m model) renderConfigChoiceView(width int) string {
+func (m configScreenModel) renderConfigChoiceView(width int, err error) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, "Config"))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
@@ -499,10 +200,10 @@ func (m model) renderConfigChoiceView(width int) string {
 	b.WriteString("\n")
 	b.WriteString(mutedStyle.Render("하나만 선택할 수 있습니다."))
 	b.WriteString("\n\n")
-	if m.err != nil {
+	if err != nil {
 		b.WriteString(errorStyle.Render("ERROR"))
 		b.WriteString(" ")
-		b.WriteString(m.err.Error())
+		b.WriteString(err.Error())
 		b.WriteString("\n\n")
 	}
 	choices := m.currentConfigChoices()
@@ -534,18 +235,18 @@ func (m model) renderConfigChoiceView(width int) string {
 	return b.String()
 }
 
-func (m model) renderConfigInputView(width int) string {
+func (m configScreenModel) renderConfigInputView(width int, err error) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, "Config"))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render(configInputLabel(m.configEditing)))
 	b.WriteString("\n")
-	if m.err != nil {
+	if err != nil {
 		b.WriteString(errorStyle.Render("ERROR"))
 		b.WriteString(" ")
-		b.WriteString(m.err.Error())
+		b.WriteString(err.Error())
 		b.WriteString("\n\n")
 	}
 	b.WriteString(m.configInput.View())
@@ -554,7 +255,7 @@ func (m model) renderConfigInputView(width int) string {
 	return b.String()
 }
 
-func (m model) renderConfigPanel(width int) string {
+func (m configScreenModel) renderConfigPanel(width int) string {
 	rows := m.currentConfigRows()
 	if len(rows) == 0 {
 		return emptyStyle.Render("설정 항목이 없습니다") + "\n"
@@ -591,7 +292,7 @@ func (m model) renderConfigPanel(width int) string {
 	return b.String()
 }
 
-func (m model) renderConfigPageTabs() string {
+func (m configScreenModel) renderConfigPageTabs() string {
 	parts := make([]string, 0, len(configPageLabels))
 	for index, label := range configPageLabels {
 		if index == m.configPage {
@@ -603,7 +304,7 @@ func (m model) renderConfigPageTabs() string {
 	return strings.Join(parts, mutedStyle.Render(" / "))
 }
 
-func (m model) renderConfigHint(row configRow) string {
+func (m configScreenModel) renderConfigHint(row configRow) string {
 	switch row.key {
 	case "user.current":
 		return mutedStyle.Render("enter 선택")
@@ -620,22 +321,22 @@ func (m model) renderConfigHint(row configRow) string {
 	}
 }
 
-func (m model) loadConfigMsg() loadMsg {
-	settings, err := m.service.ConfigSettings()
+func loadConfigMsg(ctx context.Context, service configScreenService) loadMsg {
+	settings, err := service.ConfigSettings()
 	if err != nil {
 		return loadMsg{err: err}
 	}
-	categories, err := m.service.CategoryOptions()
+	categories, err := service.CategoryOptions()
 	if err != nil {
 		return loadMsg{err: err}
 	}
-	users, err := m.service.Users(m.ctx)
+	users, err := service.Users(ctx)
 	if err != nil {
 		return loadMsg{err: err}
 	}
 	terms := []app.TermRow{}
 	if len(users) > 0 {
-		if rows, termErr := m.service.TermList(m.ctx, app.TermListOptions{}); termErr == nil {
+		if rows, termErr := service.TermList(ctx, app.TermListOptions{}); termErr == nil {
 			terms = rows
 		}
 	}

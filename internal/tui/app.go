@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
@@ -73,16 +72,7 @@ type model struct {
 	loadedAt            time.Time
 	lastSyncAt          time.Time
 	syncPhase           string
-	configEditing       string
-	configInput         textinput.Model
-	configSettings      app.ConfigSettings
-	configOptions       app.CategoryOptions
-	configUsers         []app.UserRow
-	configTerms         []app.TermRow
-	configCursor        int
-	configPage          int
-	configChoiceKey     string
-	configChoiceCursor  int
+	config              configScreenModel
 	downloadRows        []app.LectureRow
 	downloadSelected    map[string]bool
 	downloadCourse      int
@@ -262,11 +252,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.active == screenAttendConfirm {
 			return m.updateAttendConfirm(msg)
 		}
-		if m.active == screenConfigChoice {
-			return m.updateConfigChoice(msg)
-		}
-		if m.active == screenConfigInput {
-			return m.updateConfigInput(msg)
+		if m.active == screenConfig || m.active == screenConfigChoice || m.active == screenConfigInput {
+			if action, handled := m.config.Update(msg, m.active, m.loading, m.ctx, m.service); handled {
+				return m.applyChildAction(action)
+			}
 		}
 		if m.active == screenRoomDay {
 			return m.updateRoomDay(msg)
@@ -352,44 +341,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loading = false
 			}
 		case key == "up" || (keyMatches(key, "k", "ㅏ") && !m.canOpenKlasURL()):
-			if m.active == screenConfig && !m.loading {
-				m.moveConfigCursor(-1)
-			} else if m.active == screenRoomResult && !m.loading {
+			if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultCursor(-1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
 			}
 		case key == "down" || keyMatches(key, "j", "ㅓ"):
-			if m.active == screenConfig && !m.loading {
-				m.moveConfigCursor(1)
-			} else if m.active == screenRoomResult && !m.loading {
+			if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultCursor(1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
 			}
 		case key == "left":
-			if m.active == screenConfig && !m.loading {
-				m.moveConfigPage(-1)
-			} else if m.active == screenRoomResult && !m.loading {
+			if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultPage(-1)
 			}
 		case key == "right":
-			if m.active == screenConfig && !m.loading {
-				m.moveConfigPage(1)
-			} else if m.active == screenRoomResult && !m.loading {
+			if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultPage(1)
-			}
-		case key == "tab" || key == "]":
-			if m.active == screenConfig && !m.loading {
-				return m.adjustConfigCurrent(1)
-			}
-		case key == "shift+tab" || key == "backtab" || key == "[":
-			if m.active == screenConfig && !m.loading {
-				return m.adjustConfigCurrent(-1)
-			}
-		case key == "enter":
-			if m.active == screenConfig && !m.loading {
-				return m.activateConfigCurrent()
 			}
 		case keyMatches(key, "r", "ㄱ"):
 			if m.active == screenRoomResult {
@@ -422,6 +391,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+	case configSavedMsg:
+		if !m.config.Accepts(msg) {
+			return m, nil
+		}
+		action := m.config.Saved(msg)
+		if msg.invalidate {
+			m.resetLoadedMainScreens()
+		}
+		if msg.loaded != nil && msg.loaded.err == nil {
+			m.loadedAt = time.Now()
+		}
+		if m.active != screenConfig && m.active != screenConfigChoice && m.active != screenConfigInput {
+			return m, nil
+		}
+		return m.applyChildAction(action)
 	case loadMsg:
 		m.applyLoadMsg(msg)
 		if msg.prefetch {
@@ -443,7 +427,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 			return m, action.cmd
 		}
-		m.configUsers = msg.users
+		m.config.UsersLoaded(msg.users)
 		m.active = screenHome
 		m = m.preparePrefetch(mainPrefetchScreens())
 		if !m.prefetchActive {
@@ -633,10 +617,7 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 	case screenAcademic:
 		m.academic.Loaded(msg.academic, msg.screen == m.active, time.Now())
 	case screenConfig:
-		m.configSettings = msg.config
-		m.configOptions = msg.categories
-		m.configUsers = msg.users
-		m.configTerms = msg.terms
+		m.config.Loaded(msg)
 	}
 
 	active := msg.screen == m.active
@@ -645,7 +626,7 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 		m.err = msg.err
 		m.content = msg.content
 		if msg.screen == screenConfig {
-			m.clampConfigCursor()
+			m.config.clampConfigCursor()
 		}
 		m.activePager().contentCourse = 0
 		m.activePager().contentCursor = 0
@@ -657,7 +638,7 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 	}
 
 	if msg.screen == screenConfig {
-		m.clampConfigCursor()
+		m.config.clampConfigCursor()
 	}
 	if msg.err == nil {
 		m.loadedAt = time.Now()
@@ -1532,9 +1513,9 @@ func (m model) View() string {
 		}
 		return m.attendProgress.View()
 	case screenConfigChoice:
-		return appStyle.Render(m.renderConfigChoiceView(contentWidth))
+		return appStyle.Render(m.config.View(contentWidth, m.active, m.err))
 	case screenConfigInput:
-		return appStyle.Render(m.renderConfigInputView(contentWidth))
+		return appStyle.Render(m.config.View(contentWidth, m.active, m.err))
 	case screenRoomDay:
 		return appStyle.Render(m.renderRoomDayView(contentWidth))
 	case screenRoomPeriod:
@@ -1955,7 +1936,7 @@ func (m model) renderPanel(width int) string {
 		return b.String()
 	}
 	if m.active == screenConfig {
-		b.WriteString(m.renderConfigPanel(width))
+		b.WriteString(m.config.View(width, m.active, m.err))
 		if m.syncStatus != "" {
 			b.WriteString("\n")
 			b.WriteString(footerStyle.Render(m.syncStatus))
@@ -2180,7 +2161,7 @@ func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.
 	return func() tea.Msg {
 		switch target {
 		case screenConfig:
-			msg := m.loadConfigMsg()
+			msg := loadConfigMsg(m.ctx, m.service)
 			msg.screen = target
 			msg.prefetch = prefetch
 			return msg

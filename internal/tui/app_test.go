@@ -239,19 +239,6 @@ func testChromeModel(active screen) model {
 		width:  80,
 		height: 24,
 
-		configSettings: app.ConfigSettings{
-			Reminder: app.ReminderSettings{ListName: "Kwangwoon Univ.", AlarmBeforeMin: 1440},
-			Calendar: app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
-			Download: app.DownloadSettings{
-				Dir:         "downloads",
-				Concurrency: 3,
-				Caffeinate:  true,
-			},
-			Transcript: app.TranscriptSettings{Concurrency: 1},
-		},
-		configOptions:       app.CategoryOptions{Reminders: []string{"Kwangwoon Univ."}, Calendars: []string{"학사일정", "시간표"}},
-		configChoiceKey:     "calendar.name",
-		configInput:         textinput.New(),
 		roomDaysSelected:    map[int]bool{1: true},
 		roomPeriodsSelected: map[int]bool{1: true},
 		syncConflicts: []app.SyncConflict{{
@@ -318,9 +305,21 @@ func testChromeModel(active screen) model {
 				AchievedTime: "10",
 				RequiredTime: "10",
 			},
-		}}},
+		}}}, config: configScreenModel{configSettings: app.ConfigSettings{
+			Reminder: app.ReminderSettings{ListName: "Kwangwoon Univ.", AlarmBeforeMin: 1440},
+			Calendar: app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
+			Download: app.DownloadSettings{
+				Dir:         "downloads",
+				Concurrency: 3,
+				Caffeinate:  true,
+			},
+			Transcript: app.TranscriptSettings{Concurrency: 1},
+		},
+			configOptions:   app.CategoryOptions{Reminders: []string{"Kwangwoon Univ."}, Calendars: []string{"학사일정", "시간표"}},
+			configChoiceKey: "calendar.name",
+			configInput:     textinput.New()},
 	}
-	m.configInput.SetValue("입력값")
+	m.config.configInput.SetValue("입력값")
 	return m
 }
 

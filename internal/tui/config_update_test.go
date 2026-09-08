@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -17,8 +18,12 @@ func TestConfigAlarmInputUsesTypedUpdate(t *testing.T) {
 			}
 			input := textinput.New()
 			input.SetValue(value)
-			m := model{service: service, active: screenConfigInput, configEditing: "reminder.alarm-before-min", configInput: input}
-			next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m := model{ctx: context.Background(), service: service, active: screenConfigInput, config: configScreenModel{configEditing: "reminder.alarm-before-min", configInput: input}}
+			next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			if cmd == nil {
+				t.Fatal("missing save command")
+			}
+			next, _ = next.(model).Update(cmd())
 			got := next.(model)
 			after, err := service.ConfigSettings()
 			if err != nil {

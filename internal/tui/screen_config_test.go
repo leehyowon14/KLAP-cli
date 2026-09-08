@@ -90,10 +90,9 @@ func TestConfigRowsExposeCategorySelection(t *testing.T) {
 }
 
 func TestConfigRowsShowCurrentUserAndTerm(t *testing.T) {
-	m := model{
-		configSettings: app.ConfigSettings{
-			Term: app.TermSettings{Value: "2026-1", Label: "2026년도 1학기"},
-		},
+	m := model{config: configScreenModel{configSettings: app.ConfigSettings{
+		Term: app.TermSettings{Value: "2026-1", Label: "2026년도 1학기"},
+	},
 		configUsers: []app.UserRow{
 			{User: app.User{StudentID: "20250001"}},
 			{User: app.User{StudentID: "20250002"}, Current: true},
@@ -101,45 +100,44 @@ func TestConfigRowsShowCurrentUserAndTerm(t *testing.T) {
 		configTerms: []app.TermRow{
 			{Term: app.Term{Value: "2025-2", Label: "2025년도 2학기"}},
 			{Term: app.Term{Value: "2026-1", Label: "2026년도 1학기"}, Current: true},
-		},
+		}},
 	}
-	rows := m.currentConfigRows()
+	rows := m.config.currentConfigRows()
 	if len(rows) < 2 || rows[0].key != "user.current" || rows[0].value != "20250002" {
 		t.Fatalf("user config row = %+v", rows)
 	}
 	if rows[1].key != "term.current" || rows[1].value != "2026-1  2026년도 1학기" {
 		t.Fatalf("term config row = %+v", rows[1])
 	}
-	m.configSettings.Term = app.TermSettings{Value: "2024-1", Label: "2024년도 1학기"}
-	m.configTerms[1].Current = false
-	if got := currentTermLabel(m.configTerms, m.configSettings.Term); got != "선택 필요" {
+	m.config.configSettings.Term = app.TermSettings{Value: "2024-1", Label: "2024년도 1학기"}
+	m.config.configTerms[1].Current = false
+	if got := currentTermLabel(m.config.configTerms, m.config.configSettings.Term); got != "선택 필요" {
 		t.Fatalf("currentTermLabel(unmatched) = %q", got)
 	}
 }
 
 func TestConfigChoicesUseRegisteredUsersAndTerms(t *testing.T) {
-	m := model{
-		configUsers: []app.UserRow{
-			{User: app.User{StudentID: "20250001"}},
-			{User: app.User{StudentID: "20250002"}, Current: true},
-		},
+	m := model{config: configScreenModel{configUsers: []app.UserRow{
+		{User: app.User{StudentID: "20250001"}},
+		{User: app.User{StudentID: "20250002"}, Current: true},
+	},
 		configTerms: []app.TermRow{
 			{Term: app.Term{Value: "2025-2", Label: "2025년도 2학기"}},
 			{Term: app.Term{Value: "2026-1", Label: "2026년도 1학기"}, Current: true},
-		},
+		}},
 	}
-	m.configChoiceKey = "user.current"
-	if got := m.currentConfigChoices(); !reflect.DeepEqual(got, []string{"20250001", "20250002"}) {
+	m.config.configChoiceKey = "user.current"
+	if got := m.config.currentConfigChoices(); !reflect.DeepEqual(got, []string{"20250001", "20250002"}) {
 		t.Fatalf("user choices = %#v", got)
 	}
-	if got := m.currentConfigChoiceIndex(); got != 1 {
+	if got := m.config.currentConfigChoiceIndex(); got != 1 {
 		t.Fatalf("user choice index = %d", got)
 	}
-	m.configChoiceKey = "term.current"
-	if got := m.currentConfigChoices(); !reflect.DeepEqual(got, []string{"2025-2  2025년도 2학기", "2026-1  2026년도 1학기"}) {
+	m.config.configChoiceKey = "term.current"
+	if got := m.config.currentConfigChoices(); !reflect.DeepEqual(got, []string{"2025-2  2025년도 2학기", "2026-1  2026년도 1학기"}) {
 		t.Fatalf("term choices = %#v", got)
 	}
-	if got := m.currentConfigChoiceIndex(); got != 1 {
+	if got := m.config.currentConfigChoiceIndex(); got != 1 {
 		t.Fatalf("term choice index = %d", got)
 	}
 	if got := termSelectorFromChoice("2026-1  2026년도 1학기"); got != "2026-1" {
@@ -148,64 +146,61 @@ func TestConfigChoicesUseRegisteredUsersAndTerms(t *testing.T) {
 }
 
 func TestConfigCursorWraps(t *testing.T) {
-	m := model{
-		configSettings: app.ConfigSettings{
-			Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
-			Calendar:   app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
-			Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
-			Transcript: app.TranscriptSettings{Concurrency: 1},
-		},
+	m := model{config: configScreenModel{configSettings: app.ConfigSettings{
+		Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+		Calendar:   app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
+		Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
+		Transcript: app.TranscriptSettings{Concurrency: 1},
+	},
 		configOptions: app.CategoryOptions{Reminders: []string{"To-do"}, Calendars: []string{"시간표"}},
-		configPage:    configPageDownload,
+		configPage:    configPageDownload},
 	}
-	m.moveConfigCursor(-1)
-	if m.configCursor != len(configRowsForPage(m.configSettings, m.configOptions, configPageDownload))-1 {
-		t.Fatalf("configCursor after up wrap = %d", m.configCursor)
+	m.config.moveConfigCursor(-1)
+	if m.config.configCursor != len(configRowsForPage(m.config.configSettings, m.config.configOptions, configPageDownload))-1 {
+		t.Fatalf("configCursor after up wrap = %d", m.config.configCursor)
 	}
-	m.moveConfigCursor(1)
-	if m.configCursor != 0 {
-		t.Fatalf("configCursor after down wrap = %d", m.configCursor)
+	m.config.moveConfigCursor(1)
+	if m.config.configCursor != 0 {
+		t.Fatalf("configCursor after down wrap = %d", m.config.configCursor)
 	}
 }
 
 func TestConfigPageNavigationResetsCursor(t *testing.T) {
-	m := model{
-		configSettings: app.ConfigSettings{
-			Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
-			Calendar:   app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
-			Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
-			Transcript: app.TranscriptSettings{Concurrency: 1},
-		},
+	m := model{config: configScreenModel{configSettings: app.ConfigSettings{
+		Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
+		Calendar:   app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
+		Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
+		Transcript: app.TranscriptSettings{Concurrency: 1},
+	},
 		configOptions: app.CategoryOptions{Reminders: []string{"To-do"}, Calendars: []string{"시간표"}},
-		configCursor:  2,
+		configCursor:  2},
 	}
-	m.moveConfigPage(1)
-	if m.configPage != configPageSchedule || m.configCursor != 0 {
-		t.Fatalf("config page/cursor = %d/%d", m.configPage, m.configCursor)
+	m.config.moveConfigPage(1)
+	if m.config.configPage != configPageSchedule || m.config.configCursor != 0 {
+		t.Fatalf("config page/cursor = %d/%d", m.config.configPage, m.config.configCursor)
 	}
 }
 
 func TestConfigArrowKeysNavigatePages(t *testing.T) {
 	m := model{
-		active: screenConfig,
-		configSettings: app.ConfigSettings{
+		active: screenConfig, config: configScreenModel{configSettings: app.ConfigSettings{
 			Reminder:   app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
 			Calendar:   app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
 			Download:   app.DownloadSettings{Dir: "downloads", Concurrency: 3, Caffeinate: true},
 			Transcript: app.TranscriptSettings{Concurrency: 1},
 		},
-		configOptions: app.CategoryOptions{Reminders: []string{"To-do"}, Calendars: []string{"시간표"}},
+			configOptions: app.CategoryOptions{Reminders: []string{"To-do"}, Calendars: []string{"시간표"}}},
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	got := updated.(model)
-	if got.configPage != configPageSchedule {
-		t.Fatalf("configPage after right = %d", got.configPage)
+	if got.config.configPage != configPageSchedule {
+		t.Fatalf("configPage after right = %d", got.config.configPage)
 	}
 	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	got = updated.(model)
-	if got.configPage != configPageGeneral {
-		t.Fatalf("configPage after left = %d", got.configPage)
+	if got.config.configPage != configPageGeneral {
+		t.Fatalf("configPage after left = %d", got.config.configPage)
 	}
 }
 
@@ -219,34 +214,32 @@ func TestCategoryChoicesAppendDirectInput(t *testing.T) {
 
 func TestConfigEnterOpensChoiceViewForCategories(t *testing.T) {
 	m := model{
-		active: screenConfig,
-		configSettings: app.ConfigSettings{
+		active: screenConfig, config: configScreenModel{configSettings: app.ConfigSettings{
 			Reminder: app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
 		},
-		configOptions: app.CategoryOptions{Reminders: []string{"개인", "To-do"}},
-		configCursor:  2,
+			configOptions: app.CategoryOptions{Reminders: []string{"개인", "To-do"}},
+			configCursor:  2},
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(model)
-	if got.active != screenConfigChoice || got.configChoiceKey != "reminder.name" {
-		t.Fatalf("config choice state = %v/%q", got.active, got.configChoiceKey)
+	if got.active != screenConfigChoice || got.config.configChoiceKey != "reminder.name" {
+		t.Fatalf("config choice state = %v/%q", got.active, got.config.configChoiceKey)
 	}
 }
 
 func TestConfigEnterOpensInputViewForTextRows(t *testing.T) {
 	m := model{
-		active: screenConfig,
-		configSettings: app.ConfigSettings{
+		active: screenConfig, config: configScreenModel{configSettings: app.ConfigSettings{
 			Reminder: app.ReminderSettings{ListName: "To-do", AlarmBeforeMin: 1440},
 			Download: app.DownloadSettings{Dir: "downloads", Concurrency: 3},
 		},
-		configPage: configPageDownload,
+			configPage: configPageDownload},
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(model)
-	if got.active != screenConfigInput || got.configEditing != "download.dir" {
-		t.Fatalf("config input state = %v/%q", got.active, got.configEditing)
+	if got.active != screenConfigInput || got.config.configEditing != "download.dir" {
+		t.Fatalf("config input state = %v/%q", got.active, got.config.configEditing)
 	}
 }
