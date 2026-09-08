@@ -428,7 +428,7 @@ func normalizeCachedLectureRows(rows []LectureRow, term Term) ([]LectureRow, boo
 func ParseLectureID(id string) (int, string, error) {
 	parts := strings.SplitN(strings.TrimSpace(id), ":", 2)
 	if len(parts) != 2 {
-		return 0, "", errors.New("강의ID는 course list 번호와 강의 키를 조합한 <과목번호>:<contentID|lrn-lrnSn> 형식이어야 합니다")
+		return 0, "", errors.New("강의ID는 과목 목록 번호와 강의 키를 조합한 <과목번호>:<contentID|lrn-lrnSn> 형식이어야 합니다")
 	}
 
 	courseIndex, err := strconv.Atoi(parts[0])
