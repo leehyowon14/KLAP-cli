@@ -38,17 +38,9 @@ func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (Timetab
 		}
 	}
 
-	entries, err := client.Timetable(ctx, term.Value)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return TimetableResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			entries, err = client.Timetable(ctx, term.Value)
-		}
-	}
+	entries, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.TimetableEntry, error) {
+		return client.Timetable(ctx, term.Value)
+	})
 	if err != nil {
 		return TimetableResult{}, err
 	}
