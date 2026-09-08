@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -26,7 +25,7 @@ func (c *Client) Courses(ctx context.Context) ([]Term, error) {
 	}
 
 	var terms []Term
-	if err := json.Unmarshal(body, &terms); err != nil {
+	if err := decodeResponseJSON(body, &terms); err != nil {
 		return nil, fmt.Errorf("수업 목록 응답 파싱 실패: %w", err)
 	}
 
