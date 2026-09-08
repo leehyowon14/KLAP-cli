@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.leehyowon14.klap.category</string>
+    <key>CFBundleName</key>
+    <string>KLAP CategoryBridge</string>
+    <key>CFBundleExecutable</key>
+    <string>CategoryBridge</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>KLAP 동기화에 사용할 미리 알림 목록을 표시합니다.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>KLAP 동기화에 사용할 미리 알림 목록을 표시합니다.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>KLAP 동기화에 사용할 Calendar 목록을 표시합니다.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>KLAP 동기화에 사용할 Calendar 목록을 표시합니다.</string>
+</dict>
+</plist>

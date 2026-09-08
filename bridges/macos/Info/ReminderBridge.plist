@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.leehyowon14.klap.reminder</string>
+    <key>CFBundleName</key>
+    <string>KLAP ReminderBridge</string>
+    <key>CFBundleExecutable</key>
+    <string>ReminderBridge</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>KLAP 강의와 과제의 마감일을 미리 알림에 동기화합니다.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>KLAP 강의와 과제의 마감일을 미리 알림에 동기화합니다.</string>
+</dict>
+</plist>
