@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -105,7 +104,7 @@ func (c *Client) Notices(ctx context.Context, yearHakgi string, course Course) (
 
 func parseNoticeListResponse(body []byte) ([]Notice, int, error) {
 	var response noticeListResponse
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, 0, fmt.Errorf("공지 목록 응답 파싱 실패: %w", err)
 	}
 
@@ -163,14 +162,14 @@ func (c *Client) NoticeDetail(ctx context.Context, yearHakgi string, course Cour
 	}
 
 	var response noticeDetailResponse
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return NoticeDetail{}, fmt.Errorf("공지 상세 응답 파싱 실패: %w", err)
 	}
 	if response.Board == nil {
-		return NoticeDetail{}, errors.New("공지 상세 응답에 board 본문이 없습니다")
+		return NoticeDetail{}, schemaError(errors.New("공지 상세 응답에 board 본문이 없습니다"))
 	}
 	if strings.TrimSpace(response.Board.Title) == "" && strings.TrimSpace(response.Board.Content) == "" {
-		return NoticeDetail{}, errors.New("공지 상세 응답에 제목과 본문이 없습니다")
+		return NoticeDetail{}, schemaError(errors.New("공지 상세 응답에 제목과 본문이 없습니다"))
 	}
 
 	board := response.Board
