@@ -7,19 +7,19 @@ import (
 )
 
 func defaultReminderBridgePath() string {
-	return defaultBridgePath("KLAP_REMINDER_BRIDGE", "ReminderBridge", "reminder.swift")
+	return defaultBridgePath("KLAP_REMINDER_BRIDGE", "ReminderBridge")
 }
 func defaultCalendarBridgePath() string {
-	return defaultBridgePath("KLAP_CALENDAR_BRIDGE", "CalendarBridge", "calendar.swift")
+	return defaultBridgePath("KLAP_CALENDAR_BRIDGE", "CalendarBridge")
 }
 func defaultCategoryBridgePath() string {
-	return defaultBridgePath("KLAP_CATEGORY_BRIDGE", "CategoryBridge", "categories.swift")
+	return defaultBridgePath("KLAP_CATEGORY_BRIDGE", "CategoryBridge")
 }
 func defaultTranscriptBridgePath() string {
-	return defaultBridgePath("KLAP_TRANSCRIPT_BRIDGE", "TranscriptBridge", "transcribe.swift")
+	return defaultBridgePath("KLAP_TRANSCRIPT_BRIDGE", "TranscriptBridge")
 }
 
-func defaultBridgePath(environment, product, legacyScript string) string {
+func defaultBridgePath(environment, product string) string {
 	if override := os.Getenv(environment); override != "" {
 		return override
 	}
@@ -28,11 +28,11 @@ func defaultBridgePath(environment, product, legacyScript string) string {
 	if _, currentFile, _, ok := runtime.Caller(0); ok {
 		sourceRoot = filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
 	}
-	return selectBridgePath(bridgeCandidates(product, legacyScript, executable, ".", sourceRoot))
+	return selectBridgePath(bridgeCandidates(product, executable, ".", sourceRoot))
 }
 
 // Installed artifacts take precedence over a potentially unrelated working tree.
-func bridgeCandidates(product, legacyScript, executable, workingRoot, sourceRoot string) []string {
+func bridgeCandidates(product, executable, workingRoot, sourceRoot string) []string {
 	var candidates []string
 	if executable != "" {
 		directory := executableDirectory(executable)
@@ -47,13 +47,6 @@ func bridgeCandidates(product, legacyScript, executable, workingRoot, sourceRoot
 		for _, build := range []string{"artifacts", filepath.Join("out", "Products", "Release"), "release", filepath.Join("out", "Products", "Debug"), "debug"} {
 			candidates = append(candidates, filepath.Join(bridgeRoot, ".build", build, product))
 		}
-	}
-	// Preserve source-script distributions until the archive migration is complete.
-	if executable != "" {
-		candidates = append(candidates, filepath.Join(executableDirectory(executable), "bridges", "macos", legacyScript))
-	}
-	for _, root := range roots {
-		candidates = append(candidates, filepath.Join(root, "bridges", "macos", legacyScript))
 	}
 	return candidates
 }

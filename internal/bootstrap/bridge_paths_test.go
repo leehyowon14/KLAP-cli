@@ -11,7 +11,7 @@ func TestBridgeDiscovery(t *testing.T) {
 		t.Run(product, func(t *testing.T) {
 			root := t.TempDir()
 			executable := filepath.Join(root, "installed", "klap")
-			candidates := bridgeCandidates(product, "legacy.swift", executable, filepath.Join(root, "work"), filepath.Join(root, "source"))
+			candidates := bridgeCandidates(product, executable, filepath.Join(root, "work"), filepath.Join(root, "source"))
 			write := func(path string) {
 				t.Helper()
 				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -23,11 +23,6 @@ func TestBridgeDiscovery(t *testing.T) {
 			}
 			if got := selectBridgePath(candidates); got != candidates[0] {
 				t.Fatalf("missing fallback = %q", got)
-			}
-			legacy := candidates[len(candidates)-1]
-			write(legacy)
-			if got := selectBridgePath(candidates); got != legacy {
-				t.Fatalf("legacy fallback = %q", got)
 			}
 			dev := candidates[2]
 			write(dev)
