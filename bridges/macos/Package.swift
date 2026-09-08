@@ -9,13 +9,15 @@ let package = Package(
     ],
     products: [
         .executable(name: "TranscriptBridge", targets: ["TranscriptBridge"]),
-        .executable(name: "ReminderBridge", targets: ["ReminderBridge"])
+        .executable(name: "ReminderBridge", targets: ["ReminderBridge"]),
+        .executable(name: "CalendarBridge", targets: ["CalendarBridge"])
     ],
     targets: [
         .executableTarget(name: "TranscriptBridge"),
         // Preserve the distributed EventKit scripts' Swift 5 language mode.
         .target(name: "EventKitCore", swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(name: "ReminderBridge", dependencies: ["EventKitCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(name: "CalendarBridge", dependencies: ["EventKitCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "EventKitCoreTests", dependencies: ["EventKitCore"], swiftSettings: [.swiftLanguageMode(.v5)])
     ]
 )
