@@ -249,7 +249,7 @@ func (s *Service) RoomBusy(ctx context.Context, opts RoomQueryOptions) (RoomQuer
 func (s *Service) RoomAvailable(ctx context.Context, opts RoomAvailableOptions) (RoomAvailableResult, error) {
 	weekday := parseRoomWeekday(opts.Day)
 	if weekday == 0 {
-		return RoomAvailableResult{}, errors.New("--day에는 월, 월요일, mon, monday 같은 요일이 필요합니다")
+		return RoomAvailableResult{}, errors.New("요일에는 월, 월요일, mon, monday 같은 요일이 필요합니다")
 	}
 	periods := normalizeRoomPeriods(opts.Periods)
 	if len(periods) == 0 {
@@ -526,21 +526,21 @@ func parseRoomWeekday(value string) int {
 func parseRoomDuration(value string) ([]int, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return nil, errors.New("--duration에는 1-3 또는 5 같은 교시 범위가 필요합니다")
+		return nil, errors.New("교시 범위에는 1-3 또는 5 같은 교시 범위가 필요합니다")
 	}
 	parts := strings.Split(value, "-")
 	if len(parts) > 2 {
-		return nil, errors.New("--duration은 1-3 또는 5 형식이어야 합니다")
+		return nil, errors.New("교시 범위는 1-3 또는 5 형식이어야 합니다")
 	}
 	start, err := strconv.Atoi(strings.TrimSpace(parts[0]))
 	if err != nil || start < 1 || start > 8 {
-		return nil, errors.New("--duration 교시는 1부터 8 사이여야 합니다")
+		return nil, errors.New("교시는 1부터 8 사이여야 합니다")
 	}
 	end := start
 	if len(parts) == 2 {
 		end, err = strconv.Atoi(strings.TrimSpace(parts[1]))
 		if err != nil || end < 1 || end > 8 || end < start {
-			return nil, errors.New("--duration 범위는 1-8 사이의 오름차순이어야 합니다")
+			return nil, errors.New("교시 범위는 1-8 사이의 오름차순이어야 합니다")
 		}
 	}
 	periods := make([]int, 0, end-start+1)
