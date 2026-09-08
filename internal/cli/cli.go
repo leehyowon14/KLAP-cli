@@ -609,7 +609,7 @@ func (r Runner) runSyllabus(ctx context.Context, service *app.Service, args []st
 	return nil
 }
 
-func runRoom(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runRoom(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap room <free|busy|index|cache>")
 	}
@@ -622,16 +622,16 @@ func runRoom(ctx context.Context, service *app.Service, args []string) error {
 		progressed := false
 		opts.OnProgress = func(done int, total int, label string) {
 			progressed = true
-			fmt.Printf("\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
+			_, _ = fmt.Fprintf(r.Out, "\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
 		}
 		result, err := service.RoomFree(ctx, opts)
 		if progressed {
-			fmt.Println()
+			_, _ = fmt.Fprintln(r.Out)
 		}
 		if err != nil {
 			return err
 		}
-		printRoomFree(result)
+		r.printRoomFree(result)
 		return nil
 	case "busy":
 		opts, err := roomQueryOptions(args[1:])
@@ -641,16 +641,16 @@ func runRoom(ctx context.Context, service *app.Service, args []string) error {
 		progressed := false
 		opts.OnProgress = func(done int, total int, label string) {
 			progressed = true
-			fmt.Printf("\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
+			_, _ = fmt.Fprintf(r.Out, "\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
 		}
 		result, err := service.RoomBusy(ctx, opts)
 		if progressed {
-			fmt.Println()
+			_, _ = fmt.Fprintln(r.Out)
 		}
 		if err != nil {
 			return err
 		}
-		printRoomBusy(result)
+		r.printRoomBusy(result)
 		return nil
 	case "available", "empty":
 		opts, err := roomAvailableOptions(args[1:])
@@ -660,16 +660,16 @@ func runRoom(ctx context.Context, service *app.Service, args []string) error {
 		progressed := false
 		opts.OnProgress = func(done int, total int, label string) {
 			progressed = true
-			fmt.Printf("\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
+			_, _ = fmt.Fprintf(r.Out, "\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
 		}
 		result, err := service.RoomAvailable(ctx, opts)
 		if progressed {
-			fmt.Println()
+			_, _ = fmt.Fprintln(r.Out)
 		}
 		if err != nil {
 			return err
 		}
-		printRoomAvailable(result)
+		r.printRoomAvailable(result)
 		return nil
 	case "index":
 		opts, err := roomIndexOptions(args[1:])
@@ -680,16 +680,16 @@ func runRoom(ctx context.Context, service *app.Service, args []string) error {
 		progressed := false
 		opts.OnProgress = func(done int, total int, label string) {
 			progressed = true
-			fmt.Printf("\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
+			_, _ = fmt.Fprintf(r.Out, "\r인덱싱: %d/%d %s", done, total, truncateForLine(label, 32))
 		}
 		result, err := service.RoomIndex(ctx, opts)
 		if progressed {
-			fmt.Println()
+			_, _ = fmt.Fprintln(r.Out)
 		}
 		if err != nil {
 			return err
 		}
-		printRoomIndex(result)
+		r.printRoomIndex(result)
 		return nil
 	case "cache":
 		if len(args) == 2 && args[1] == "clear" {
@@ -697,7 +697,7 @@ func runRoom(ctx context.Context, service *app.Service, args []string) error {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("room-index cache 삭제: %d개\n", result.Removed)
+			_, _ = fmt.Fprintf(r.Out, "room-index cache 삭제: %d개\n", result.Removed)
 			return nil
 		}
 		return errors.New("usage: klap room cache clear")
@@ -1439,11 +1439,11 @@ func looksLikeLectureID(value string) bool {
 	return strings.Contains(strings.TrimSpace(value), ":")
 }
 
-func printRoomFree(result app.RoomQueryResult) {
-	if !printRoomQueryHeader(result) {
+func (r Runner) printRoomFree(result app.RoomQueryResult) {
+	if !r.printRoomQueryHeader(result) {
 		return
 	}
-	fmt.Printf("%s 빈 시간 | %s%s\n", result.Room, displayRoomTermValue(result.TermValue), roomCacheLabel(result.Cached))
+	_, _ = fmt.Fprintf(r.Out, "%s 빈 시간 | %s%s\n", result.Room, displayRoomTermValue(result.TermValue), roomCacheLabel(result.Cached))
 	byWeekday := make(map[int][]int)
 	for _, slot := range result.FreeSlots {
 		byWeekday[slot.Weekday] = append(byWeekday[slot.Weekday], slot.Period)
@@ -1451,94 +1451,94 @@ func printRoomFree(result app.RoomQueryResult) {
 	for weekday := 1; weekday <= 5; weekday++ {
 		periods := byWeekday[weekday]
 		if len(periods) == 0 {
-			fmt.Printf("%s: 없음\n", app.RoomWeekdayLabel(weekday))
+			_, _ = fmt.Fprintf(r.Out, "%s: 없음\n", app.RoomWeekdayLabel(weekday))
 			continue
 		}
 		values := make([]string, 0, len(periods))
 		for _, period := range periods {
 			values = append(values, strconv.Itoa(period))
 		}
-		fmt.Printf("%s: %s교시\n", app.RoomWeekdayLabel(weekday), strings.Join(values, ", "))
+		_, _ = fmt.Fprintf(r.Out, "%s: %s교시\n", app.RoomWeekdayLabel(weekday), strings.Join(values, ", "))
 	}
-	printRoomWarnings(result.Warnings)
+	r.printRoomWarnings(result.Warnings)
 }
 
-func printRoomBusy(result app.RoomQueryResult) {
-	if !printRoomQueryHeader(result) {
+func (r Runner) printRoomBusy(result app.RoomQueryResult) {
+	if !r.printRoomQueryHeader(result) {
 		return
 	}
-	fmt.Printf("%s 사용 목록 | %s%s\n", result.Room, displayRoomTermValue(result.TermValue), roomCacheLabel(result.Cached))
+	_, _ = fmt.Fprintf(r.Out, "%s 사용 목록 | %s%s\n", result.Room, displayRoomTermValue(result.TermValue), roomCacheLabel(result.Cached))
 	if len(result.BusyRows) == 0 {
-		fmt.Println("사용 중인 수업이 없습니다")
-		printRoomWarnings(result.Warnings)
+		_, _ = fmt.Fprintln(r.Out, "사용 중인 수업이 없습니다")
+		r.printRoomWarnings(result.Warnings)
 		return
 	}
 	for _, row := range result.BusyRows {
 		course := emptyFallback(row.CourseName, row.CourseCode)
 		professor := emptyFallback(row.Professor, "교수 미지정")
-		fmt.Printf("%s %s | %s | %s | %s\n", app.RoomWeekdayLabel(row.Weekday), roomPeriodLabel(row.Period, row.Span), course, professor, row.CourseCode)
+		_, _ = fmt.Fprintf(r.Out, "%s %s | %s | %s | %s\n", app.RoomWeekdayLabel(row.Weekday), roomPeriodLabel(row.Period, row.Span), course, professor, row.CourseCode)
 	}
-	printRoomWarnings(result.Warnings)
+	r.printRoomWarnings(result.Warnings)
 }
 
-func printRoomAvailable(result app.RoomAvailableResult) {
+func (r Runner) printRoomAvailable(result app.RoomAvailableResult) {
 	status := roomAvailabilityStatus(result.Weekday, result.Periods)
-	fmt.Printf("빈 강의실 | %s | %s%s\n", displayRoomTermValue(result.TermValue), status, roomCacheLabel(result.Cached))
+	_, _ = fmt.Fprintf(r.Out, "빈 강의실 | %s | %s%s\n", displayRoomTermValue(result.TermValue), status, roomCacheLabel(result.Cached))
 	if len(result.Rooms) == 0 {
-		fmt.Println("조건에 맞는 빈 강의실이 없습니다")
-		printRoomWarnings(result.Warnings)
+		_, _ = fmt.Fprintln(r.Out, "조건에 맞는 빈 강의실이 없습니다")
+		r.printRoomWarnings(result.Warnings)
 		return
 	}
 	for index, room := range result.Rooms {
-		fmt.Printf("%d. %s | %s\n", index+1, room.Room, status)
+		_, _ = fmt.Fprintf(r.Out, "%d. %s | %s\n", index+1, room.Room, status)
 	}
-	printRoomWarnings(result.Warnings)
+	r.printRoomWarnings(result.Warnings)
 }
 
-func printRoomIndex(result app.RoomIndexResult) {
-	fmt.Printf("강의실 인덱스 | %s | %d개%s\n", displayRoomTermValue(result.TermValue), len(result.Rooms), roomCacheLabel(result.Cached))
+func (r Runner) printRoomIndex(result app.RoomIndexResult) {
+	_, _ = fmt.Fprintf(r.Out, "강의실 인덱스 | %s | %d개%s\n", displayRoomTermValue(result.TermValue), len(result.Rooms), roomCacheLabel(result.Cached))
 	if len(result.Rooms) == 0 {
-		fmt.Println("조회된 강의실이 없습니다")
-		printRoomWarnings(result.Warnings)
+		_, _ = fmt.Fprintln(r.Out, "조회된 강의실이 없습니다")
+		r.printRoomWarnings(result.Warnings)
 		return
 	}
 	for index, room := range result.Rooms {
-		fmt.Printf("%d. %s | %d개 교시 사용\n", index+1, room.Room, room.BusyCount)
+		_, _ = fmt.Fprintf(r.Out, "%d. %s | %d개 교시 사용\n", index+1, room.Room, room.BusyCount)
 	}
-	printRoomWarnings(result.Warnings)
+	r.printRoomWarnings(result.Warnings)
 }
 
-func printRoomQueryHeader(result app.RoomQueryResult) bool {
+func (r Runner) printRoomQueryHeader(result app.RoomQueryResult) bool {
 	if result.Room != "" {
 		return true
 	}
 	if len(result.Candidates) == 0 {
-		fmt.Println("매칭되는 강의실이 없습니다")
-		printRoomWarnings(result.Warnings)
+		_, _ = fmt.Fprintln(r.Out, "매칭되는 강의실이 없습니다")
+		r.printRoomWarnings(result.Warnings)
 		return false
 	}
-	fmt.Println("여러 강의실이 매칭되었습니다. 정확한 강의실명으로 다시 조회하세요.")
+	_, _ = fmt.Fprintln(r.Out, "여러 강의실이 매칭되었습니다. 정확한 강의실명으로 다시 조회하세요.")
 	for index, room := range result.Candidates {
-		fmt.Printf("%d. %s\n", index+1, room)
+		_, _ = fmt.Fprintf(r.Out, "%d. %s\n", index+1, room)
 	}
-	printRoomWarnings(result.Warnings)
+	r.printRoomWarnings(result.Warnings)
 	return false
 }
 
-func printRoomWarnings(warnings []string) {
+func (r Runner) printRoomWarnings(warnings []string) {
 	if len(warnings) == 0 {
 		return
 	}
-	fmt.Printf("\n경고: %d개 과목의 강의시간 조회에 실패했습니다\n", len(warnings))
+	_, _ = fmt.Fprintf(r.Out, "\n경고: %d개 과목의 강의시간 조회에 실패했습니다\n", len(warnings))
 	limit := len(warnings)
 	if limit > 20 {
 		limit = 20
 	}
 	for _, warning := range warnings[:limit] {
-		fmt.Printf("- %s\n", warning)
+		_, _ = fmt.Fprintf(r.Out, "- %s\n", warning)
 	}
 	if len(warnings) > limit {
-		fmt.Printf("- ... %d개 생략\n", len(warnings)-limit)
+		_, _ = fmt.Fprintf(r.Out, "- ... %d개 생략\n", len(warnings)-limit)
 	}
 }
 
