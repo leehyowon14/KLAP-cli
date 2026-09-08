@@ -5,6 +5,7 @@ import "context"
 // Downloader owns HTTP transfer, partial-file resume and final file promotion.
 // Calls are blocking; progress is synchronous and observes completed writes.
 type Downloader interface {
+	Status(string) (DownloadStatusResult, error)
 	VideoPath(string, string, LectureFileName, string, int) string
 	DownloadFile(context.Context, string, string, bool, func(int64, int64)) (int64, error)
 }

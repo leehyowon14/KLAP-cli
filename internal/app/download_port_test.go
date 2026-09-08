@@ -64,3 +64,14 @@ func TestLectureFileNameNormalizesWeek(t *testing.T) {
 		}
 	}
 }
+
+func (*fakeDownloader) Status(dir string) (DownloadStatusResult, error) {
+	return DownloadStatusResult{Dir: dir}, nil
+}
+func TestDownloadStatusUsesInjectedAdapter(t *testing.T) {
+	service := &Service{downloader: &fakeDownloader{}}
+	got, err := service.DownloadStatus("explicit")
+	if err != nil || got.Dir != "explicit" {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+}

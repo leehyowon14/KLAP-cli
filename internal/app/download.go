@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -109,45 +108,7 @@ func (s *Service) DownloadStatus(dir string) (DownloadStatusResult, error) {
 	if err != nil {
 		return DownloadStatusResult{}, err
 	}
-	result := DownloadStatusResult{Dir: dir}
-	err = filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if strings.HasSuffix(entry.Name(), ".part") {
-			result.PartialFiles++
-			result.PartialBytes += info.Size()
-			return nil
-		}
-		result.Files++
-		result.Bytes += info.Size()
-		result.Items = append(result.Items, DownloadFile{
-			Path:       path,
-			Bytes:      info.Size(),
-			ModifiedAt: info.ModTime(),
-		})
-		return nil
-	})
-	if errors.Is(err, os.ErrNotExist) {
-		return result, nil
-	}
-	if err != nil {
-		return DownloadStatusResult{}, fmt.Errorf("다운로드 폴더 조회 실패: %w", err)
-	}
-	sort.SliceStable(result.Items, func(i, j int) bool {
-		return result.Items[j].ModifiedAt.Before(result.Items[i].ModifiedAt)
-	})
-	if len(result.Items) > 10 {
-		result.Items = result.Items[:10]
-	}
-	return result, nil
+	return s.downloader.Status(dir)
 }
 
 func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDownloadOptions) (LectureDownloadResult, error) {

@@ -83,24 +83,6 @@ func TestLectureTranscriptContextIncludesCourseAndCodeSwitching(t *testing.T) {
 	}
 }
 
-func TestDownloadStatusReportsPartialFiles(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "lecture.mp4"), []byte("done"), 0o644); err != nil {
-		t.Fatalf("WriteFile(done) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "lecture.mp4.part"), []byte("partial"), 0o644); err != nil {
-		t.Fatalf("WriteFile(partial) error = %v", err)
-	}
-
-	got, err := (&Service{}).DownloadStatus(dir)
-	if err != nil {
-		t.Fatalf("DownloadStatus() error = %v", err)
-	}
-	if got.Files != 1 || got.PartialFiles != 1 || got.PartialBytes != int64(len("partial")) {
-		t.Fatalf("DownloadStatus() = %+v", got)
-	}
-}
-
 func TestLectureWeekOrderFallsBackToCourseOrder(t *testing.T) {
 	rows := []LectureRow{
 		{ID: "1:a", Lecture: Lecture{ContentID: "a", ModuleTitle: "1주차", Title: "첫번째"}},
