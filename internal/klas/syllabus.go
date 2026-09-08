@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -183,7 +182,7 @@ func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, name string
 	}
 
 	var response []SyllabusListItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("강의계획서 목록 응답 파싱 실패: %w", err)
 	}
 	return response, nil
@@ -207,7 +206,7 @@ func (c *Client) syllabusTimeInfoRaw(ctx context.Context, subjectID string) ([]s
 		return nil, err
 	}
 	var response []syllabusTimeItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("강의계획서 시간표 응답 파싱 실패: %w", err)
 	}
 	return response, nil
@@ -225,11 +224,11 @@ func (c *Client) SyllabusBySubjectID(ctx context.Context, subjectID string) (Syl
 	}
 
 	var response []syllabusDataItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return Syllabus{}, fmt.Errorf("강의계획서 상세 응답 파싱 실패: %w", err)
 	}
 	if len(response) == 0 {
-		return Syllabus{}, errors.New("강의계획서 상세 응답이 비어 있습니다")
+		return Syllabus{}, schemaError(errors.New("강의계획서 상세 응답이 비어 있습니다"))
 	}
 
 	timeResponse, err := c.syllabusTimeInfoRaw(ctx, subjectID)
