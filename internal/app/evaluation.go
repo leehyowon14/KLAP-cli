@@ -116,16 +116,9 @@ func (s *Service) EvaluationSubmit(ctx context.Context, opts EvaluationSubmitOpt
 			continue
 		}
 
-		form, formErr := client.EvaluationForm(ctx, term, target.Course)
-		if formErr != nil {
-			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, formErr)
-			if refreshErr != nil {
-				formErr = refreshErr
-			} else if refreshed {
-				client = refreshedClient
-				form, formErr = client.EvaluationForm(ctx, term, target.Course)
-			}
-		}
+		form, formErr := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.EvaluationForm, error) {
+			return client.EvaluationForm(ctx, term, target.Course)
+		})
 		if formErr != nil {
 			item.Err = formErr
 			result.Items = append(result.Items, item)
@@ -135,33 +128,19 @@ func (s *Service) EvaluationSubmit(ctx context.Context, opts EvaluationSubmitOpt
 			result.Items = append(result.Items, item)
 			continue
 		}
-		if _, submitErr := client.SubmitEvaluation(ctx, term, target.Course, form, answerOpts); submitErr != nil {
-			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, submitErr)
-			if refreshErr != nil {
-				submitErr = refreshErr
-			} else if refreshed {
-				client = refreshedClient
-				_, submitErr = client.SubmitEvaluation(ctx, term, target.Course, form, answerOpts)
-			}
-			item.Err = submitErr
-		}
+		_, submitErr := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.EvaluationSubmitResult, error) {
+			return client.SubmitEvaluation(ctx, term, target.Course, form, answerOpts)
+		})
+		item.Err = submitErr
 		result.Items = append(result.Items, item)
 	}
 	return result, nil
 }
 
 func (s *Service) evaluationCourses(ctx context.Context, studentID string, client *klas.Client) (klas.EvaluationTerm, []klas.EvaluationCourse, *klas.Client, error) {
-	term, err := client.EvaluationTerm(ctx)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return klas.EvaluationTerm{}, nil, client, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			term, err = client.EvaluationTerm(ctx)
-		}
-	}
+	term, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.EvaluationTerm, error) {
+		return client.EvaluationTerm(ctx)
+	})
 	if err != nil {
 		return klas.EvaluationTerm{}, nil, client, err
 	}
@@ -169,31 +148,16 @@ func (s *Service) evaluationCourses(ctx context.Context, studentID string, clien
 		return term, nil, client, nil
 	}
 
-	if _, err := client.EvaluationStudent(ctx); err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return klas.EvaluationTerm{}, nil, client, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			_, err = client.EvaluationStudent(ctx)
-		}
-		if err != nil {
-			return klas.EvaluationTerm{}, nil, client, err
-		}
+	if _, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (struct{}, error) {
+		_, err := client.EvaluationStudent(ctx)
+		return struct{}{}, err
+	}); err != nil {
+		return klas.EvaluationTerm{}, nil, client, err
 	}
 
-	courses, err := client.EvaluationCourses(ctx, term)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return klas.EvaluationTerm{}, nil, client, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			courses, err = client.EvaluationCourses(ctx, term)
-		}
-	}
+	courses, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.EvaluationCourse, error) {
+		return client.EvaluationCourses(ctx, term)
+	})
 	if err != nil {
 		return klas.EvaluationTerm{}, nil, client, err
 	}
