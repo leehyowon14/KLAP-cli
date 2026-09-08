@@ -62,33 +62,18 @@ func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions
 		}
 	}
 
-	courses, err := client.AttendanceCourses(ctx, term.Value)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return AttendanceListResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			courses, err = client.AttendanceCourses(ctx, term.Value)
-		}
-	}
+	courses, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.AttendanceCourse, error) {
+		return client.AttendanceCourses(ctx, term.Value)
+	})
 	if err != nil {
 		return AttendanceListResult{}, err
 	}
 
 	rows := make([]AttendanceRow, 0, len(courses))
 	for index, course := range courses {
-		sessions, detailErr := client.AttendanceSessions(ctx, term.Value, course)
-		if detailErr != nil {
-			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, detailErr)
-			if refreshErr != nil {
-				detailErr = refreshErr
-			} else if refreshed {
-				client = refreshedClient
-				sessions, detailErr = client.AttendanceSessions(ctx, term.Value, course)
-			}
-		}
+		sessions, detailErr := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.AttendanceSession, error) {
+			return client.AttendanceSessions(ctx, term.Value, course)
+		})
 		rows = append(rows, AttendanceRow{
 			Index:    index + 1,
 			Course:   course,
@@ -138,17 +123,9 @@ func (s *Service) CdpAttendance(ctx context.Context, opts CdpAttendanceOptions) 
 		return CdpAttendanceResult{}, err
 	}
 
-	report, err := client.CdpAttendance(ctx)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return CdpAttendanceResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			report, err = client.CdpAttendance(ctx)
-		}
-	}
+	report, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.CdpAttendanceReport, error) {
+		return client.CdpAttendance(ctx)
+	})
 	if err != nil {
 		return CdpAttendanceResult{}, err
 	}
