@@ -332,11 +332,6 @@ func testChromeModel(active screen) model {
 		width:  80,
 		height: 24,
 
-		dueResult: app.DueResult{
-			From:  time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local),
-			Until: time.Date(2026, 6, 24, 0, 0, 0, 0, time.Local),
-		},
-
 		lectureRows: []app.LectureRow{{
 			ID:         "1",
 			CourseName: "강의",
@@ -416,6 +411,9 @@ func testChromeModel(active screen) model {
 				Index: 1,
 				Name:  "강의",
 			}},
+		}}, due: dueScreenModel{dueResult: app.DueResult{
+			From:  time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local),
+			Until: time.Date(2026, 6, 24, 0, 0, 0, 0, time.Local),
 		}},
 	}
 	m.configInput.SetValue("입력값")

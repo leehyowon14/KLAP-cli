@@ -64,9 +64,7 @@ type model struct {
 	assignments         assignmentScreenModel
 	notices             noticeScreenModel
 	lectureRows         []app.LectureRow
-	dueResult           app.DueResult
-	duePage             int
-	dueCursor           int
+	due                 dueScreenModel
 	academicResult      app.AcademicListResult
 	academicMonth       int
 	academicCursor      int
@@ -329,6 +327,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applyChildAction(action)
 			}
 		}
+		if m.active == screenDue && !m.loading {
+			if action, handled := m.due.Update(msg, m.width); handled {
+				return m.applyChildAction(action)
+			}
+		}
 		if m.active == screenSyllabus {
 			if action, handled := m.syllabus.Update(msg, m.width, m.height, m.loading, m.ctx, m.service, m.dashboard.dashboardResult.Term.Value); handled {
 				return m.applyChildAction(action)
@@ -374,8 +377,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveRoomResultCursor(-1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
-			} else if m.active == screenDue && !m.loading {
-				m.moveDueCursor(-1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicCursor(-1)
 			}
@@ -386,8 +387,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveRoomResultCursor(1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
-			} else if m.active == screenDue && !m.loading {
-				m.moveDueCursor(1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicCursor(1)
 			}
@@ -396,8 +395,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveConfigPage(-1)
 			} else if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultPage(-1)
-			} else if m.active == screenDue && !m.loading {
-				m.moveDuePage(-1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicMonth(-1)
 			}
@@ -406,8 +403,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveConfigPage(1)
 			} else if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultPage(1)
-			} else if m.active == screenDue && !m.loading {
-				m.moveDuePage(1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicMonth(1)
 			}
@@ -663,7 +658,7 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 	case screenDashboard:
 		m.dashboard.Loaded(msg.dashboard, msg.screen == m.active)
 	case screenDue:
-		m.dueResult = msg.due
+		m.due.Loaded(msg.due, msg.screen == m.active)
 	case screenAssignments:
 		m.assignments.Loaded(msg.assignments)
 	case screenNotices:
@@ -684,10 +679,6 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 		m.loading = false
 		m.err = msg.err
 		m.content = msg.content
-		if msg.screen == screenDue {
-			m.duePage = 0
-			m.dueCursor = 0
-		}
 		if msg.screen == screenAcademic {
 			m.academicMonth = defaultAcademicMonth(msg.academic.Events, time.Now())
 			m.academicCursor = 0
@@ -845,7 +836,7 @@ func (m model) syncScreenWithDecisions(source screen, decisions map[string]app.S
 	case screenDashboard:
 		return m.syncDashboard(decisions)
 	case screenDue:
-		if m.duePage == 3 {
+		if m.due.duePage == 3 {
 			return m.syncAcademic(decisions)
 		}
 		return nil
@@ -2044,7 +2035,7 @@ func (m *model) resetLoadedMainScreens() {
 		delete(m.screenErrors, target)
 	}
 	m.dashboard.Reset()
-	m.dueResult = app.DueResult{}
+	m.due.Reset()
 	m.assignments.Reset()
 	m.notices.Reset()
 	m.lectureRows = nil
@@ -2143,7 +2134,7 @@ func (m model) footerHelp() string {
 		return "↑↓ 스크롤  b/esc Dashboard  r 새로고침  q 종료"
 	}
 	if m.active == screenDue {
-		if m.duePage == 3 {
+		if m.due.duePage == 3 {
 			return "←/→ 페이지  ↑↓ 스크롤  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 		}
 		return "←/→ 페이지  ↑↓ 스크롤  b/esc 뒤로  r 새로고침  q 종료"
@@ -3071,6 +3062,9 @@ func (m model) loadPrefetch(target screen, refresh bool) tea.Cmd {
 }
 
 func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.Cmd {
+	if target == screenDue {
+		return loadDue(m.ctx, m.service, refresh, prefetch)
+	}
 	if target == screenDashboard {
 		return loadDashboard(m.ctx, m.service, refresh, prefetch)
 	}
@@ -3082,9 +3076,6 @@ func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.
 	}
 	return func() tea.Msg {
 		switch target {
-		case screenDue:
-			result, err := m.service.Due(m.ctx, app.DueOptions{Days: 14, Refresh: refresh})
-			return loadMsg{screen: target, prefetch: prefetch, due: result, err: err}
 		case screenLectures:
 			rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: refresh})
 			return loadMsg{screen: target, prefetch: prefetch, lectures: rows, err: err}

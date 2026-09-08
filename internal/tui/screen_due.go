@@ -1,14 +1,16 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"strings"
 )
 
 var duePageLabels = []string{"Summary", "과제", "온라인 강의", "학사일정"}
 
-func (m *model) moveDuePage(delta int) {
+func (m *dueScreenModel) moveDuePage(delta int) {
 	m.duePage += delta
 	if m.duePage < 0 {
 		m.duePage = len(duePageLabels) - 1
@@ -19,8 +21,8 @@ func (m *model) moveDuePage(delta int) {
 	m.dueCursor = 0
 }
 
-func (m *model) moveDueCursor(delta int) {
-	lines := duePageLines(m.dueResult, m.duePage, m.width)
+func (m *dueScreenModel) moveDueCursor(delta, width int) {
+	lines := duePageLines(m.dueResult, m.duePage, width)
 	if len(lines) == 0 {
 		m.dueCursor = 0
 		return
@@ -34,7 +36,7 @@ func (m *model) moveDueCursor(delta int) {
 	}
 }
 
-func (m model) renderDuePagedPanel(width int) string {
+func (m dueScreenModel) View(width, height int, status string) string {
 	lines := duePageLines(m.dueResult, m.duePage, width)
 	page := m.duePage + 1
 	if page < 1 {
@@ -55,8 +57,8 @@ func (m model) renderDuePagedPanel(width int) string {
 		return b.String()
 	}
 
-	visibleRows := maxInt(5, m.height-12)
-	if m.height <= 0 {
+	visibleRows := maxInt(5, height-12)
+	if height <= 0 {
 		visibleRows = 16
 	}
 	if visibleRows > len(lines) {
@@ -93,9 +95,9 @@ func (m model) renderDuePagedPanel(width int) string {
 		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(lines))))
 		b.WriteString("\n")
 	}
-	if m.syncStatus != "" {
+	if status != "" {
 		b.WriteString("\n")
-		b.WriteString(footerStyle.Render(m.syncStatus))
+		b.WriteString(footerStyle.Render(status))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -224,4 +226,52 @@ func formatDue(result app.DueResult) string {
 		}
 	}
 	return b.String()
+}
+
+type dueScreenModel struct {
+	dueResult app.DueResult
+	duePage   int
+	dueCursor int
+}
+
+func (m *dueScreenModel) Loaded(result app.DueResult, active bool) {
+	m.dueResult = result
+	if active {
+		m.duePage = 0
+		m.dueCursor = 0
+	}
+}
+func (m *dueScreenModel) Reset() { *m = dueScreenModel{} }
+func (m *dueScreenModel) Update(msg tea.Msg, width int) (childAction, bool) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	switch {
+	case key.String() == "up" || keyMatches(key.String(), "k", "ㅏ"):
+		m.moveDueCursor(-1, width)
+	case key.String() == "down" || keyMatches(key.String(), "j", "ㅓ"):
+		m.moveDueCursor(1, width)
+	case key.String() == "left":
+		m.moveDuePage(-1)
+	case key.String() == "right":
+		m.moveDuePage(1)
+	default:
+		return childAction{}, false
+	}
+	return childAction{}, true
+}
+
+type dueScreenService interface {
+	Due(context.Context, app.DueOptions) (app.DueResult, error)
+}
+
+func loadDue(ctx context.Context, service dueScreenService, refresh, prefetch bool) tea.Cmd {
+	return func() tea.Msg {
+		result, err := service.Due(ctx, app.DueOptions{Days: 14, Refresh: refresh})
+		return loadMsg{screen: screenDue, prefetch: prefetch, due: result, err: err}
+	}
+}
+func (m model) renderDuePagedPanel(width int) string {
+	return m.due.View(width, m.height, m.syncStatus)
 }
