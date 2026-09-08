@@ -89,7 +89,7 @@ type LectureTranscriptResult struct {
 type LectureDownloadProgress struct {
 	Lecture      LectureRow
 	Path         string
-	Stage        string
+	Stage        LectureTransferStage
 	CurrentIndex int
 	TotalItems   int
 	Bytes        int64
@@ -102,7 +102,7 @@ type LectureTranscriptProgress struct {
 	Lecture    LectureRow
 	InputPath  string
 	OutputPath string
-	Stage      string
+	Stage      LectureTransferStage
 	Progress   float64
 	Err        error
 }
@@ -195,7 +195,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 	weekOrder := lectureWeekOrder(lectureModels(lectures), lectureModel(*matched))
 	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 		Lecture:      row,
-		Stage:        "resolve",
+		Stage:        LectureStageResolve,
 		CurrentIndex: 1,
 		TotalItems:   1,
 	})
@@ -221,7 +221,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 		Lecture:      row,
 		Path:         path,
-		Stage:        "download",
+		Stage:        LectureStageDownload,
 		CurrentIndex: 1,
 		TotalItems:   1,
 	})
@@ -229,7 +229,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         path,
-			Stage:        "download",
+			Stage:        LectureStageDownload,
 			CurrentIndex: 1,
 			TotalItems:   1,
 			Bytes:        bytesWritten,
@@ -240,7 +240,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         path,
-			Stage:        "error",
+			Stage:        LectureStageError,
 			CurrentIndex: 1,
 			TotalItems:   1,
 			Bytes:        bytesWritten,
@@ -251,7 +251,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 		Lecture:      row,
 		Path:         path,
-		Stage:        "done",
+		Stage:        LectureStageDone,
 		CurrentIndex: 1,
 		TotalItems:   1,
 		Bytes:        bytesWritten,
@@ -424,7 +424,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		item.Err = errors.New("KWCommons 콘텐츠 ID가 없습니다")
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 			Lecture:      row,
-			Stage:        "skip",
+			Stage:        LectureStageSkip,
 			CurrentIndex: index,
 			TotalItems:   total,
 			Skipped:      true,
@@ -435,7 +435,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 
 	emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 		Lecture:      row,
-		Stage:        "resolve",
+		Stage:        LectureStageResolve,
 		CurrentIndex: index,
 		TotalItems:   total,
 	})
@@ -444,7 +444,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		item.Err = err
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 			Lecture:      row,
-			Stage:        "error",
+			Stage:        LectureStageError,
 			CurrentIndex: index,
 			TotalItems:   total,
 			Err:          err,
@@ -458,7 +458,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         item.Path,
-			Stage:        "error",
+			Stage:        LectureStageError,
 			CurrentIndex: index,
 			TotalItems:   total,
 			Err:          err,
@@ -470,7 +470,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         item.Path,
-			Stage:        "skip",
+			Stage:        LectureStageSkip,
 			CurrentIndex: index,
 			TotalItems:   total,
 			Skipped:      true,
@@ -481,7 +481,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         item.Path,
-			Stage:        "error",
+			Stage:        LectureStageError,
 			CurrentIndex: index,
 			TotalItems:   total,
 			Err:          err,
@@ -492,7 +492,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 	emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 		Lecture:      row,
 		Path:         item.Path,
-		Stage:        "download",
+		Stage:        LectureStageDownload,
 		CurrentIndex: index,
 		TotalItems:   total,
 	})
@@ -500,7 +500,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         item.Path,
-			Stage:        "download",
+			Stage:        LectureStageDownload,
 			CurrentIndex: index,
 			TotalItems:   total,
 			Bytes:        bytesWritten,
@@ -513,7 +513,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 			Lecture:      row,
 			Path:         item.Path,
-			Stage:        "error",
+			Stage:        LectureStageError,
 			CurrentIndex: index,
 			TotalItems:   total,
 			Bytes:        bytesWritten,
@@ -524,7 +524,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 	emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
 		Lecture:      row,
 		Path:         item.Path,
-		Stage:        "done",
+		Stage:        LectureStageDone,
 		CurrentIndex: index,
 		TotalItems:   total,
 		Bytes:        bytesWritten,
@@ -555,7 +555,7 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 				Lecture:    item.Lecture,
 				InputPath:  item.Path,
 				OutputPath: outputPath,
-				Stage:      "transcript-error",
+				Stage:      LectureStageTranscriptError,
 				Err:        err,
 			})
 			continue
@@ -571,7 +571,7 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 			Lecture:    item.Lecture,
 			InputPath:  item.Path,
 			OutputPath: outputPath,
-			Stage:      "transcribe",
+			Stage:      LectureStageTranscribe,
 		})
 	}
 	if len(jobs) == 0 {
@@ -603,7 +603,7 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 			Lecture:    row,
 			InputPath:  progress.InputPath,
 			OutputPath: progress.OutputPath,
-			Stage:      "transcribe",
+			Stage:      LectureStageTranscribe,
 			Progress:   progress.Progress,
 		})
 	})
@@ -621,7 +621,7 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 				Lecture:    item.Lecture,
 				InputPath:  item.InputPath,
 				OutputPath: item.OutputPath,
-				Stage:      "transcript-error",
+				Stage:      LectureStageTranscriptError,
 				Err:        err,
 			})
 		}
@@ -640,10 +640,10 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 			OutputPath: bridgeResult.OutputPath,
 			Text:       bridgeResult.Text,
 		}
-		stage := "transcribed"
+		stage := LectureStageTranscribed
 		if strings.TrimSpace(bridgeResult.Err) != "" {
 			item.Err = errors.New(bridgeResult.Err)
-			stage = "transcript-error"
+			stage = LectureStageTranscriptError
 		}
 		result.Items = append(result.Items, item)
 		emitLectureTranscriptProgress(opts.OnProgress, LectureTranscriptProgress{

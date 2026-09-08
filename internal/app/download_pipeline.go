@@ -65,7 +65,7 @@ func runLectureDownloadPipeline(ctx context.Context, opts LectureDownloadPipelin
 		}
 		seen[key] = true
 		queue = append(queue, item)
-		progress := LectureTranscriptProgress{Lecture: item.Lecture, InputPath: item.Path, OutputPath: TranscriptPathForDownload(item.Path), Stage: "transcribe"}
+		progress := LectureTranscriptProgress{Lecture: item.Lecture, InputPath: item.Path, OutputPath: TranscriptPathForDownload(item.Path), Stage: LectureStageTranscribe}
 		emit(LecturePipelineEvent{Transcript: &progress})
 	}
 	active := 0
@@ -94,7 +94,7 @@ func runLectureDownloadPipeline(ctx context.Context, opts LectureDownloadPipelin
 				opts.Download.OnProgress(message)
 			}
 			emit(LecturePipelineEvent{Download: &message})
-			if message.Stage == "done" {
+			if message.Stage == LectureStageDone {
 				enqueue(LectureDownloadItem{Lecture: message.Lecture, Path: message.Path, Bytes: message.Bytes, Skipped: message.Skipped, Err: message.Err})
 			}
 		case LectureTranscriptProgress:
@@ -110,9 +110,9 @@ func runLectureDownloadPipeline(ctx context.Context, opts LectureDownloadPipelin
 			active--
 			result.Transcript.Items = append(result.Transcript.Items, message.result.Items...)
 			for _, item := range message.result.Items {
-				stage := "transcribed"
+				stage := LectureStageTranscribed
 				if item.Err != nil {
-					stage = "transcript-error"
+					stage = LectureStageTranscriptError
 				}
 				progress := LectureTranscriptProgress{Lecture: item.Lecture, InputPath: item.InputPath, OutputPath: item.OutputPath, Stage: stage, Err: item.Err}
 				emit(LecturePipelineEvent{Transcript: &progress})

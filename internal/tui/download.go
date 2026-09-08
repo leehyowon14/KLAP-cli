@@ -223,7 +223,7 @@ func (m *lectureDownloadModel) upsertStatusLine(progress app.LectureDownloadProg
 	line := downloadStatusLine{
 		id:      lectureDownloadKey(progress.Lecture),
 		label:   label,
-		status:  progress.Stage,
+		status:  string(progress.Stage),
 		path:    progress.Path,
 		bytes:   progress.Bytes,
 		total:   progress.TotalBytes,
@@ -264,7 +264,7 @@ func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTr
 	line := downloadStatusLine{
 		id:      lectureDownloadKey(progress.Lecture),
 		label:   label,
-		status:  progress.Stage,
+		status:  string(progress.Stage),
 		path:    progress.OutputPath,
 		percent: progress.Progress,
 		err:     progress.Err,
@@ -290,12 +290,12 @@ func (m *lectureDownloadModel) upsertTranscriptStatusLine(progress app.LectureTr
 
 func (m *lectureDownloadModel) applyFinalResult(msg lectureDownloadDoneMsg) {
 	for _, item := range msg.all.Items {
-		stage := "done"
+		stage := app.LectureStageDone
 		if item.Skipped {
-			stage = "skip"
+			stage = app.LectureStageSkip
 		}
 		if item.Err != nil {
-			stage = "error"
+			stage = app.LectureStageError
 		}
 		m.upsertStatusLine(app.LectureDownloadProgress{
 			Lecture:    item.Lecture,
@@ -316,9 +316,9 @@ func (m *lectureDownloadModel) applyTranscriptResult(result app.LectureTranscrip
 }
 
 func (m *lectureDownloadModel) applyTranscriptItem(item app.LectureTranscriptItem) {
-	stage := "transcribed"
+	stage := app.LectureStageTranscribed
 	if item.Err != nil {
-		stage = "transcript-error"
+		stage = app.LectureStageTranscriptError
 	}
 	m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{
 		Lecture:    item.Lecture,
@@ -568,7 +568,7 @@ func lectureDownloadPercent(progress app.LectureDownloadProgress) float64 {
 	}
 	if progress.TotalItems > 0 {
 		percent := float64(maxInt(0, progress.CurrentIndex-1)) / float64(progress.TotalItems)
-		if progress.Stage == "done" || progress.Stage == "skip" || progress.Stage == "error" {
+		if progress.Stage == app.LectureStageDone || progress.Stage == app.LectureStageSkip || progress.Stage == app.LectureStageError {
 			percent = float64(progress.CurrentIndex) / float64(progress.TotalItems)
 		}
 		return percent
@@ -606,7 +606,7 @@ func formatDownloadProgress(progress app.LectureDownloadProgress) string {
 	if progress.Bytes > 0 {
 		return formatDownloadBytes(progress.Bytes)
 	}
-	return downloadStageLabel(progress.Stage)
+	return downloadStageLabel(string(progress.Stage))
 }
 
 func formatDownloadBytes(bytes int64) string {

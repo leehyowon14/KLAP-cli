@@ -132,7 +132,7 @@ func (o trackingPipelineOperations) DownloadAllLectures(ctx context.Context, opt
 	progress := opts.OnProgress
 	opts.OnProgress = func(value LectureDownloadProgress) {
 		// This synchronous callback runs before downloadFile opens the output.
-		if value.Stage == "download" {
+		if value.Stage == LectureStageDownload {
 			o.run.track(value.Path)
 		}
 		if progress != nil {
