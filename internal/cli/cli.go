@@ -469,7 +469,7 @@ func (r Runner) runNotice(ctx context.Context, service *app.Service, args []stri
 	}
 }
 
-func runTimetable(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runTimetable(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) > 0 && args[0] == "list" {
 		args = args[1:]
 	} else if len(args) > 0 && !strings.HasPrefix(args[0], "--") {
@@ -483,7 +483,7 @@ func runTimetable(ctx context.Context, service *app.Service, args []string) erro
 	if err != nil {
 		return err
 	}
-	printTimetable(result)
+	r.printTimetable(result)
 	return nil
 }
 
@@ -2026,10 +2026,10 @@ func (r Runner) printNoticeDetail(result app.NoticeDetailResult) {
 	}
 }
 
-func printTimetable(result app.TimetableResult) {
-	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
+func (r Runner) printTimetable(result app.TimetableResult) {
+	_, _ = fmt.Fprintf(r.Out, "%s (%s)\n", result.Term.Label, result.Term.Value)
 	if len(result.Entries) == 0 {
-		fmt.Println("시간표가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "시간표가 없습니다")
 		return
 	}
 
@@ -2038,10 +2038,10 @@ func printTimetable(result app.TimetableResult) {
 	for _, entry := range result.Entries {
 		if entry.Online {
 			if !printedOnlineHeader {
-				fmt.Println("\n온라인/미지정")
+				_, _ = fmt.Fprintln(r.Out, "\n온라인/미지정")
 				printedOnlineHeader = true
 			}
-			fmt.Printf("  %s | %s | %s | %s\n",
+			_, _ = fmt.Fprintf(r.Out, "  %s | %s | %s | %s\n",
 				formatPeriod(entry.Period, entry.Span),
 				entry.SubjectName,
 				emptyFallback(entry.Room, "강의실 미지정"),
@@ -2052,12 +2052,12 @@ func printTimetable(result app.TimetableResult) {
 
 		if entry.Weekday != currentWeekday {
 			if currentWeekday != 0 {
-				fmt.Println()
+				_, _ = fmt.Fprintln(r.Out)
 			}
 			currentWeekday = entry.Weekday
-			fmt.Println(weekdayLabel(entry.Weekday))
+			_, _ = fmt.Fprintln(r.Out, weekdayLabel(entry.Weekday))
 		}
-		fmt.Printf("  %s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "  %s | %s | %s | %s\n",
 			formatPeriod(entry.Period, entry.Span),
 			entry.SubjectName,
 			emptyFallback(entry.Room, "강의실 미지정"),
