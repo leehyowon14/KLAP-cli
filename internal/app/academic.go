@@ -25,9 +25,8 @@ var (
 )
 
 type AcademicListOptions struct {
-	Year          string
-	Refresh       bool
-	SyncDecisions map[string]SyncDecision
+	Year    string
+	Refresh bool
 }
 
 type AcademicEvent struct {

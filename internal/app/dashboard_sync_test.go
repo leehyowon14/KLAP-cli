@@ -35,8 +35,8 @@ func (s *dashboardSyncStub) SyncLectureReminders(ctx context.Context, o LectureS
 	}
 	return ReminderSyncResult{EligibleCount: 2}, s.err
 }
-func (s *dashboardSyncStub) SyncAcademicCalendar(ctx context.Context, o AcademicListOptions) (CalendarSyncResult, error) {
-	s.record(ctx, "academic", o.SyncDecisions)
+func (s *dashboardSyncStub) SyncAcademicCalendar(ctx context.Context, o AcademicSyncOptions) (CalendarSyncResult, error) {
+	s.record(ctx, "academic", o.Decisions)
 	return CalendarSyncResult{EligibleCount: 3}, s.err
 }
 func (s *dashboardSyncStub) SyncTimetableCalendar(ctx context.Context, o TimetableOptions) (CalendarSyncResult, error) {

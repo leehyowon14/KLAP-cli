@@ -1197,7 +1197,7 @@ func (m model) syncLectures(decisions map[string]app.SyncDecision) tea.Cmd {
 
 func (m model) syncAcademic(decisions map[string]app.SyncDecision) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.SyncAcademicCalendar(m.ctx, app.AcademicListOptions{SyncDecisions: decisions})
+		result, err := m.service.SyncAcademicCalendar(m.ctx, app.AcademicSyncOptions{Decisions: decisions})
 		if conflicts := syncConflictsFromErrors(err); len(conflicts) > 0 {
 			return syncMsg{conflicts: conflicts}
 		}

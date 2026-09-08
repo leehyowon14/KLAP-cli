@@ -203,8 +203,8 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureSyncOpti
 	}, nil
 }
 
-func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOptions) (CalendarSyncResult, error) {
-	result, err := s.AcademicList(ctx, opts)
+func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicSyncOptions) (CalendarSyncResult, error) {
+	result, err := s.AcademicList(ctx, opts.Query)
 	if err != nil {
 		return CalendarSyncResult{}, err
 	}
@@ -234,7 +234,7 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOpt
 	if len(events) == 0 {
 		return CalendarSyncResult{}, nil
 	}
-	prepared, err := s.prepareCalendarSync("academic", "global", events, opts.SyncDecisions)
+	prepared, err := s.prepareCalendarSync("academic", "global", events, opts.Decisions)
 	if err != nil {
 		return CalendarSyncResult{}, err
 	}
