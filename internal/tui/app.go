@@ -117,9 +117,7 @@ type model struct {
 	syncConflicts       []app.SyncConflict
 	syncConflictCursor  int
 	syncConflictActions map[string]app.SyncDecision
-	authInputs          []textinput.Model
-	authFocus           int
-	authSubmitting      bool
+	auth                authScreenModel
 }
 
 type transcriptLanguage struct {
@@ -236,15 +234,16 @@ func Run(ctx context.Context, service *app.Service) error {
 		loadedScreens:  map[screen]bool{},
 		loadingScreens: map[screen]bool{},
 		screenErrors:   map[screen]error{},
-		authInputs:     newAuthInputs(),
-		home:           newHomeModel(),
+
+		home: newHomeModel(),
+		auth: authScreenModel{authInputs: newAuthInputs()},
 	}
 	_, err := tea.NewProgram(initial, tea.WithAltScreen()).Run()
 	return err
 }
 
 func (m model) Init() tea.Cmd {
-	return m.checkAuthUsers()
+	return checkAuthUsers(m.ctx, m.service)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -289,7 +288,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case tea.KeyMsg:
 		if m.active == screenAuth {
-			return m.updateAuth(msg)
+			action, _ := m.auth.Update(msg, m.ctx, m.service)
+			return m.applyChildAction(action)
 		}
 		if m.active == screenDownloadSelect {
 			return m.updateDownloadSelect(msg)
@@ -491,17 +491,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case authCheckMsg:
 		m.loading = false
+		action, _ := m.auth.Update(msg, m.ctx, m.service)
+		m.err = action.err
 		if msg.err != nil {
 			m.active = screenAuth
 			m.err = msg.err
-			m.authInputs = newAuthInputs()
-			return m, textinput.Blink
+			return m, action.cmd
 		}
 		if len(msg.users) == 0 {
 			m.active = screenAuth
 			m.err = nil
-			m.authInputs = newAuthInputs()
-			return m, textinput.Blink
+			return m, action.cmd
 		}
 		m.configUsers = msg.users
 		m.active = screenHome
@@ -511,15 +511,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.loadPrefetch(m.prefetchCurrent, false)
 	case authSubmitMsg:
-		m.authSubmitting = false
+		action, _ := m.auth.Update(msg, m.ctx, m.service)
+		m.err = action.err
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
 		}
 		m.err = nil
 		m.active = screenHome
-		m.authInputs = nil
-		m.authFocus = 0
 		m = m.preparePrefetch(mainPrefetchScreens())
 		if !m.prefetchActive {
 			return m, nil
@@ -2445,7 +2444,7 @@ func (m model) View() string {
 	contentWidth := tuiContentWidth(width)
 	switch m.active {
 	case screenAuth:
-		return appStyle.Render(m.renderAuthView(contentWidth))
+		return appStyle.Render(m.auth.View(contentWidth, m.loading, m.err))
 	case screenDownloadSelect:
 		return appStyle.Render(m.renderDownloadSelectView(contentWidth))
 	case screenDownloadConfirm:

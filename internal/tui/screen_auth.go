@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,55 +37,83 @@ func newAuthInputs() []textinput.Model {
 	return []textinput.Model{studentID, password}
 }
 
-func (m model) updateAuth(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if len(m.authInputs) == 0 {
-		m.authInputs = newAuthInputs()
-	}
-	key := msg.String()
-	switch key {
-	case "ctrl+c", "esc":
-		return m, tea.Quit
-	case "enter":
-		if m.authSubmitting {
-			return m, nil
-		}
-		if m.authFocus < len(m.authInputs)-1 {
-			m.authFocus++
-			return m.updateAuthFocus(), nil
-		}
-		studentID := strings.TrimSpace(m.authInputs[0].Value())
-		password := strings.TrimSpace(m.authInputs[1].Value())
-		if studentID == "" || password == "" {
-			m.err = errors.New("학번과 비밀번호를 모두 입력하세요")
-			return m, nil
-		}
-		m.err = nil
-		m.authSubmitting = true
-		return m, m.submitAuth(studentID, password)
-	case "up", "shift+tab", "backtab":
-		if !m.authSubmitting && m.authFocus > 0 {
-			m.authFocus--
-		}
-		return m.updateAuthFocus(), nil
-	case "down", "tab":
-		if !m.authSubmitting && m.authFocus < len(m.authInputs)-1 {
-			m.authFocus++
-		}
-		return m.updateAuthFocus(), nil
-	}
-	if m.authSubmitting {
-		return m, nil
-	}
-	var cmds []tea.Cmd
-	for index := range m.authInputs {
-		var cmd tea.Cmd
-		m.authInputs[index], cmd = m.authInputs[index].Update(msg)
-		cmds = append(cmds, cmd)
-	}
-	return m, tea.Batch(cmds...)
+type authScreenModel struct {
+	authInputs     []textinput.Model
+	authFocus      int
+	authSubmitting bool
 }
 
-func (m model) updateAuthFocus() model {
+type authService interface {
+	Users(context.Context) ([]app.UserRow, error)
+	Authenticate(context.Context, string, string) error
+}
+
+func (m *authScreenModel) Update(msg tea.Msg, ctx context.Context, service authService) (childAction, bool) {
+	switch msg := msg.(type) {
+	case authCheckMsg:
+		if msg.err != nil || len(msg.users) == 0 {
+			m.authInputs = newAuthInputs()
+			return childAction{setError: true, err: msg.err, cmd: textinput.Blink}, true
+		}
+		return childAction{setError: true}, true
+	case authSubmitMsg:
+		m.authSubmitting = false
+		if msg.err == nil {
+			m.authInputs = nil
+			m.authFocus = 0
+		}
+		return childAction{setError: true, err: msg.err}, true
+	case tea.KeyMsg:
+		if len(m.authInputs) == 0 {
+			m.authInputs = newAuthInputs()
+		}
+		switch msg.String() {
+		case "ctrl+c", "esc":
+			return childAction{cmd: tea.Quit}, true
+		case "enter":
+			if m.authSubmitting {
+				return childAction{}, true
+			}
+			if m.authFocus < len(m.authInputs)-1 {
+				m.authFocus++
+				m.updateAuthFocus()
+				return childAction{}, true
+			}
+			studentID := strings.TrimSpace(m.authInputs[0].Value())
+			password := strings.TrimSpace(m.authInputs[1].Value())
+			if studentID == "" || password == "" {
+				return childAction{setError: true, err: errors.New("학번과 비밀번호를 모두 입력하세요")}, true
+			}
+			m.authSubmitting = true
+			return childAction{setError: true, cmd: submitAuth(ctx, service, studentID, password)}, true
+		case "up", "shift+tab", "backtab":
+			if !m.authSubmitting && m.authFocus > 0 {
+				m.authFocus--
+			}
+			m.updateAuthFocus()
+			return childAction{}, true
+		case "down", "tab":
+			if !m.authSubmitting && m.authFocus < len(m.authInputs)-1 {
+				m.authFocus++
+			}
+			m.updateAuthFocus()
+			return childAction{}, true
+		}
+		if m.authSubmitting {
+			return childAction{}, true
+		}
+		var cmds []tea.Cmd
+		for index := range m.authInputs {
+			var cmd tea.Cmd
+			m.authInputs[index], cmd = m.authInputs[index].Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		return childAction{cmd: tea.Batch(cmds...)}, true
+	}
+	return childAction{}, false
+}
+
+func (m *authScreenModel) updateAuthFocus() {
 	for index := range m.authInputs {
 		if index == m.authFocus {
 			m.authInputs[index].Focus()
@@ -92,26 +121,25 @@ func (m model) updateAuthFocus() model {
 		}
 		m.authInputs[index].Blur()
 	}
-	return m
 }
 
-func (m model) checkAuthUsers() tea.Cmd {
+func checkAuthUsers(ctx context.Context, service authService) tea.Cmd {
 	return func() tea.Msg {
-		users, err := m.service.Users(m.ctx)
+		users, err := service.Users(ctx)
 		return authCheckMsg{users: users, err: err}
 	}
 }
 
-func (m model) submitAuth(studentID string, password string) tea.Cmd {
+func submitAuth(ctx context.Context, service authService, studentID string, password string) tea.Cmd {
 	return func() tea.Msg {
-		err := m.service.Authenticate(m.ctx, studentID, password)
+		err := service.Authenticate(ctx, studentID, password)
 		return authSubmitMsg{err: err}
 	}
 }
 
-func (m model) renderAuthView(width int) string {
+func (m authScreenModel) View(width int, loading bool, err error) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, screenTitle(screenAuth)))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
@@ -119,17 +147,17 @@ func (m model) renderAuthView(width int) string {
 	b.WriteString("\n")
 	b.WriteString(mutedStyle.Render("저장된 계정이 없습니다. KLAS 로그인 검증 후 계정을 저장합니다."))
 	b.WriteString("\n\n")
-	if m.loading {
+	if loading {
 		b.WriteString(warnBadgeStyle.Render("LOADING"))
 		b.WriteString(" 계정 상태를 확인하는 중입니다")
 		b.WriteString("\n\n")
 		b.WriteString(renderHelpText("esc 종료", width))
 		return b.String()
 	}
-	if m.err != nil {
+	if err != nil {
 		b.WriteString(errorStyle.Render("ERROR"))
 		b.WriteString(" ")
-		b.WriteString(m.err.Error())
+		b.WriteString(err.Error())
 		b.WriteString("\n\n")
 	}
 	if len(m.authInputs) == 0 {
