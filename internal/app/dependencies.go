@@ -45,7 +45,7 @@ type Dependencies struct {
 	NewKlasClient        func() (*klas.Client, error)
 	Login                func(context.Context, *klas.Client, string, string) (klas.Session, error)
 	Reminder             ReminderSyncer
-	CalendarBridgePath   string
+	Calendar             CalendarSyncer
 	CategoryBridgePath   string
 	TranscriptBridgePath string
 }
@@ -59,6 +59,7 @@ func NewService(deps Dependencies) (*Service, error) {
 		{"settings", deps.Settings}, {"cache", deps.Cache},
 		{"sync state", deps.SyncState}, {"KLAS client factory", deps.NewKlasClient},
 		{"login", deps.Login},
+		{"calendar", deps.Calendar},
 		{"reminder", deps.Reminder},
 	} {
 		if missingDependency(dependency.value) {
@@ -69,7 +70,7 @@ func NewService(deps Dependencies) (*Service, error) {
 		store: deps.Accounts, sessions: deps.Sessions, settingsStore: deps.Settings,
 		cacheStore: deps.Cache, syncStateStore: deps.SyncState,
 		newKlasClient: deps.NewKlasClient, login: deps.Login,
-		reminderSyncer: deps.Reminder, calendarBridgePath: deps.CalendarBridgePath,
+		reminderSyncer: deps.Reminder, calendarSyncer: deps.Calendar,
 		categoryBridgePath: deps.CategoryBridgePath, transcriptBridgePath: deps.TranscriptBridgePath,
 	}, nil
 }

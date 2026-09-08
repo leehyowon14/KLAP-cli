@@ -15,7 +15,7 @@ type Service struct {
 	newKlasClient        func() (*klas.Client, error)
 	login                func(context.Context, *klas.Client, string, string) (klas.Session, error)
 	reminderSyncer       ReminderSyncer
-	calendarBridgePath   string
+	calendarSyncer       CalendarSyncer
 	categoryBridgePath   string
 	transcriptBridgePath string
 }

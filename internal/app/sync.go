@@ -249,7 +249,7 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicListOpt
 		return CalendarSyncResult{Result: klapcalendar.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(events)}, nil
 	}
 
-	syncResult, err := klapcalendar.NewMacOSBridge(s.calendarBridgePath).Sync(klapcalendar.SyncRequest{
+	syncResult, err := s.calendarSyncer.Sync(klapcalendar.SyncRequest{
 		CalendarName:    currentSettings.Calendar.Name,
 		UseExistingList: currentSettings.Calendar.UseExistingList,
 		Events:          prepared.Events,
@@ -326,7 +326,7 @@ func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableOptio
 		return CalendarSyncResult{Result: klapcalendar.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(events)}, nil
 	}
 
-	syncResult, err := klapcalendar.NewMacOSBridge(s.calendarBridgePath).Sync(klapcalendar.SyncRequest{
+	syncResult, err := s.calendarSyncer.Sync(klapcalendar.SyncRequest{
 		CalendarName:    currentSettings.Calendar.TimetableName,
 		UseExistingList: currentSettings.Calendar.TimetableUseExistingList,
 		Events:          prepared.Events,
@@ -855,4 +855,8 @@ func lectureReminderID(rowID string) string {
 
 type ReminderSyncer interface {
 	Sync(reminder.SyncRequest) (reminder.SyncResult, error)
+}
+
+type CalendarSyncer interface {
+	Sync(klapcalendar.SyncRequest) (klapcalendar.SyncResult, error)
 }
