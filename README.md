@@ -6,13 +6,15 @@
 ## 설치
 
 Canonical repository는 `github.com/leehyowon14/KLAP-cli`이다.
-현재 공개 Release와 Homebrew Tap은 준비 중이므로 Go toolchain으로 설치한다.
+일반 CLI 기능은 Go toolchain으로 설치할 수 있다.
 
 ```sh
 go install github.com/leehyowon14/KLAP-cli/cmd/klap@latest
 ```
 
-첫 tagged release와 `leehyowon14/homebrew-klap` Tap 준비가 끝난 뒤에는 다음 명령을 사용한다.
+이 설치에는 macOS bridge가 포함되지 않는다. Reminder/Calendar 동기화와 전사는 Darwin release archive 전체를 사용하거나 [개발용 bridge 빌드](docs/RELEASE.md#로컬-검증)가 필요하다.
+
+Tagged release와 `leehyowon14/homebrew-klap` Tap이 준비된 환경에서는 다음 명령을 사용한다.
 
 ```sh
 brew tap leehyowon14/klap
