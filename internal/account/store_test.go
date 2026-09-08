@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/domain"
 	"github.com/zalando/go-keyring"
 )
 
@@ -82,7 +82,7 @@ func secretMapKey(kind string, studentID string) string {
 func TestStoreUsesInjectedKeyringForCredentials(t *testing.T) {
 	secrets := newMemoryKeyring()
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
-	session := klas.Session{UserID: "user-id", Cookies: map[string]string{"SESSION": "cookie"}}
+	session := domain.Session{UserID: "user-id", Cookies: map[string]string{"SESSION": "cookie"}}
 
 	if err := store.Save(context.Background(), "20260001", "password", session); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -205,7 +205,7 @@ func TestSaveRollsBackAfterPasswordStoreFailure(t *testing.T) {
 	secrets.setErrors[secretMapKey(passwordKind, "20260001")] = []error{wantErr}
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
 
-	err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"})
+	err := store.Save(context.Background(), "20260001", "password", domain.Session{UserID: "user-id"})
 
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Save() error = %v, want %v", err, wantErr)
@@ -224,7 +224,7 @@ func TestSaveRollsBackPasswordAfterSessionStoreFailureAndCanRetry(t *testing.T) 
 	secrets := newMemoryKeyring()
 	secrets.setErrors[secretMapKey(sessionKind, "20260001")] = []error{wantErr}
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
-	session := klas.Session{UserID: "user-id", Cookies: map[string]string{"SESSION": "cookie"}}
+	session := domain.Session{UserID: "user-id", Cookies: map[string]string{"SESSION": "cookie"}}
 
 	err := store.Save(context.Background(), "20260001", "password", session)
 	if !errors.Is(err, wantErr) {
@@ -247,7 +247,7 @@ func TestSaveRollsBackCredentialsAfterRegistryFailure(t *testing.T) {
 	secrets := newMemoryKeyring()
 	store := newStoreAt(filepath.Join(t.TempDir(), "missing", "users.json"), secrets)
 
-	err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"})
+	err := store.Save(context.Background(), "20260001", "password", domain.Session{UserID: "user-id"})
 
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Save() error = %v, want os.ErrNotExist", err)
@@ -260,14 +260,14 @@ func TestSaveRollsBackCredentialsAfterRegistryFailure(t *testing.T) {
 func TestSaveRestoresExistingCredentialsAfterUpdateFailure(t *testing.T) {
 	secrets := newMemoryKeyring()
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
-	oldSession := klas.Session{UserID: "old-user", Cookies: map[string]string{"SESSION": "old"}}
+	oldSession := domain.Session{UserID: "old-user", Cookies: map[string]string{"SESSION": "old"}}
 	if err := store.Save(context.Background(), "20260001", "old-password", oldSession); err != nil {
 		t.Fatalf("Save() seed error = %v", err)
 	}
 	wantErr := errors.New("session update failed")
 	secrets.setErrors[secretMapKey(sessionKind, "20260001")] = []error{wantErr}
 
-	err := store.Save(context.Background(), "20260001", "new-password", klas.Session{UserID: "new-user"})
+	err := store.Save(context.Background(), "20260001", "new-password", domain.Session{UserID: "new-user"})
 
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Save() update error = %v, want %v", err, wantErr)
@@ -294,7 +294,7 @@ func TestSaveReturnsPartialFailureWhenRollbackFails(t *testing.T) {
 	secrets.deleteErrors[secretMapKey(passwordKind, "20260001")] = []error{rollbackErr}
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
 
-	err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"})
+	err := store.Save(context.Background(), "20260001", "password", domain.Session{UserID: "user-id"})
 
 	var partial *PartialFailureError
 	if !errors.As(err, &partial) {
@@ -303,7 +303,7 @@ func TestSaveReturnsPartialFailureWhenRollbackFails(t *testing.T) {
 	if !errors.Is(err, wantErr) || partial.Operation != "계정 저장" || len(partial.RollbackErrors) != 1 || !errors.Is(partial.RollbackErrors[0], rollbackErr) {
 		t.Fatalf("Save() partial failure = %+v", partial)
 	}
-	if err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"}); err != nil {
+	if err := store.Save(context.Background(), "20260001", "password", domain.Session{UserID: "user-id"}); err != nil {
 		t.Fatalf("Save() retry after partial failure error = %v", err)
 	}
 	users, listErr := store.List(context.Background())
@@ -342,7 +342,7 @@ func TestRemoveCurrentSelectsFirstRemainingUser(t *testing.T) {
 func TestRemoveRestoresPasswordWhenSessionDeleteFailsAndCanRetry(t *testing.T) {
 	secrets := newMemoryKeyring()
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
-	session := klas.Session{UserID: "user-id", Cookies: map[string]string{"SESSION": "cookie"}}
+	session := domain.Session{UserID: "user-id", Cookies: map[string]string{"SESSION": "cookie"}}
 	if err := store.Save(context.Background(), "20260001", "password", session); err != nil {
 		t.Fatalf("Save() seed error = %v", err)
 	}
@@ -378,7 +378,7 @@ func TestRemoveRestoresPasswordWhenSessionDeleteFailsAndCanRetry(t *testing.T) {
 func TestRemovePropagatesPasswordDeleteFailureWithoutChangingRegistry(t *testing.T) {
 	secrets := newMemoryKeyring()
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
-	if err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"}); err != nil {
+	if err := store.Save(context.Background(), "20260001", "password", domain.Session{UserID: "user-id"}); err != nil {
 		t.Fatalf("Save() seed error = %v", err)
 	}
 	wantErr := errors.New("password delete failed")
@@ -398,7 +398,7 @@ func TestRemovePropagatesPasswordDeleteFailureWithoutChangingRegistry(t *testing
 func TestRemoveTreatsKeyringNotFoundAsDeleted(t *testing.T) {
 	secrets := newMemoryKeyring()
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
-	if err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"}); err != nil {
+	if err := store.Save(context.Background(), "20260001", "password", domain.Session{UserID: "user-id"}); err != nil {
 		t.Fatalf("Save() seed error = %v", err)
 	}
 	secrets.deleteErrors[secretMapKey(passwordKind, "20260001")] = []error{keyring.ErrNotFound}
@@ -415,7 +415,7 @@ func TestRemoveTreatsKeyringNotFoundAsDeleted(t *testing.T) {
 func TestRemoveReturnsPartialFailureWhenCredentialRollbackFails(t *testing.T) {
 	secrets := newMemoryKeyring()
 	store := newStoreAt(filepath.Join(t.TempDir(), "users.json"), secrets)
-	if err := store.Save(context.Background(), "20260001", "password", klas.Session{UserID: "user-id"}); err != nil {
+	if err := store.Save(context.Background(), "20260001", "password", domain.Session{UserID: "user-id"}); err != nil {
 		t.Fatalf("Save() seed error = %v", err)
 	}
 	wantErr := errors.New("session delete failed")

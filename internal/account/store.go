@@ -11,7 +11,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/domain"
 	"github.com/zalando/go-keyring"
 )
 
@@ -172,7 +172,7 @@ func configDir() (string, error) {
 	return filepath.Join(configDir, "klap"), nil
 }
 
-func (s *Store) Save(ctx context.Context, studentID string, password string, session klas.Session) error {
+func (s *Store) Save(ctx context.Context, studentID string, password string, session domain.Session) error {
 	_ = ctx
 
 	sessionBytes, err := json.Marshal(session)
@@ -326,22 +326,22 @@ func (s *Store) LoadPassword(ctx context.Context, studentID string) (string, err
 	return password, nil
 }
 
-func (s *Store) LoadSession(ctx context.Context, studentID string) (klas.Session, error) {
+func (s *Store) LoadSession(ctx context.Context, studentID string) (domain.Session, error) {
 	_ = ctx
 
 	sessionText, err := s.keyring.Get(keyringService, keyName(sessionKind, studentID))
 	if err != nil {
-		return klas.Session{}, fmt.Errorf("저장된 세션을 읽지 못했습니다: %w", err)
+		return domain.Session{}, fmt.Errorf("저장된 세션을 읽지 못했습니다: %w", err)
 	}
 
-	var session klas.Session
+	var session domain.Session
 	if err := json.Unmarshal([]byte(sessionText), &session); err != nil {
-		return klas.Session{}, fmt.Errorf("저장된 세션 파싱 실패: %w", err)
+		return domain.Session{}, fmt.Errorf("저장된 세션 파싱 실패: %w", err)
 	}
 	return session, nil
 }
 
-func (s *Store) SaveSession(ctx context.Context, studentID string, session klas.Session) error {
+func (s *Store) SaveSession(ctx context.Context, studentID string, session domain.Session) error {
 	_ = ctx
 
 	sessionBytes, err := json.Marshal(session)
