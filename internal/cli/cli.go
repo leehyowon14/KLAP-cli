@@ -339,7 +339,7 @@ func (r Runner) runCourse(ctx context.Context, service *app.Service, args []stri
 	}
 }
 
-func runSubject(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runSubject(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap subject <search>")
 	}
@@ -354,7 +354,7 @@ func runSubject(ctx context.Context, service *app.Service, args []string) error 
 		if err != nil {
 			return err
 		}
-		printSubjectSearch(result)
+		r.printSubjectSearch(result)
 		return nil
 	default:
 		return fmt.Errorf("unknown subject command: %s", args[0])
@@ -1874,14 +1874,14 @@ func (r Runner) printCourseList(terms []klas.Term) {
 	}
 }
 
-func printSubjectSearch(result app.SubjectSearchResult) {
-	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
+func (r Runner) printSubjectSearch(result app.SubjectSearchResult) {
+	_, _ = fmt.Fprintf(r.Out, "%s (%s)\n", result.Term.Label, result.Term.Value)
 	if len(result.Rows) == 0 {
-		fmt.Println("검색된 과목이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "검색된 과목이 없습니다")
 		return
 	}
 
-	fmt.Println("학정번호 | 과목명 | 교수 | 강의시간")
+	_, _ = fmt.Fprintln(r.Out, "학정번호 | 과목명 | 교수 | 강의시간")
 	for _, row := range result.Rows {
 		times := formatSyllabusTimes(row.Times)
 		if times == "" {
@@ -1890,7 +1890,7 @@ func printSubjectSearch(result app.SubjectSearchResult) {
 		if row.Err != nil {
 			times = "강의시간 확인 실패"
 		}
-		fmt.Printf("%s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%s | %s | %s | %s\n",
 			emptyFallback(row.CourseCode, "-"),
 			emptyFallback(row.Name, "-"),
 			emptyFallback(row.Professor, "-"),
