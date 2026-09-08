@@ -11,7 +11,6 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/platform/macos"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
-	transcript "github.com/leehyowon14/KLAP-cli/internal/transcript"
 )
 
 func testDependencies(t *testing.T) Dependencies {
@@ -33,7 +32,7 @@ func testDependencies(t *testing.T) Dependencies {
 		Reminder:      macos.NewReminderBridge("unused"),
 		Calendar:      macos.NewCalendarBridge("unused"),
 		Categories:    macos.NewCategoryBridge("unused"),
-		Transcriber:   transcript.NewMacOSBridge("unused"),
+		Transcriber:   macos.NewTranscriptBridge("unused"),
 		NewKlasClient: func() (*klas.Client, error) { t.Fatal("constructor called client factory"); return nil, nil },
 		Login: func(context.Context, *klas.Client, string, string) (klas.Session, error) {
 			t.Fatal("constructor called login")
@@ -117,7 +116,7 @@ func TestDependenciesRequireCategories(t *testing.T) {
 }
 
 func TestDependenciesRequireTranscriber(t *testing.T) {
-	for _, value := range []Transcriber{nil, (*transcript.MacOSBridge)(nil)} {
+	for _, value := range []Transcriber{nil, (*macos.TranscriptBridge)(nil)} {
 		deps := testDependencies(t)
 		deps.Transcriber = value
 		s, err := NewService(deps)

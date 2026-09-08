@@ -13,7 +13,6 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/platform/macos"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
-	transcript "github.com/leehyowon14/KLAP-cli/internal/transcript"
 	"testing"
 )
 
@@ -46,7 +45,7 @@ func NewService(t *testing.T) *app.Service {
 		Reminder:      macos.NewReminderBridge("unused"),
 		Calendar:      macos.NewCalendarBridge("unused"),
 		Categories:    macos.NewCategoryBridge("unused"),
-		Transcriber:   transcript.NewMacOSBridge("unused"),
+		Transcriber:   macos.NewTranscriptBridge("unused"),
 		NewKlasClient: klas.NewClient,
 		Login: func(ctx context.Context, c *klas.Client, id, password string) (klas.Session, error) {
 			return c.Login(ctx, id, password)

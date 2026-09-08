@@ -13,7 +13,6 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/platform/macos"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
-	transcript "github.com/leehyowon14/KLAP-cli/internal/transcript"
 )
 
 type serviceStoreFactories struct {
@@ -60,6 +59,6 @@ func newService(store *account.Store, factories serviceStoreFactories) (*app.Ser
 		Reminder:    macos.NewReminderBridge(defaultReminderBridgePath()),
 		Calendar:    macos.NewCalendarBridge(defaultCalendarBridgePath()),
 		Categories:  macos.NewCategoryBridge(defaultCategoryBridgePath()),
-		Transcriber: transcript.NewMacOSBridge(defaultTranscriptBridgePath()),
+		Transcriber: macos.NewTranscriptBridge(defaultTranscriptBridgePath()),
 	})
 }
