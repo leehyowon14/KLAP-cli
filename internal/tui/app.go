@@ -657,15 +657,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func keyMatches(value string, keys ...string) bool {
-	for _, key := range keys {
-		if value == key {
-			return true
-		}
-	}
-	return false
-}
-
 func mainPrefetchScreens() []screen {
 	return []screen{
 		screenAssignments,
