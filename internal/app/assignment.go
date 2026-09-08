@@ -19,8 +19,8 @@ type AssignmentListOptions struct {
 }
 
 type AssignmentGateway interface {
-	Assignments(context.Context, string, klas.Course) ([]klas.Assignment, error)
-	AssignmentDetail(context.Context, string, klas.Course, string) (klas.AssignmentDetail, error)
+	Assignments(context.Context, string, Course) ([]klas.Assignment, error)
+	AssignmentDetail(context.Context, string, Course, string) (klas.AssignmentDetail, error)
 }
 
 type AssignmentRow struct {
@@ -130,7 +130,7 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
-	var term klas.Term
+	var term Term
 	if locator.Stable {
 		term, client, err = s.termForSyllabus(ctx, studentID, client, locator.Ref.TermValue)
 	} else {
@@ -192,7 +192,7 @@ func (s *Service) AssignmentOpenURL(ctx context.Context, id string, user UserOpt
 	return OpenURLResult{URL: detail.DetailURL}, nil
 }
 
-func assignmentDetailURL(yearHakgi string, course klas.Course, ordSeq string) string {
+func assignmentDetailURL(yearHakgi string, course Course, ordSeq string) string {
 	values := url.Values{}
 	values.Set("selectYearhakgi", yearHakgi)
 	values.Set("selectSubj", course.Value)
@@ -238,7 +238,7 @@ func parseAssignmentResourceID(id string) (courseResourceLocator, string, error)
 	return courseResourceLocator{CourseIndex: courseIndex}, ordSeq, nil
 }
 
-func normalizeCachedAssignmentRows(rows []AssignmentRow, term klas.Term) ([]AssignmentRow, bool, error) {
+func normalizeCachedAssignmentRows(rows []AssignmentRow, term Term) ([]AssignmentRow, bool, error) {
 	migrated := false
 	for index := range rows {
 		locator, ordSeq, err := parseAssignmentResourceID(rows[index].ID)

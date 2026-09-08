@@ -1,15 +1,14 @@
 package app
 
 import (
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"testing"
 	"time"
 )
 
 func TestSelectTermRow(t *testing.T) {
 	rows := []TermRow{
-		{Index: 1, Term: klas.Term{Label: "2026년도 1학기", Value: "2026,1"}},
-		{Index: 2, Term: klas.Term{Label: "2025년도 겨울학기", Value: "2025,4"}},
+		{Index: 1, Term: Term{Label: "2026년도 1학기", Value: "2026,1"}},
+		{Index: 2, Term: Term{Label: "2025년도 겨울학기", Value: "2025,4"}},
 	}
 
 	selected, err := selectTermRow(rows, "2")

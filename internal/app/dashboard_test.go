@@ -12,7 +12,7 @@ var errDashboardTest = errors.New("dashboard test error")
 
 func TestDashboardCoursesBuildsCourseScopedSummary(t *testing.T) {
 	due := time.Now().Add(24 * time.Hour)
-	courses := []klas.Course{{Name: "컴퓨터그래픽스"}, {Name: "오픈소스소프트웨어실습"}}
+	courses := []Course{{Name: "컴퓨터그래픽스"}, {Name: "오픈소스소프트웨어실습"}}
 	assignments := []AssignmentRow{
 		{CourseName: "컴퓨터그래픽스", Assignment: Assignment{Title: "과제1", DueAt: &due}},
 		{CourseName: "오픈소스소프트웨어실습", Assignment: Assignment{Title: "기말", DueAt: &due}},
@@ -41,7 +41,7 @@ func TestDashboardCoursesBuildsCourseScopedSummary(t *testing.T) {
 }
 
 func TestNormalizeCachedDashboardResultMigratesTopLevelAndCourseRows(t *testing.T) {
-	term := klas.Term{Value: "2026,1", Courses: []klas.Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
+	term := Term{Value: "2026,1", Courses: []Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
 	legacyAssignment := AssignmentRow{ID: "1:7", CourseName: "컴퓨터그래픽스"}
 	legacyNotice := NoticeRow{ID: "1:board:master", CourseName: "컴퓨터그래픽스"}
 	legacyLecture := LectureRow{ID: "1:content", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "content"}}

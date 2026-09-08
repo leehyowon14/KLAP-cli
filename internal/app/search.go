@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"strings"
 )
 
@@ -28,8 +27,8 @@ type SearchResult struct {
 
 type SearchCourseResult struct {
 	Index  int
-	Term   klas.Term
-	Course klas.Course
+	Term   Term
+	Course Course
 }
 
 func (s *Service) Search(ctx context.Context, opts SearchOptions) (SearchResult, error) {

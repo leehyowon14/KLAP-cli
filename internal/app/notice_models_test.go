@@ -27,7 +27,7 @@ func TestNoticeModelsMapAdapterFixturesWithoutWireFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := client.Notices(context.Background(), "2026,1", klas.Course{Value: "subject"})
+	rows, err := client.Notices(context.Background(), "2026,1", Course{Value: "subject"})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("rows=%v error=%v", rows, err)
 	}
@@ -36,7 +36,7 @@ func TestNoticeModelsMapAdapterFixturesWithoutWireFields(t *testing.T) {
 		t.Fatalf("row=%+v", row)
 	}
 	assertModelJSONParity(t, rows[0], row)
-	detail, err := client.NoticeDetail(context.Background(), "2026,1", klas.Course{Value: "subject"}, "42", "7")
+	detail, err := client.NoticeDetail(context.Background(), "2026,1", Course{Value: "subject"}, "42", "7")
 	if err != nil {
 		t.Fatal(err)
 	}

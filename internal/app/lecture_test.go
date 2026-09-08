@@ -15,10 +15,10 @@ import (
 
 func TestLectureCacheHitAttendRefetchesActionPayload(t *testing.T) {
 	studentID := "20260001"
-	term := klas.Term{
+	term := Term{
 		Label: "2026학년도 1학기",
 		Value: "2026,1",
-		Courses: []klas.Course{{
+		Courses: []Course{{
 			Name:  "테스트 과목",
 			Value: "subject-1",
 		}},
@@ -63,7 +63,7 @@ func TestLectureCacheHitAttendRefetchesActionPayload(t *testing.T) {
 		var responseBody string
 		switch request.URL.Path {
 		case "/std/cmn/frame/YearhakgiAtnlcSbjectList.do":
-			payload, marshalErr := json.Marshal([]klas.Term{term})
+			payload, marshalErr := json.Marshal([]Term{term})
 			if marshalErr != nil {
 				return nil, marshalErr
 			}
@@ -121,7 +121,7 @@ func TestLectureCacheHitAttendRefetchesActionPayload(t *testing.T) {
 }
 
 func TestLectureCacheVersionMissesRawLegacySchema(t *testing.T) {
-	courses := []selectedCourse{{Index: 1, Course: klas.Course{Name: "A", Value: "course-a"}}}
+	courses := []selectedCourse{{Index: 1, Course: Course{Name: "A", Value: "course-a"}}}
 	legacyKey := courseResourceListCacheKey("lecture", "20260001", "2026,1", courses)
 	currentKey := courseResourceListCacheKeyVersion("lecture", "v2", "20260001", "2026,1", courses)
 	if legacyKey == currentKey || !strings.Contains(currentKey, "lecture:v2:") {
@@ -175,7 +175,7 @@ func TestStableLectureTermValueRejectsMixedTerms(t *testing.T) {
 
 func TestNewLectureRowIDIgnoresCourseOrder(t *testing.T) {
 	lecture := klas.Lecture{ContentID: "content-123", Title: "소개"}
-	course := klas.Course{Name: "컴퓨터그래픽스", Value: "course-a"}
+	course := Course{Name: "컴퓨터그래픽스", Value: "course-a"}
 	first, err := newLectureRow("2026,1", selectedCourse{Index: 1, Course: course}, lecture)
 	if err != nil {
 		t.Fatalf("newLectureRow() first error = %v", err)
@@ -190,7 +190,7 @@ func TestNewLectureRowIDIgnoresCourseOrder(t *testing.T) {
 }
 
 func TestNormalizeCachedLectureRowsUsesCourseNameAfterReorder(t *testing.T) {
-	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+	term := Term{Value: "2026,1", Courses: []Course{
 		{Name: "오픈소스", Value: "course-b"},
 		{Name: "컴퓨터그래픽스", Value: "course-a"},
 	}}
@@ -220,7 +220,7 @@ func TestNormalizeCachedLectureRowsUsesCourseNameAfterReorder(t *testing.T) {
 }
 
 func TestLectureLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
-	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+	term := Term{Value: "2026,1", Courses: []Course{
 		{Name: "B", Value: "course-b"},
 		{Name: "A", Value: "course-a"},
 	}}

@@ -22,14 +22,14 @@ type SubjectSearchOptions struct {
 }
 
 type SyllabusResult struct {
-	Term      klas.Term
+	Term      Term
 	SubjectID string
-	Course    klas.Course
+	Course    Course
 	Syllabus  klas.Syllabus
 }
 
 type SubjectSearchResult struct {
-	Term klas.Term
+	Term Term
 	Rows []SubjectSearchRow
 }
 
@@ -62,7 +62,7 @@ func (s *Service) Syllabus(ctx context.Context, opts SyllabusOptions) (SyllabusR
 		return SyllabusResult{}, err
 	}
 
-	course := klas.Course{Name: selector}
+	course := Course{Name: selector}
 	subjectID := ""
 	if looksLikeSyllabusCourseCode(selector) {
 		subjectID, err = klas.SyllabusSubjectIDFromCourseCode(term.Value, selector)
@@ -163,10 +163,10 @@ func (s *Service) SubjectSearch(ctx context.Context, opts SubjectSearchOptions) 
 	}, nil
 }
 
-func (s *Service) termForSyllabus(ctx context.Context, studentID string, client *klas.Client, termValue string) (klas.Term, *klas.Client, error) {
+func (s *Service) termForSyllabus(ctx context.Context, studentID string, client *klas.Client, termValue string) (Term, *klas.Client, error) {
 	termValue, err := normalizeTermValue(termValue)
 	if err != nil {
-		return klas.Term{}, client, err
+		return Term{}, client, err
 	}
 	if termValue == "" {
 		return s.selectedTerm(ctx, studentID, client)
@@ -174,32 +174,32 @@ func (s *Service) termForSyllabus(ctx context.Context, studentID string, client 
 
 	terms, client, err := s.courses(ctx, studentID, client)
 	if err != nil {
-		return klas.Term{}, client, err
+		return Term{}, client, err
 	}
 	for _, term := range terms {
 		if term.Value == termValue {
 			return term, client, nil
 		}
 	}
-	return klas.Term{}, client, fmt.Errorf("학기를 찾을 수 없습니다: %s", termValue)
+	return Term{}, client, fmt.Errorf("학기를 찾을 수 없습니다: %s", termValue)
 }
 
-func (s *Service) termForSubjectSearch(termValue string) (klas.Term, error) {
+func (s *Service) termForSubjectSearch(termValue string) (Term, error) {
 	termValue, err := normalizeTermValue(termValue)
 	if err != nil {
-		return klas.Term{}, err
+		return Term{}, err
 	}
 	if termValue == "" {
 		current, err := s.loadSettings()
 		if err != nil {
-			return klas.Term{}, err
+			return Term{}, err
 		}
 		termValue = strings.TrimSpace(current.Term.Value)
 	}
 	if termValue == "" {
 		termValue = currentAcademicTermValue(time.Now())
 	}
-	return klas.Term{
+	return Term{
 		Value: termValue,
 		Label: termLabel(termValue),
 	}, nil

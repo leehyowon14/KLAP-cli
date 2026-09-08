@@ -12,7 +12,7 @@ type requestSession struct {
 	mu        sync.Mutex
 	studentID string
 	clients   map[string]*klas.Client
-	terms     map[string]klas.Term
+	terms     map[string]Term
 }
 
 func (s *Service) withRequestSession() *Service {
@@ -22,7 +22,7 @@ func (s *Service) withRequestSession() *Service {
 	query := *s
 	query.requestSession = &requestSession{
 		clients: make(map[string]*klas.Client),
-		terms:   make(map[string]klas.Term),
+		terms:   make(map[string]Term),
 	}
 	return &query
 }

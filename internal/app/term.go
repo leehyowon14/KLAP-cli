@@ -16,7 +16,7 @@ type TermListOptions struct {
 
 type TermRow struct {
 	Index   int
-	Term    klas.Term
+	Term    Term
 	Current bool
 }
 
@@ -112,16 +112,16 @@ func selectTermRow(rows []TermRow, selector string) (TermRow, error) {
 	return *matched, nil
 }
 
-func (s *Service) latestTerm(ctx context.Context, studentID string) (*klas.Client, klas.Term, error) {
+func (s *Service) latestTerm(ctx context.Context, studentID string) (*klas.Client, Term, error) {
 	client, err := s.authenticatedClient(ctx, studentID)
 	if err != nil {
-		return nil, klas.Term{}, err
+		return nil, Term{}, err
 	}
 	term, client, err := s.selectedTerm(ctx, studentID, client)
 	return client, term, err
 }
 
-func (s *Service) selectedTerm(ctx context.Context, studentID string, client *klas.Client) (klas.Term, *klas.Client, error) {
+func (s *Service) selectedTerm(ctx context.Context, studentID string, client *klas.Client) (Term, *klas.Client, error) {
 	if scope := s.requestSession; scope != nil {
 		scope.mu.Lock()
 		term, ok := scope.terms[studentID]
@@ -139,18 +139,18 @@ func (s *Service) selectedTerm(ctx context.Context, studentID string, client *kl
 	return term, client, err
 }
 
-func (s *Service) uncachedSelectedTerm(ctx context.Context, studentID string, client *klas.Client) (klas.Term, *klas.Client, error) {
+func (s *Service) uncachedSelectedTerm(ctx context.Context, studentID string, client *klas.Client) (Term, *klas.Client, error) {
 	terms, client, err := s.courses(ctx, studentID, client)
 	if err != nil {
-		return klas.Term{}, client, err
+		return Term{}, client, err
 	}
 	if len(terms) == 0 {
-		return klas.Term{}, client, errors.New("수강 학기가 없습니다")
+		return Term{}, client, errors.New("수강 학기가 없습니다")
 	}
 
 	current, err := s.loadSettings()
 	if err != nil {
-		return klas.Term{}, client, err
+		return Term{}, client, err
 	}
 	if strings.TrimSpace(current.Term.Value) == "" {
 		return terms[0], client, nil
@@ -160,7 +160,7 @@ func (s *Service) uncachedSelectedTerm(ctx context.Context, studentID string, cl
 			return term, client, nil
 		}
 	}
-	return klas.Term{}, client, fmt.Errorf("선택된 학기를 현재 유저에서 찾을 수 없습니다: %s", current.Term.Value)
+	return Term{}, client, fmt.Errorf("선택된 학기를 현재 유저에서 찾을 수 없습니다: %s", current.Term.Value)
 }
 
 func normalizeTermValue(value string) (string, error) {

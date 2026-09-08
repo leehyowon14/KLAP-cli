@@ -720,7 +720,7 @@ func testChromeModel(active screen) model {
 		width:  80,
 		height: 24,
 		dashboardResult: app.DashboardResult{
-			Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+			Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
 			Courses: []app.DashboardCourse{{
 				Index: 1,
 				Name:  "강의",
@@ -840,7 +840,7 @@ func TestSyncPanelHidesDashboardStatus(t *testing.T) {
 		syncPhase:  "done",
 		syncStatus: "동기화 완료: 과제 생성 1",
 		dashboardResult: app.DashboardResult{
-			Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+			Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
 		},
 	}
 	view := m.renderPanel(96)
@@ -858,7 +858,7 @@ func TestDashboardShowsLastSyncing(t *testing.T) {
 		active:     screenDashboard,
 		lastSyncAt: last,
 		dashboardResult: app.DashboardResult{
-			Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+			Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
 		},
 	}
 	view := m.renderDashboardPagedPanel(96)
@@ -897,7 +897,7 @@ func TestDetailScrollClampsAtEdges(t *testing.T) {
 func TestDashboardFormatUsesScanSections(t *testing.T) {
 	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
 	result := app.DashboardResult{
-		Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
 		Assignments: []app.AssignmentRow{{
 			ID:         "7:7",
 			CourseName: "오픈소스소프트웨어실습",
@@ -938,7 +938,7 @@ func TestDashboardFormatUsesScanSections(t *testing.T) {
 func TestDashboardPagedPanelShowsCoursePages(t *testing.T) {
 	due := time.Date(2026, 6, 17, 23, 59, 0, 0, time.Local)
 	result := app.DashboardResult{
-		Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
 		Courses: []app.DashboardCourse{
 			{
 				Index: 1,
@@ -979,7 +979,7 @@ func TestDashboardPageWraps(t *testing.T) {
 
 func TestDashboardSyllabusShortcutOnlyWorksOnCoursePage(t *testing.T) {
 	result := app.DashboardResult{
-		Term: klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
 		Courses: []app.DashboardCourse{{
 			Index: 1,
 			Name:  "컴퓨터그래픽스",
@@ -1006,7 +1006,7 @@ func TestDashboardSyllabusShortcutAcceptsKoreanKeyboardKey(t *testing.T) {
 		active:        screenDashboard,
 		dashboardPage: 1,
 		dashboardResult: app.DashboardResult{
-			Term:    klas.Term{Value: "2026,1"},
+			Term:    app.Term{Value: "2026,1"},
 			Courses: []app.DashboardCourse{{Index: 1, Name: "컴퓨터그래픽스"}},
 		},
 	}
@@ -1028,9 +1028,9 @@ func TestSyllabusBackReturnsToSelectedDashboardCourse(t *testing.T) {
 
 func TestSyllabusLinesShowCoursePlan(t *testing.T) {
 	result := app.SyllabusResult{
-		Term:      klas.Term{Value: "2026,1", Label: "2026년도 1학기"},
+		Term:      app.Term{Value: "2026,1", Label: "2026년도 1학기"},
 		SubjectID: "U202613951I040013",
-		Course:    klas.Course{Name: "컴퓨터그래픽스"},
+		Course:    app.Course{Name: "컴퓨터그래픽스"},
 		Syllabus: klas.Syllabus{
 			CourseCode:     "I040-3-3951-01",
 			FullName:       "컴퓨터그래픽스",
@@ -1881,8 +1881,8 @@ func TestConfigRowsShowCurrentUserAndTerm(t *testing.T) {
 			{User: account.User{StudentID: "20250002"}, Current: true},
 		},
 		configTerms: []app.TermRow{
-			{Term: klas.Term{Value: "2025-2", Label: "2025년도 2학기"}},
-			{Term: klas.Term{Value: "2026-1", Label: "2026년도 1학기"}, Current: true},
+			{Term: app.Term{Value: "2025-2", Label: "2025년도 2학기"}},
+			{Term: app.Term{Value: "2026-1", Label: "2026년도 1학기"}, Current: true},
 		},
 	}
 	rows := m.currentConfigRows()
@@ -1906,8 +1906,8 @@ func TestConfigChoicesUseRegisteredUsersAndTerms(t *testing.T) {
 			{User: account.User{StudentID: "20250002"}, Current: true},
 		},
 		configTerms: []app.TermRow{
-			{Term: klas.Term{Value: "2025-2", Label: "2025년도 2학기"}},
-			{Term: klas.Term{Value: "2026-1", Label: "2026년도 1학기"}, Current: true},
+			{Term: app.Term{Value: "2025-2", Label: "2025년도 2학기"}},
+			{Term: app.Term{Value: "2026-1", Label: "2026년도 1학기"}, Current: true},
 		},
 	}
 	m.configChoiceKey = "user.current"

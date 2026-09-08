@@ -29,7 +29,7 @@ func TestAssignmentModelsMapAdapterFixturesWithoutWireFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := client.Assignments(context.Background(), "2026,1", klas.Course{Value: "subject"})
+	rows, err := client.Assignments(context.Background(), "2026,1", Course{Value: "subject"})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("rows=%v error=%v", rows, err)
 	}
@@ -38,7 +38,7 @@ func TestAssignmentModelsMapAdapterFixturesWithoutWireFields(t *testing.T) {
 		t.Fatalf("row=%+v", row)
 	}
 	assertModelJSONParity(t, rows[0], row)
-	detail, err := client.AssignmentDetail(context.Background(), "2026,1", klas.Course{Value: "subject"}, "42")
+	detail, err := client.AssignmentDetail(context.Background(), "2026,1", Course{Value: "subject"}, "42")
 	if err != nil {
 		t.Fatal(err)
 	}

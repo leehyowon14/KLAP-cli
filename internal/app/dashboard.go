@@ -14,7 +14,7 @@ type DashboardOptions struct {
 }
 
 type DashboardResult struct {
-	Term           klas.Term
+	Term           Term
 	GeneratedAt    time.Time
 	Cached         bool
 	CacheCreatedAt time.Time
@@ -268,7 +268,7 @@ func dashboardEvaluation(result EvaluationListResult) DashboardEvaluation {
 	return evaluation
 }
 
-func dashboardCourses(courses []klas.Course, assignments []AssignmentRow, lectures []LectureRow, notices []NoticeRow, attendance DashboardAttendance, evaluation DashboardEvaluation) []DashboardCourse {
+func dashboardCourses(courses []Course, assignments []AssignmentRow, lectures []LectureRow, notices []NoticeRow, attendance DashboardAttendance, evaluation DashboardEvaluation) []DashboardCourse {
 	result := make([]DashboardCourse, 0, len(courses))
 	now := time.Now()
 	for index, course := range courses {
@@ -338,7 +338,7 @@ func dashboardCacheable(result DashboardResult) bool {
 	return len(result.SectionErrors) == 0 && result.Attendance.DetailErrors == 0
 }
 
-func normalizeCachedDashboardResult(result DashboardResult, term klas.Term) (DashboardResult, bool, error) {
+func normalizeCachedDashboardResult(result DashboardResult, term Term) (DashboardResult, bool, error) {
 	migrated := false
 	assignments, changed, err := normalizeCachedAssignmentRows(result.Assignments, term)
 	if err != nil {

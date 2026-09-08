@@ -288,7 +288,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	if err != nil {
 		return LectureDownloadAllResult{}, err
 	}
-	var term klas.Term
+	var term Term
 	if stableTermValue != "" {
 		term, client, err = s.termForSyllabus(ctx, studentID, client, stableTermValue)
 	} else {
@@ -327,7 +327,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	type downloadTask struct {
 		Index     int
 		Total     int
-		Course    klas.Course
+		Course    Course
 		Row       LectureRow
 		WeekOrder int
 	}
@@ -417,7 +417,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	return result, nil
 }
 
-func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, keepPartial bool, index int, total int, course klas.Course, row LectureRow, weekOrder int, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
+func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, keepPartial bool, index int, total int, course Course, row LectureRow, weekOrder int, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
 	item := LectureDownloadItem{Lecture: row}
 	if strings.TrimSpace(row.Lecture.ContentID) == "" {
 		item.Skipped = true

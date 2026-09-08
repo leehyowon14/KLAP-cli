@@ -1,18 +1,17 @@
 package app
 
 import (
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"strings"
 	"testing"
 )
 
 func TestCourseRefStableResourceIDIgnoresCourseOrder(t *testing.T) {
 	termValue := "2026,1"
-	firstOrder := []klas.Course{
+	firstOrder := []Course{
 		{Name: "컴퓨터그래픽스", Value: "U202613951I040013"},
 		{Name: "오픈소스소프트웨어실습", Value: "U202613951I040014"},
 	}
-	secondOrder := []klas.Course{firstOrder[1], firstOrder[0]}
+	secondOrder := []Course{firstOrder[1], firstOrder[0]}
 
 	firstRef, err := NewCourseRef(termValue, firstOrder[0])
 	if err != nil {
@@ -44,7 +43,7 @@ func TestCourseRefStableResourceIDIgnoresCourseOrder(t *testing.T) {
 }
 
 func TestCourseRefStableResourceIDSeparatesTermsAndCourses(t *testing.T) {
-	course := klas.Course{Name: "컴퓨터그래픽스", Value: "course:id/01"}
+	course := Course{Name: "컴퓨터그래픽스", Value: "course:id/01"}
 	firstRef, err := NewCourseRef("2026,1", course)
 	if err != nil {
 		t.Fatalf("NewCourseRef() first error = %v", err)
@@ -53,7 +52,7 @@ func TestCourseRefStableResourceIDSeparatesTermsAndCourses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCourseRef() second error = %v", err)
 	}
-	otherCourseRef, err := NewCourseRef("2026,1", klas.Course{Name: "다른 과목", Value: "course:id/02"})
+	otherCourseRef, err := NewCourseRef("2026,1", Course{Name: "다른 과목", Value: "course:id/02"})
 	if err != nil {
 		t.Fatalf("NewCourseRef() other course error = %v", err)
 	}
@@ -71,10 +70,10 @@ func TestCourseRefStableResourceIDSeparatesTermsAndCourses(t *testing.T) {
 }
 
 func TestCourseRefRejectsMissingAndMalformedValues(t *testing.T) {
-	if _, err := NewCourseRef("", klas.Course{Value: "course"}); err == nil {
+	if _, err := NewCourseRef("", Course{Value: "course"}); err == nil {
 		t.Fatal("NewCourseRef() expected missing term error")
 	}
-	if _, err := NewCourseRef("2026,1", klas.Course{}); err == nil {
+	if _, err := NewCourseRef("2026,1", Course{}); err == nil {
 		t.Fatal("NewCourseRef() expected missing course error")
 	}
 	if _, _, stable, err := parseStableCourseResourceID("assignment", "assignment:v1:not-base64!:Y291cnNl:Nw", 1); err == nil || !stable {
@@ -86,7 +85,7 @@ func TestCourseRefRejectsMissingAndMalformedValues(t *testing.T) {
 }
 
 func TestSelectedCoursesByNumber(t *testing.T) {
-	term := klas.Term{Courses: []klas.Course{
+	term := Term{Courses: []Course{
 		{Name: "프로그래밍기초", Value: "c1"},
 		{Name: "자료구조", Value: "c2"},
 	}}
@@ -101,7 +100,7 @@ func TestSelectedCoursesByNumber(t *testing.T) {
 }
 
 func TestSelectedCoursesByName(t *testing.T) {
-	term := klas.Term{Courses: []klas.Course{
+	term := Term{Courses: []Course{
 		{Name: "프로그래밍기초", Value: "c1"},
 		{Name: "자료구조", Value: "c2"},
 	}}
@@ -116,7 +115,7 @@ func TestSelectedCoursesByName(t *testing.T) {
 }
 
 func TestResolveResourceCourseRejectsStableIDFromDifferentTerm(t *testing.T) {
-	term := klas.Term{Value: "2026,2", Courses: []klas.Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
+	term := Term{Value: "2026,2", Courses: []Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
 	_, err := resolveResourceCourse(term, courseResourceLocator{
 		Ref:    CourseRef{TermValue: "2026,1", CourseID: "course-a"},
 		Stable: true,
@@ -128,8 +127,8 @@ func TestResolveResourceCourseRejectsStableIDFromDifferentTerm(t *testing.T) {
 
 func TestCourseResourceListCacheKeyIgnoresCourseOrderAndFilterAlias(t *testing.T) {
 	first := []selectedCourse{
-		{Index: 1, Course: klas.Course{Name: "A", Value: "course-a"}},
-		{Index: 2, Course: klas.Course{Name: "B", Value: "course-b"}},
+		{Index: 1, Course: Course{Name: "A", Value: "course-a"}},
+		{Index: 2, Course: Course{Name: "B", Value: "course-b"}},
 	}
 	second := []selectedCourse{
 		{Index: 1, Course: first[1].Course},
@@ -148,7 +147,7 @@ func TestCourseResourceListCacheKeyIgnoresCourseOrderAndFilterAlias(t *testing.T
 }
 
 func TestResolveLegacyCachedCourseRejectsDuplicateNames(t *testing.T) {
-	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+	term := Term{Value: "2026,1", Courses: []Course{
 		{Name: "캡스톤설계", Value: "course-a"},
 		{Name: "캡스톤설계", Value: "course-b"},
 	}}
@@ -158,7 +157,7 @@ func TestResolveLegacyCachedCourseRejectsDuplicateNames(t *testing.T) {
 }
 
 func TestResolveLegacyCachedCourseRejectsMissingName(t *testing.T) {
-	term := klas.Term{Value: "2026,1", Courses: []klas.Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
+	term := Term{Value: "2026,1", Courses: []Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
 	if _, err := resolveLegacyCachedCourse(term, 1, ""); err == nil {
 		t.Fatal("resolveLegacyCachedCourse() expected missing name error")
 	}

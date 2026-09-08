@@ -16,7 +16,7 @@ type TimetableOptions struct {
 }
 
 type TimetableResult struct {
-	Term    klas.Term
+	Term    Term
 	Entries []klas.TimetableEntry
 }
 

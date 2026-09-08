@@ -24,7 +24,7 @@ type CdpAttendanceOptions struct {
 }
 
 type AttendanceListResult struct {
-	Term klas.Term
+	Term Term
 	Rows []AttendanceRow
 }
 
@@ -36,7 +36,7 @@ type AttendanceRow struct {
 }
 
 type AttendanceDetailResult struct {
-	Term klas.Term
+	Term Term
 	Row  AttendanceRow
 }
 

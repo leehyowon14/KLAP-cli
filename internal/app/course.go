@@ -18,7 +18,7 @@ type CourseListOptions struct {
 
 type selectedCourse struct {
 	Index  int
-	Course klas.Course
+	Course Course
 }
 
 type CourseRef struct {
@@ -26,7 +26,7 @@ type CourseRef struct {
 	CourseID  string
 }
 
-func NewCourseRef(termValue string, course klas.Course) (CourseRef, error) {
+func NewCourseRef(termValue string, course Course) (CourseRef, error) {
 	ref := CourseRef{
 		TermValue: strings.TrimSpace(termValue),
 		CourseID:  strings.TrimSpace(course.Value),
@@ -115,7 +115,7 @@ func decodeIDPart(value string) (string, error) {
 	return string(decoded), nil
 }
 
-func (s *Service) CourseList(ctx context.Context, opts CourseListOptions) ([]klas.Term, error) {
+func (s *Service) CourseList(ctx context.Context, opts CourseListOptions) ([]Term, error) {
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
 		return nil, err
@@ -132,18 +132,18 @@ func (s *Service) CourseList(ctx context.Context, opts CourseListOptions) ([]kla
 	}
 	cacheKey := listCacheKey("course", studentID, term.Value, "")
 	if !opts.Refresh {
-		var cached []klas.Term
+		var cached []Term
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
 			return cached, nil
 		}
 	}
-	result := []klas.Term{term}
+	result := []Term{term}
 	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
 	return result, nil
 }
 
-func (s *Service) courses(ctx context.Context, studentID string, client *klas.Client) ([]klas.Term, *klas.Client, error) {
-	terms, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.Term, error) {
+func (s *Service) courses(ctx context.Context, studentID string, client *klas.Client) ([]Term, *klas.Client, error) {
+	terms, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]Term, error) {
 		return client.Courses(ctx)
 	})
 	if err != nil {
@@ -192,7 +192,7 @@ func resourceIDsMatchSelected(ids []string, kind string, remotePartCount int, co
 	return true
 }
 
-func selectedCourses(term klas.Term, filter string) ([]selectedCourse, error) {
+func selectedCourses(term Term, filter string) ([]selectedCourse, error) {
 	if strings.TrimSpace(filter) == "" {
 		selected := make([]selectedCourse, 0, len(term.Courses))
 		for index, course := range term.Courses {
@@ -234,46 +234,46 @@ type courseResourceLocator struct {
 	Stable      bool
 }
 
-func resolveResourceCourse(term klas.Term, locator courseResourceLocator) (klas.Course, error) {
+func resolveResourceCourse(term Term, locator courseResourceLocator) (Course, error) {
 	if locator.Stable {
 		if strings.TrimSpace(term.Value) != strings.TrimSpace(locator.Ref.TermValue) {
-			return klas.Course{}, fmt.Errorf("stable ID 학기와 조회 학기가 다릅니다: %s != %s", locator.Ref.TermValue, term.Value)
+			return Course{}, fmt.Errorf("stable ID 학기와 조회 학기가 다릅니다: %s != %s", locator.Ref.TermValue, term.Value)
 		}
 		for _, course := range term.Courses {
 			if strings.TrimSpace(course.Value) == locator.Ref.CourseID {
 				return course, nil
 			}
 		}
-		return klas.Course{}, fmt.Errorf("학기 %s에서 과목을 찾을 수 없습니다: %s", term.Value, locator.Ref.CourseID)
+		return Course{}, fmt.Errorf("학기 %s에서 과목을 찾을 수 없습니다: %s", term.Value, locator.Ref.CourseID)
 	}
 	if locator.CourseIndex < 1 || locator.CourseIndex > len(term.Courses) {
-		return klas.Course{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", locator.CourseIndex)
+		return Course{}, fmt.Errorf("과목 번호가 범위를 벗어났습니다: %d", locator.CourseIndex)
 	}
 	return term.Courses[locator.CourseIndex-1], nil
 }
 
-func resolveLegacyCachedCourse(term klas.Term, courseIndex int, courseName string) (klas.Course, error) {
+func resolveLegacyCachedCourse(term Term, courseIndex int, courseName string) (Course, error) {
 	normalizedName := strings.TrimSpace(courseName)
 	if normalizedName == "" {
-		return klas.Course{}, fmt.Errorf("legacy cache 과목명 없이 순번을 안전하게 이전할 수 없습니다: %d", courseIndex)
+		return Course{}, fmt.Errorf("legacy cache 과목명 없이 순번을 안전하게 이전할 수 없습니다: %d", courseIndex)
 	}
-	var match *klas.Course
+	var match *Course
 	for index := range term.Courses {
 		if !strings.EqualFold(strings.TrimSpace(term.Courses[index].Name), normalizedName) {
 			continue
 		}
 		if match != nil {
-			return klas.Course{}, fmt.Errorf("legacy cache 과목명이 여러 과목과 일치합니다: %s", courseName)
+			return Course{}, fmt.Errorf("legacy cache 과목명이 여러 과목과 일치합니다: %s", courseName)
 		}
 		match = &term.Courses[index]
 	}
 	if match != nil {
 		return *match, nil
 	}
-	return klas.Course{}, fmt.Errorf("legacy cache 과목을 찾을 수 없습니다: %s", courseName)
+	return Course{}, fmt.Errorf("legacy cache 과목을 찾을 수 없습니다: %s", courseName)
 }
 
-func courseIndexByID(term klas.Term, courseID string) (int, error) {
+func courseIndexByID(term Term, courseID string) (int, error) {
 	for index, course := range term.Courses {
 		if strings.TrimSpace(course.Value) == strings.TrimSpace(courseID) {
 			return index + 1, nil

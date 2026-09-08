@@ -15,10 +15,10 @@ import (
 
 type assignmentGatewayStub struct {
 	AssignmentGateway
-	list func(context.Context, string, klas.Course) ([]klas.Assignment, error)
+	list func(context.Context, string, Course) ([]klas.Assignment, error)
 }
 
-func (g assignmentGatewayStub) Assignments(ctx context.Context, term string, course klas.Course) ([]klas.Assignment, error) {
+func (g assignmentGatewayStub) Assignments(ctx context.Context, term string, course Course) ([]klas.Assignment, error) {
 	return g.list(ctx, term, course)
 }
 
@@ -80,7 +80,7 @@ func testAssignmentListGateway(t *testing.T, firstErr, wantErr error, wantCalls,
 		if c != client {
 			t.Fatal("gateway received wrong session client")
 		}
-		return assignmentGatewayStub{list: func(_ context.Context, term string, course klas.Course) ([]klas.Assignment, error) {
+		return assignmentGatewayStub{list: func(_ context.Context, term string, course Course) ([]klas.Assignment, error) {
 			calls++
 			if term != "2026,1" || course.Value != "subject" {
 				t.Fatal("gateway arguments changed")

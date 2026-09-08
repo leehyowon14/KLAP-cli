@@ -1853,7 +1853,7 @@ func (r Runner) printDue(result app.DueResult) {
 	}
 }
 
-func (r Runner) printCourseList(terms []klas.Term) {
+func (r Runner) printCourseList(terms []app.Term) {
 	if len(terms) == 0 {
 		_, _ = fmt.Fprintln(r.Out, "수강 학기가 없습니다")
 		return

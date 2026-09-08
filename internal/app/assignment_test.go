@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"strings"
 	"testing"
 )
@@ -35,7 +34,7 @@ func TestAssignmentResourceIDAcceptsStableAndLegacyIDs(t *testing.T) {
 }
 
 func TestNormalizeCachedAssignmentRowsUsesCourseNameAfterReorder(t *testing.T) {
-	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+	term := Term{Value: "2026,1", Courses: []Course{
 		{Name: "오픈소스", Value: "course-b"},
 		{Name: "컴퓨터그래픽스", Value: "course-a"},
 	}}
@@ -64,7 +63,7 @@ func TestNormalizeCachedAssignmentRowsUsesCourseNameAfterReorder(t *testing.T) {
 }
 
 func TestAssignmentCacheVersionMissesRawLegacySchema(t *testing.T) {
-	courses := []selectedCourse{{Index: 1, Course: klas.Course{Name: "A", Value: "course-a"}}}
+	courses := []selectedCourse{{Index: 1, Course: Course{Name: "A", Value: "course-a"}}}
 	legacyKey := courseResourceListCacheKey("assignment", "20260001", "2026,1", courses)
 	currentKey := courseResourceListCacheKeyVersion("assignment", "v2", "20260001", "2026,1", courses)
 	if legacyKey == currentKey || !strings.Contains(currentKey, "assignment:v2:") {
@@ -73,7 +72,7 @@ func TestAssignmentCacheVersionMissesRawLegacySchema(t *testing.T) {
 }
 
 func TestAssignmentLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
-	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+	term := Term{Value: "2026,1", Courses: []Course{
 		{Name: "B", Value: "course-b"},
 		{Name: "A", Value: "course-a"},
 	}}
@@ -91,7 +90,7 @@ func TestAssignmentLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
 }
 
 func TestNormalizeCachedStableAssignmentHydratesCurrentAlias(t *testing.T) {
-	term := klas.Term{Value: "2026,1", Courses: []klas.Course{
+	term := Term{Value: "2026,1", Courses: []Course{
 		{Name: "오픈소스", Value: "course-b"},
 		{Name: "컴퓨터그래픽스", Value: "course-a"},
 	}}

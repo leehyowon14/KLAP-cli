@@ -37,7 +37,7 @@ func aggregateSessionFixture(t *testing.T) (*Service, *aggregateSessionCounts) {
 	}
 	deps.Cache = store
 	deps.AssignmentGateway = func(*klas.Client) AssignmentGateway {
-		return assignmentGatewayStub{list: func(context.Context, string, klas.Course) ([]klas.Assignment, error) { return nil, nil }}
+		return assignmentGatewayStub{list: func(context.Context, string, Course) ([]klas.Assignment, error) { return nil, nil }}
 	}
 	s, err := NewService(deps)
 	if err != nil {

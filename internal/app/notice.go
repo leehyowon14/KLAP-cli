@@ -125,7 +125,7 @@ func (s *Service) NoticeDetail(ctx context.Context, id string, user UserOption) 
 	if err != nil {
 		return NoticeDetailResult{}, err
 	}
-	var term klas.Term
+	var term Term
 	if locator.Stable {
 		term, client, err = s.termForSyllabus(ctx, studentID, client, locator.Ref.TermValue)
 	} else {
@@ -170,7 +170,7 @@ func (s *Service) NoticeOpenURL(ctx context.Context, id string, user UserOption)
 	return OpenURLResult{URL: detail.DetailURL}, nil
 }
 
-func noticeDetailURL(yearHakgi string, course klas.Course, boardNo string, masterNo string) string {
+func noticeDetailURL(yearHakgi string, course Course, boardNo string, masterNo string) string {
 	values := url.Values{}
 	values.Set("selectYearhakgi", yearHakgi)
 	values.Set("selectSubj", course.Value)
@@ -217,7 +217,7 @@ func parseNoticeResourceID(id string) (courseResourceLocator, string, string, er
 	return courseResourceLocator{CourseIndex: courseIndex}, boardNo, masterNo, nil
 }
 
-func normalizeCachedNoticeRows(rows []NoticeRow, term klas.Term) ([]NoticeRow, bool, error) {
+func normalizeCachedNoticeRows(rows []NoticeRow, term Term) ([]NoticeRow, bool, error) {
 	migrated := false
 	for index := range rows {
 		locator, boardNo, masterNo, err := parseNoticeResourceID(rows[index].ID)

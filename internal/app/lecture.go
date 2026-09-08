@@ -304,8 +304,8 @@ func stableLectureTermValue(ids []string) (string, error) {
 
 type resolvedLectureResource struct {
 	Client   *klas.Client
-	Term     klas.Term
-	Course   klas.Course
+	Term     Term
+	Course   Course
 	Key      string
 	ID       string
 	LegacyID string
@@ -320,7 +320,7 @@ func (s *Service) resolveLectureResource(ctx context.Context, studentID string, 
 	if err != nil {
 		return resolvedLectureResource{}, err
 	}
-	var term klas.Term
+	var term Term
 	if locator.Stable {
 		term, client, err = s.termForSyllabus(ctx, studentID, client, locator.Ref.TermValue)
 	} else {
@@ -378,7 +378,7 @@ func newLectureRow(termValue string, selected selectedCourse, lecture klas.Lectu
 	}, nil
 }
 
-func normalizeCachedLectureRows(rows []LectureRow, term klas.Term) ([]LectureRow, bool, error) {
+func normalizeCachedLectureRows(rows []LectureRow, term Term) ([]LectureRow, bool, error) {
 	migrated := false
 	for index := range rows {
 		locator, lectureKey, parseErr := parseLectureResourceID(rows[index].ID)
@@ -386,7 +386,7 @@ func normalizeCachedLectureRows(rows []LectureRow, term klas.Term) ([]LectureRow
 		if parseErr != nil && strings.TrimSpace(rows[index].ID) != "-" {
 			return nil, false, parseErr
 		}
-		var course klas.Course
+		var course Course
 		var err error
 		if parseErr == nil && locator.Stable {
 			course, err = resolveResourceCourse(term, locator)
