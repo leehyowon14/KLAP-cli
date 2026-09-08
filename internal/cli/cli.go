@@ -1035,7 +1035,7 @@ func (r Runner) syncAssignmentReminders(ctx context.Context, service *app.Servic
 		return err
 	}
 
-	result, err := service.SyncAssignmentReminders(ctx, opts)
+	result, err := service.SyncAssignmentReminders(ctx, app.AssignmentSyncOptions{Query: opts})
 	if err != nil {
 		return err
 	}

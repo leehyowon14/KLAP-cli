@@ -1177,7 +1177,7 @@ func (m model) syncDashboard(decisions map[string]app.SyncDecision) tea.Cmd {
 
 func (m model) syncAssignments(decisions map[string]app.SyncDecision) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.SyncAssignmentReminders(m.ctx, app.AssignmentListOptions{SyncDecisions: decisions})
+		result, err := m.service.SyncAssignmentReminders(m.ctx, app.AssignmentSyncOptions{Decisions: decisions})
 		if conflicts := syncConflictsFromErrors(err); len(conflicts) > 0 {
 			return syncMsg{conflicts: conflicts}
 		}

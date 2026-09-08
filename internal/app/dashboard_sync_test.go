@@ -21,9 +21,9 @@ func (s *dashboardSyncStub) record(ctx context.Context, name string, decisions m
 	}
 	s.calls = append(s.calls, name)
 }
-func (s *dashboardSyncStub) SyncAssignmentReminders(ctx context.Context, o AssignmentListOptions) (ReminderSyncResult, error) {
-	s.record(ctx, "assignment", o.SyncDecisions)
-	if o.User.StudentID != "student" {
+func (s *dashboardSyncStub) SyncAssignmentReminders(ctx context.Context, o AssignmentSyncOptions) (ReminderSyncResult, error) {
+	s.record(ctx, "assignment", o.Decisions)
+	if o.Query.User.StudentID != "student" {
 		s.t.Fatal("user lost")
 	}
 	return ReminderSyncResult{EligibleCount: 1}, s.err

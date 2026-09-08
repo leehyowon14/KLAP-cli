@@ -57,12 +57,12 @@ func (e SyncConflictError) Error() string {
 	return fmt.Sprintf("KLAS에서 갱신된 항목 %d개에 대한 확인이 필요합니다", len(e.Conflicts))
 }
 
-func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentListOptions) (ReminderSyncResult, error) {
-	rows, err := s.AssignmentList(ctx, opts)
+func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentSyncOptions) (ReminderSyncResult, error) {
+	rows, err := s.AssignmentList(ctx, opts.Query)
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}
-	studentID, err := s.selectedStudentID(ctx, opts.User)
+	studentID, err := s.selectedStudentID(ctx, opts.Query.User)
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}
@@ -78,7 +78,7 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 		if !futureTime(row.Assignment.DueAt, now) {
 			continue
 		}
-		detail, detailErr := s.AssignmentDetail(ctx, row.ID, opts.User)
+		detail, detailErr := s.AssignmentDetail(ctx, row.ID, opts.Query.User)
 		if detailErr != nil {
 			return ReminderSyncResult{}, detailErr
 		}
@@ -98,7 +98,7 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 	if len(assignments) == 0 {
 		return ReminderSyncResult{}, nil
 	}
-	prepared, err := s.prepareReminderSync("assignment", studentID, assignments, opts.SyncDecisions)
+	prepared, err := s.prepareReminderSync("assignment", studentID, assignments, opts.Decisions)
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}
