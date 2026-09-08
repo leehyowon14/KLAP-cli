@@ -134,145 +134,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if action, handled := m.download.Lifecycle(msg); handled {
 		return m.applyChildAction(action)
 	}
-	if m.active == screenDownloadProgress {
-		action, _ := m.download.Update(msg, m.active, m.loading, m.ctx, m.service)
-		return m.applyChildAction(action)
+	switch value := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width, m.height = value.Width, value.Height
+		if action, handled := m.updateActiveChild(msg); handled {
+			return m.applyChildAction(action)
+		}
+		return m, nil
+	case loadMsg:
+		m.applyLoadMsg(value)
+		if value.prefetch {
+			m.prefetchActive = false
+			m.prefetchCurrent = 0
+			return m.startNextPrefetch()
+		}
+		return m, nil
 	}
-	if m.active == screenAttendProgress {
-		action, _ := m.attend.Update(msg, m.active, m.ctx, m.service, time.Now())
+	// Progress children own their run events and cancellation. Window size and
+	// background loads above remain global even while a run is visible.
+	if m.active == screenDownloadProgress || m.active == screenAttendProgress {
+		action, _ := m.updateActiveChild(msg)
 		return m.applyChildAction(action)
 	}
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
 	case tea.KeyMsg:
-		if m.active == screenAuth {
-			action, _ := m.auth.Update(msg, m.ctx, m.service)
+		if action, handled := m.updateActiveChild(msg); handled {
 			return m.applyChildAction(action)
 		}
-		if m.active == screenDownloadSelect || m.active == screenDownloadConfirm || m.active == screenDownloadLanguage {
-			action, _ := m.download.Update(msg, m.active, m.loading, m.ctx, m.service)
-			return m.applyChildAction(action)
-		}
-		if m.active == screenAttendConfirm {
-			action, _ := m.attend.Update(msg, m.active, m.ctx, m.service, time.Now())
-			return m.applyChildAction(action)
-		}
-		if m.active == screenConfig || m.active == screenConfigChoice || m.active == screenConfigInput {
-			if action, handled := m.config.Update(msg, m.active, m.loading, m.ctx, m.service); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if m.active == screenRoomDay || m.active == screenRoomPeriod || m.active == screenRoomResult {
-			if action, handled := m.room.Update(msg, m.active, m.loading, m.ctx, m.service); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if m.active == screenSyncConflict {
-			action, _ := m.sync.Update(msg, m.ctx, m.service, m.due.duePage == 3)
-			return m.applyChildAction(action)
-		}
-		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
-		}
-		if m.active == screenHome {
-			if action, handled := m.home.Update(msg); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if (m.active == screenAssignments || m.active == screenAssignmentDetail) && !m.loading {
-			if action, handled := m.assignments.Update(msg, m.width, m.height, m.active == screenAssignmentDetail, m.ctx, m.service); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if (m.active == screenNotices || m.active == screenNoticeDetail) && !m.loading {
-			if action, handled := m.notices.Update(msg, m.width, m.height, m.active == screenNoticeDetail, m.ctx, m.service); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if m.active == screenDashboard && !m.loading {
-			if action, handled := m.dashboard.Update(msg, m.width, m.height, m.lastSyncAt); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if m.active == screenAcademic && !m.loading {
-			if action, handled := m.academic.Update(msg); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if m.active == screenDue && !m.loading {
-			if action, handled := m.due.Update(msg, m.width); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if m.active == screenSyllabus {
-			if action, handled := m.syllabus.Update(msg, m.width, m.height, m.loading, m.ctx, m.service, m.dashboard.dashboardResult.Term.Value); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		if m.active == screenLectures {
-			if action, handled := m.lectures.Update(msg, m.width, m.loading); handled {
-				return m.applyChildAction(action)
-			}
-		}
-		key := msg.String()
-		switch {
-		case keyMatches(key, "q", "ㅂ"):
-			return m, tea.Quit
-		case key == "esc" || keyMatches(key, "b", "ㅠ"):
-			if m.active == screenSyllabus {
-				m.active = screenDashboard
-				m.err = nil
-				m.loading = false
-				m.syllabus.resetCursor()
-			} else if m.isDetailScreen() {
-				if m.active == screenAssignmentDetail {
-					m.assignments.resetDetailCursor()
-				} else {
-					m.notices.resetDetailCursor()
-				}
-				m.active = m.detailBack
-				m.err = nil
-				m.loading = false
-			} else if m.active != screenHome {
-				m.active = screenHome
-				m.err = nil
-				m.content = ""
-				m.loading = false
-			}
-		case key == "up" || (keyMatches(key, "k", "ㅏ") && !m.canOpenKlasURL()):
-			if m.isDetailScreen() && !m.loading {
-				m.moveDetailCursor(-1)
-			}
-		case key == "down" || keyMatches(key, "j", "ㅓ"):
-			if m.isDetailScreen() && !m.loading {
-				m.moveDetailCursor(1)
-			}
-		case keyMatches(key, "r", "ㄱ"):
-			if m.active != screenHome {
-				m.loading = true
-				m.err = nil
-				m.content = ""
-				m.syncStatus = ""
-				m.markScreenLoading(m.active)
-				return m, m.load(m.active, true)
-			}
-		case keyMatches(key, "s", "ㄴ"):
-			if cmd := syncForScreen(m.ctx, m.service, m.active, m.due.duePage == 3, nil); cmd != nil {
-				m.loading = false
-				m.err = nil
-				m.sync.Start(m.active)
-				m.syncStatus = ""
-				return m, cmd
-			}
-		case keyMatches(key, "k", "ㅏ"):
-			if cmd := m.openCurrentKlasURL(); cmd != nil {
-				m.err = nil
-				return m, cmd
-			}
-		}
+		return m.updateGlobalKey(msg)
 	case configSavedMsg:
 		if !m.config.Accepts(msg) {
 			return m, nil
@@ -288,13 +177,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.applyChildAction(action)
-	case loadMsg:
-		m.applyLoadMsg(msg)
-		if msg.prefetch {
-			m.prefetchActive = false
-			m.prefetchCurrent = 0
-			return m.startNextPrefetch()
-		}
 	case authCheckMsg:
 		m.loading = false
 		action, _ := m.auth.Update(msg, m.ctx, m.service)
@@ -404,6 +286,61 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.room.Loaded(msg.results)
 		m.loadedAt = time.Now()
+	default:
+		if action, handled := m.updateActiveChild(msg); handled {
+			return m.applyChildAction(action)
+		}
+	}
+	return m, nil
+}
+func (m model) updateGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
+		return m, tea.Quit
+	case key == "esc" || keyMatches(key, "b", "ㅠ"):
+		if m.active == screenSyllabus {
+			m.active = screenDashboard
+			m.err = nil
+			m.loading = false
+			m.syllabus.resetCursor()
+		} else if m.isDetailScreen() {
+			if m.active == screenAssignmentDetail {
+				m.assignments.resetDetailCursor()
+			} else {
+				m.notices.resetDetailCursor()
+			}
+			m.active = m.detailBack
+			m.err = nil
+			m.loading = false
+		} else if m.active != screenHome {
+			m.active = screenHome
+			m.err = nil
+			m.content = ""
+			m.loading = false
+		}
+	case keyMatches(key, "r", "ㄱ"):
+		if m.active != screenHome {
+			m.loading = true
+			m.err = nil
+			m.content = ""
+			m.syncStatus = ""
+			m.markScreenLoading(m.active)
+			return m, m.load(m.active, true)
+		}
+	case keyMatches(key, "s", "ㄴ"):
+		if cmd := syncForScreen(m.ctx, m.service, m.active, m.due.duePage == 3, nil); cmd != nil {
+			m.loading = false
+			m.err = nil
+			m.sync.Start(m.active)
+			m.syncStatus = ""
+			return m, cmd
+		}
+	case keyMatches(key, "k", "ㅏ"):
+		if cmd := m.openCurrentKlasURL(); cmd != nil {
+			m.err = nil
+			return m, cmd
+		}
 	}
 	return m, nil
 }
