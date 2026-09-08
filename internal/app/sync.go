@@ -113,7 +113,7 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentLi
 		return ReminderSyncResult{Result: reminder.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(assignments)}, nil
 	}
 
-	result, err := reminder.NewMacOSBridge(s.reminderBridgePath).Sync(reminder.SyncRequest{
+	result, err := s.reminderSyncer.Sync(reminder.SyncRequest{
 		ListName:        currentSettings.Reminder.ListName,
 		UseExistingList: currentSettings.Reminder.UseExistingList,
 		AlarmBeforeMin:  currentSettings.Reminder.AlarmBeforeMin,
@@ -184,7 +184,7 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOpti
 		return ReminderSyncResult{Result: reminder.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(assignments)}, nil
 	}
 
-	result, err := reminder.NewMacOSBridge(s.reminderBridgePath).Sync(reminder.SyncRequest{
+	result, err := s.reminderSyncer.Sync(reminder.SyncRequest{
 		ListName:        currentSettings.Reminder.ListName,
 		UseExistingList: currentSettings.Reminder.UseExistingList,
 		AlarmBeforeMin:  currentSettings.Reminder.AlarmBeforeMin,
@@ -851,4 +851,8 @@ func lectureReminderID(rowID string) string {
 		return rowID
 	}
 	return "lecture:" + rowID
+}
+
+type ReminderSyncer interface {
+	Sync(reminder.SyncRequest) (reminder.SyncResult, error)
 }
