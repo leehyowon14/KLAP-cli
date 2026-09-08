@@ -93,6 +93,18 @@ func (s *Service) Syllabus(ctx context.Context, opts SyllabusOptions) (SyllabusR
 	if strings.TrimSpace(course.Value) == "" {
 		course.Value = subjectID
 	}
+	// Enrollment is optional: never treat the detail payload's default zero as
+	// an authoritative count when the dedicated lookup fails.
+	syllabus.CurrentNum = ""
+	count, countErr := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (string, error) {
+		return client.SyllabusEnrollment(ctx, term.Value, subjectID, course.Name)
+	})
+	if ctx.Err() != nil {
+		return SyllabusResult{}, ctx.Err()
+	}
+	if countErr == nil {
+		syllabus.CurrentNum = count
+	}
 
 	return SyllabusResult{
 		Term:      term,
