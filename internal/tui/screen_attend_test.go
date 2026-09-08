@@ -26,8 +26,8 @@ func TestLectureAttendShortcutOpensConfirmation(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("attend confirmation should not start attendance")
 	}
-	if got.active != screenAttendConfirm || got.attendRow.ID != "1:video" {
-		t.Fatalf("active=%v attendRow=%+v", got.active, got.attendRow)
+	if got.active != screenAttendConfirm || got.attend.attendRow.ID != "1:video" {
+		t.Fatalf("active=%v attendRow=%+v", got.active, got.attend.attendRow)
 	}
 	if !strings.Contains(got.View(), "이 강의를 수강할까요?") {
 		t.Fatalf("confirmation view = %q", got.View())

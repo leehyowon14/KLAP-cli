@@ -9,100 +9,96 @@ import (
 	"time"
 )
 
-func (m model) startAttendConfirm() (tea.Model, tea.Cmd) {
-	row, ok := m.selectedLectureRow()
-	if !ok {
-		m.err = errors.New("수강할 강의를 선택할 수 없습니다")
-		return m, nil
+type attendScreenModel struct {
+	attendRow      app.LectureRow
+	attendProgress *lectureAttendModel
+}
+
+func (m *attendScreenModel) Start(row app.LectureRow, selected bool, now time.Time) error {
+	if !selected {
+		return errors.New("수강할 강의를 선택할 수 없습니다")
 	}
-	if err := validateLectureAttend(row, time.Now()); err != nil {
-		m.err = err
-		return m, nil
+	if err := validateLectureAttend(row, now); err != nil {
+		return err
 	}
-	m.active = screenAttendConfirm
 	m.attendRow = row
-	m.err = nil
-	return m, nil
+	return nil
 }
-
-func (m model) updateAttendConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
+func (m *attendScreenModel) Update(msg tea.Msg, route screen, ctx context.Context, service lectureAttender, now time.Time) (childAction, bool) {
+	if route == screenAttendProgress {
+		return m.updateProgress(msg), true
+	}
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	k := key.String()
 	switch {
-	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
-		return m, tea.Quit
-	case key == "esc" || keyMatches(key, "b", "ㅠ", "n", "ㅜ"):
-		m.active = screenLectures
+	case k == "ctrl+c" || keyMatches(k, "q", "ㅂ"):
+		return childAction{cmd: tea.Quit}, true
+	case k == "esc" || keyMatches(k, "b", "ㅠ", "n", "ㅜ"):
 		m.attendRow = app.LectureRow{}
-		return m, nil
-	case key == "enter" || keyMatches(key, "y", "ㅛ"):
-		return m.startAttendProgress()
+		return childAction{navigate: true, routeOnly: true, target: screenLectures}, true
+	case k == "enter" || keyMatches(k, "y", "ㅛ"):
+		return m.startProgress(ctx, service, now), true
 	}
-	return m, nil
+	return childAction{}, true
 }
-
-func (m model) startAttendProgress() (tea.Model, tea.Cmd) {
-	if err := validateLectureAttend(m.attendRow, time.Now()); err != nil {
-		m.err = err
-		m.active = screenLectures
-		return m, nil
+func (m *attendScreenModel) startProgress(ctx context.Context, service lectureAttender, now time.Time) childAction {
+	if err := validateLectureAttend(m.attendRow, now); err != nil {
+		return childAction{navigate: true, routeOnly: true, target: screenLectures, setError: true, err: err}
 	}
-	runCtx, cancel := context.WithCancel(m.ctx)
-	progress := lectureAttendModel{
-		ctx:      runCtx,
-		cancel:   cancel,
-		service:  m.service,
-		row:      m.attendRow,
-		updates:  make(chan tea.Msg, 16),
-		progress: initialAttendProgress(m.attendRow),
-	}
-	m.active = screenAttendProgress
-	m.attendProgress = &progress
-	m.err = nil
-	return m, progress.Init()
+	runCtx, cancel := context.WithCancel(ctx)
+	progress := &lectureAttendModel{ctx: runCtx, cancel: cancel, service: service, row: m.attendRow, updates: make(chan tea.Msg, 16), progress: initialAttendProgress(m.attendRow)}
+	m.attendProgress = progress
+	return childAction{navigate: true, routeOnly: true, target: screenAttendProgress, setError: true, cmd: progress.Init()}
 }
-
-func (m model) updateAttendProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *attendScreenModel) updateProgress(msg tea.Msg) childAction {
 	if m.attendProgress == nil {
-		m.active = screenLectures
-		return m, nil
+		return childAction{navigate: true, routeOnly: true, target: screenLectures}
 	}
 	if key, ok := msg.(tea.KeyMsg); ok {
-		value := key.String()
-		if value == "ctrl+c" || keyMatches(value, "q", "ㅂ") {
+		k := key.String()
+		if k == "ctrl+c" || keyMatches(k, "q", "ㅂ") {
 			m.attendProgress.cancel()
-			return m, tea.Quit
+			return childAction{cmd: tea.Quit}
 		}
-		if keyMatches(value, "h", "ㅗ") {
+		if keyMatches(k, "h", "ㅗ") {
 			m.attendProgress.cancel()
-			m.active = screenHome
 			m.attendProgress = nil
 			m.attendRow = app.LectureRow{}
-			return m, nil
+			return childAction{navigate: true, routeOnly: true, target: screenHome}
 		}
-		if m.attendProgress.done && (value == "esc" || keyMatches(value, "b", "ㅠ")) {
-			m.active = screenLectures
-			m.loading = true
+		if m.attendProgress.done && (k == "esc" || keyMatches(k, "b", "ㅠ")) {
 			m.attendProgress = nil
 			m.attendRow = app.LectureRow{}
-			return m, m.load(screenLectures, true)
+			return childAction{navigate: true, reload: true, refresh: true, target: screenLectures}
 		}
-		if value == "esc" && !m.attendProgress.done {
+		if k == "esc" && !m.attendProgress.done {
 			m.attendProgress.canceling = true
 			m.attendProgress.cancel()
-			return m, nil
+			return childAction{}
 		}
 	}
 	updated, cmd := m.attendProgress.Update(msg)
-	progress, ok := updated.(lectureAttendModel)
-	if ok {
+	if progress, ok := updated.(lectureAttendModel); ok {
 		m.attendProgress = &progress
 	}
-	return m, cmd
+	return childAction{cmd: cmd}
+}
+func (m attendScreenModel) View(width int, route screen) string {
+	if route == screenAttendConfirm {
+		return m.renderAttendConfirmView(width)
+	}
+	if m.attendProgress == nil {
+		return appStyle.Render(errorStyle.Render("수강 상태가 없습니다"))
+	}
+	return m.attendProgress.View()
 }
 
-func (m model) renderAttendConfirmView(width int) string {
+func (m attendScreenModel) renderAttendConfirmView(width int) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, "Attend"))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")

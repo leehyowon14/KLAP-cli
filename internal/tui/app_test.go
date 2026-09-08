@@ -355,18 +355,18 @@ func TestIntegratedAttendFlowStartsProgress(t *testing.T) {
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	m = updated.(model)
-	if m.active != screenAttendConfirm || m.attendRow.ID != "course/1:lecture/video" {
-		t.Fatalf("confirm state active=%v row=%+v", m.active, m.attendRow)
+	if m.active != screenAttendConfirm || m.attend.attendRow.ID != "course/1:lecture/video" {
+		t.Fatalf("confirm state active=%v row=%+v", m.active, m.attend.attendRow)
 	}
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	m = updated.(model)
-	if cmd == nil || m.active != screenAttendProgress || m.attendProgress == nil {
-		t.Fatalf("progress state active=%v progress nil=%t cmd nil=%t", m.active, m.attendProgress == nil, cmd == nil)
+	if cmd == nil || m.active != screenAttendProgress || m.attend.attendProgress == nil {
+		t.Fatalf("progress state active=%v progress nil=%t cmd nil=%t", m.active, m.attend.attendProgress == nil, cmd == nil)
 	}
-	defer m.attendProgress.cancel()
-	if m.attendProgress.row.ID != "course/1:lecture/video" || m.attendProgress.progress.Progress != 25 {
-		t.Fatalf("attend progress = %+v", m.attendProgress)
+	defer m.attend.attendProgress.cancel()
+	if m.attend.attendProgress.row.ID != "course/1:lecture/video" || m.attend.attendProgress.progress.Progress != 25 {
+		t.Fatalf("attend progress = %+v", m.attend.attendProgress)
 	}
 }
 
@@ -401,13 +401,12 @@ func TestValidateLectureAttendRejectsInvalidStates(t *testing.T) {
 
 func TestAttendConfirmationCanCancel(t *testing.T) {
 	m := model{
-		active:    screenAttendConfirm,
-		attendRow: app.LectureRow{ID: "1:video", Lecture: app.Lecture{ContentID: "video"}},
+		active: screenAttendConfirm, attend: attendScreenModel{attendRow: app.LectureRow{ID: "1:video", Lecture: app.Lecture{ContentID: "video"}}},
 	}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	got := updated.(model)
-	if cmd != nil || got.active != screenLectures || got.attendRow.ID != "" {
-		t.Fatalf("cmd=%v active=%v attendRow=%+v", cmd, got.active, got.attendRow)
+	if cmd != nil || got.active != screenLectures || got.attend.attendRow.ID != "" {
+		t.Fatalf("cmd=%v active=%v attendRow=%+v", cmd, got.active, got.attend.attendRow)
 	}
 }
 

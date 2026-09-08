@@ -71,8 +71,7 @@ type model struct {
 	lastSyncAt      time.Time
 	config          configScreenModel
 	download        downloadScreenModel
-	attendRow       app.LectureRow
-	attendProgress  *lectureAttendModel
+	attend          attendScreenModel
 	room            roomScreenModel
 	sync            syncScreenModel
 	auth            authScreenModel
@@ -140,7 +139,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyChildAction(action)
 	}
 	if m.active == screenAttendProgress {
-		return m.updateAttendProgress(msg)
+		action, _ := m.attend.Update(msg, m.active, m.ctx, m.service, time.Now())
+		return m.applyChildAction(action)
 	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -156,7 +156,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.applyChildAction(action)
 		}
 		if m.active == screenAttendConfirm {
-			return m.updateAttendConfirm(msg)
+			action, _ := m.attend.Update(msg, m.active, m.ctx, m.service, time.Now())
+			return m.applyChildAction(action)
 		}
 		if m.active == screenConfig || m.active == screenConfigChoice || m.active == screenConfigInput {
 			if action, handled := m.config.Update(msg, m.active, m.loading, m.ctx, m.service); handled {
@@ -674,12 +675,9 @@ func (m model) View() string {
 	case screenDownloadProgress:
 		return m.download.View(contentWidth, m.height, m.active, m.loading, m.err)
 	case screenAttendConfirm:
-		return appStyle.Render(m.renderAttendConfirmView(contentWidth))
+		return appStyle.Render(m.attend.View(contentWidth, m.active))
 	case screenAttendProgress:
-		if m.attendProgress == nil {
-			return appStyle.Render(errorStyle.Render("수강 상태가 없습니다"))
-		}
-		return m.attendProgress.View()
+		return m.attend.View(contentWidth, m.active)
 	case screenConfigChoice:
 		return appStyle.Render(m.config.View(contentWidth, m.active, m.err))
 	case screenConfigInput:

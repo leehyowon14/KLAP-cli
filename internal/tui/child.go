@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"time"
 )
 
 type childAction struct {
@@ -64,7 +65,12 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 			return m, loadDownloadRows(m.ctx, m.service)
 		}
 		if action.target == screenAttendConfirm {
-			return m.startAttendConfirm()
+			row, ok := m.lectures.selectedRow(m.width)
+			m.err = m.attend.Start(row, ok, time.Now())
+			if m.err == nil {
+				m.active = screenAttendConfirm
+			}
+			return m, nil
 		}
 
 		if action.target == screenSyllabus {
