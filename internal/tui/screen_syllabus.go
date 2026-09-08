@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
@@ -13,10 +14,10 @@ type syllabusMsg struct {
 	err    error
 }
 
-func (m model) loadSyllabus(courseIndex int) tea.Cmd {
-	termValue := m.dashboard.dashboardResult.Term.Value
+func (m syllabusScreenModel) Load(ctx context.Context, service syllabusScreenService, termValue string) tea.Cmd {
+	courseIndex := m.syllabusCourseIndex
 	return func() tea.Msg {
-		result, err := m.service.Syllabus(m.ctx, app.SyllabusOptions{
+		result, err := service.Syllabus(ctx, app.SyllabusOptions{
 			Selector:  strconv.Itoa(courseIndex),
 			TermValue: termValue,
 		})
@@ -24,13 +25,13 @@ func (m model) loadSyllabus(courseIndex int) tea.Cmd {
 	}
 }
 
-func (m *model) moveSyllabusCursor(delta int) {
-	lines := syllabusLines(m.syllabusResult, m.width)
+func (m *syllabusScreenModel) moveCursor(delta, width, height int) {
+	lines := syllabusLines(m.syllabusResult, width)
 	if len(lines) == 0 {
 		m.syllabusCursor = 0
 		return
 	}
-	maxCursor := maxInt(0, len(lines)-m.visibleBodyRows(0))
+	maxCursor := maxInt(0, len(lines)-visibleBodyRows(height, 0))
 	m.syllabusCursor += delta
 	if m.syllabusCursor < 0 {
 		m.syllabusCursor = 0
@@ -40,12 +41,12 @@ func (m *model) moveSyllabusCursor(delta int) {
 	}
 }
 
-func (m model) renderSyllabusPanel(width int) string {
+func (m syllabusScreenModel) View(width, height int) string {
 	lines := syllabusLines(m.syllabusResult, width)
 	if len(lines) == 0 {
 		return emptyStyle.Render("강의계획서 정보가 없습니다") + "\n"
 	}
-	return renderWindowedLines(lines, m.syllabusCursor, m.visibleBodyRows(0))
+	return renderWindowedLines(lines, m.syllabusCursor, visibleBodyRows(height, 0))
 }
 
 func syllabusLines(result app.SyllabusResult, width int) []string {
@@ -150,3 +151,42 @@ func formatSyllabusEnrollment(currentNum string) string {
 	}
 	return fmt.Sprintf("수강인원: %d명 (A: %d명, B: %d명)", count, count*40/100, count*80/100)
 }
+
+type syllabusScreenModel struct {
+	syllabusResult      app.SyllabusResult
+	syllabusCourseIndex int
+	syllabusCursor      int
+}
+type syllabusScreenService interface {
+	Syllabus(context.Context, app.SyllabusOptions) (app.SyllabusResult, error)
+}
+
+func (m *syllabusScreenModel) Start(index int) { *m = syllabusScreenModel{syllabusCourseIndex: index} }
+func (m *syllabusScreenModel) Loaded(result app.SyllabusResult) {
+	m.syllabusResult = result
+	m.syllabusCursor = 0
+}
+func (m *syllabusScreenModel) resetCursor() { m.syllabusCursor = 0 }
+func (m *syllabusScreenModel) Update(msg tea.Msg, width, height int, loading bool, ctx context.Context, service syllabusScreenService, termValue string) (childAction, bool) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	if keyMatches(key.String(), "r", "ㄱ") {
+		m.resetCursor()
+		return childAction{setLoading: true, loading: true, setError: true, cmd: m.Load(ctx, service, termValue)}, true
+	}
+	if loading {
+		return childAction{}, false
+	}
+	switch {
+	case key.String() == "up" || keyMatches(key.String(), "k", "ㅏ"):
+		m.moveCursor(-1, width, height)
+	case key.String() == "down" || keyMatches(key.String(), "j", "ㅓ"):
+		m.moveCursor(1, width, height)
+	default:
+		return childAction{}, false
+	}
+	return childAction{}, true
+}
+func (m model) renderSyllabusPanel(width int) string { return m.syllabus.View(width, m.height) }

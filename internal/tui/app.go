@@ -70,9 +70,7 @@ type model struct {
 	academicResult      app.AcademicListResult
 	academicMonth       int
 	academicCursor      int
-	syllabusResult      app.SyllabusResult
-	syllabusCourseIndex int
-	syllabusCursor      int
+	syllabus            syllabusScreenModel
 	detailBack          screen
 	pager               coursePager
 	syncStatus          string
@@ -331,6 +329,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applyChildAction(action)
 			}
 		}
+		if m.active == screenSyllabus {
+			if action, handled := m.syllabus.Update(msg, m.width, m.height, m.loading, m.ctx, m.service, m.dashboard.dashboardResult.Term.Value); handled {
+				return m.applyChildAction(action)
+			}
+		}
 		if m.isCoursePagedScreen() && !m.loading && m.activePager().Update(msg, m.contentGroups(m.width)) {
 			return m, nil
 		}
@@ -348,7 +351,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.active = screenDashboard
 				m.err = nil
 				m.loading = false
-				m.syllabusCursor = 0
+				m.syllabus.resetCursor()
 			} else if m.isDetailScreen() {
 				if m.active == screenAssignmentDetail {
 					m.assignments.resetDetailCursor()
@@ -371,8 +374,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveRoomResultCursor(-1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
-			} else if m.active == screenSyllabus && !m.loading {
-				m.moveSyllabusCursor(-1)
 			} else if m.active == screenDue && !m.loading {
 				m.moveDueCursor(-1)
 			} else if m.active == screenAcademic && !m.loading {
@@ -385,8 +386,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveRoomResultCursor(1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
-			} else if m.active == screenSyllabus && !m.loading {
-				m.moveSyllabusCursor(1)
 			} else if m.active == screenDue && !m.loading {
 				m.moveDueCursor(1)
 			} else if m.active == screenAcademic && !m.loading {
@@ -430,12 +429,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 				m.content = ""
 				return m, m.loadRoomAvailableResults(true)
-			}
-			if m.active == screenSyllabus {
-				m.loading = true
-				m.err = nil
-				m.syllabusCursor = 0
-				return m, m.loadSyllabus(m.syllabusCourseIndex)
 			}
 			if m.active != screenHome {
 				m.loading = true
@@ -580,8 +573,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading = false
 		m.err = msg.err
-		m.syllabusResult = msg.result
-		m.syllabusCursor = 0
+		m.syllabus.Loaded(msg.result)
 		m.loadedAt = time.Now()
 	case downloadRowsMsg:
 		if m.active != screenDownloadSelect {

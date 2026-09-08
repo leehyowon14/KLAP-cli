@@ -2,10 +2,11 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/leehyowon14/KLAP-cli/internal/app"
 )
 
 type childAction struct {
+	setLoading  bool
+	loading     bool
 	courseIndex int
 	setStatus   bool
 	status      string
@@ -17,6 +18,9 @@ type childAction struct {
 }
 
 func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
+	if action.setLoading {
+		m.loading = action.loading
+	}
 	if action.setStatus {
 		m.syncStatus = action.status
 	}
@@ -28,10 +32,8 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 			m.active = screenSyllabus
 			m.loading = true
 			m.err = nil
-			m.syllabusResult = app.SyllabusResult{}
-			m.syllabusCourseIndex = action.courseIndex
-			m.syllabusCursor = 0
-			return m, m.loadSyllabus(action.courseIndex)
+			m.syllabus.Start(action.courseIndex)
+			return m, m.syllabus.Load(m.ctx, m.service, m.dashboard.dashboardResult.Term.Value)
 		}
 		if action.target == screenAssignmentDetail || action.target == screenNoticeDetail {
 			m.detailBack = m.active
