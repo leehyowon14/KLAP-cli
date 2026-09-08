@@ -7,95 +7,60 @@ import (
 )
 
 func defaultReminderBridgePath() string {
-	if override := os.Getenv("KLAP_REMINDER_BRIDGE"); override != "" {
-		return override
-	}
-
-	candidates := []string{
-		filepath.Join("bridges", "macos", "reminder.swift"),
-	}
-	if _, currentFile, _, ok := runtime.Caller(0); ok {
-		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "reminder.swift"))
-	}
-	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(executableDirectory(executable), "bridges", "macos", "reminder.swift"))
-	}
-
-	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return candidates[0]
+	return defaultBridgePath("KLAP_REMINDER_BRIDGE", "ReminderBridge", "reminder.swift")
 }
-
 func defaultCalendarBridgePath() string {
-	if override := os.Getenv("KLAP_CALENDAR_BRIDGE"); override != "" {
-		return override
-	}
-
-	candidates := []string{
-		filepath.Join("bridges", "macos", "calendar.swift"),
-	}
-	if _, currentFile, _, ok := runtime.Caller(0); ok {
-		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "calendar.swift"))
-	}
-	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(executableDirectory(executable), "bridges", "macos", "calendar.swift"))
-	}
-
-	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return candidates[0]
+	return defaultBridgePath("KLAP_CALENDAR_BRIDGE", "CalendarBridge", "calendar.swift")
 }
-
 func defaultCategoryBridgePath() string {
-	if override := os.Getenv("KLAP_CATEGORY_BRIDGE"); override != "" {
-		return override
-	}
-
-	candidates := []string{
-		filepath.Join("bridges", "macos", "categories.swift"),
-	}
-	if _, currentFile, _, ok := runtime.Caller(0); ok {
-		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-		candidates = append(candidates, filepath.Join(repoRoot, "bridges", "macos", "categories.swift"))
-	}
-	if executable, err := os.Executable(); err == nil {
-		candidates = append(candidates, filepath.Join(executableDirectory(executable), "bridges", "macos", "categories.swift"))
-	}
-
-	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return candidates[0]
+	return defaultBridgePath("KLAP_CATEGORY_BRIDGE", "CategoryBridge", "categories.swift")
+}
+func defaultTranscriptBridgePath() string {
+	return defaultBridgePath("KLAP_TRANSCRIPT_BRIDGE", "TranscriptBridge", "transcribe.swift")
 }
 
-func defaultTranscriptBridgePath() string {
-	if override := os.Getenv("KLAP_TRANSCRIPT_BRIDGE"); override != "" {
+func defaultBridgePath(environment, product, legacyScript string) string {
+	if override := os.Getenv(environment); override != "" {
 		return override
 	}
-
-	candidates := transcriptBridgeCandidates(filepath.Join("bridges", "macos"))
+	executable, _ := os.Executable()
+	sourceRoot := ""
 	if _, currentFile, _, ok := runtime.Caller(0); ok {
-		repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-		candidates = append(candidates, transcriptBridgeCandidates(filepath.Join(repoRoot, "bridges", "macos"))...)
+		sourceRoot = filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
 	}
-	if executable, err := os.Executable(); err == nil {
-		executableDir := executableDirectory(executable)
-		candidates = append(candidates, filepath.Join(executableDir, "TranscriptBridge"))
-		candidates = append(candidates, transcriptBridgeCandidates(filepath.Join(executableDir, "bridges", "macos"))...)
-	}
+	return selectBridgePath(bridgeCandidates(product, legacyScript, executable, ".", sourceRoot))
+}
 
+// Installed artifacts take precedence over a potentially unrelated working tree.
+func bridgeCandidates(product, legacyScript, executable, workingRoot, sourceRoot string) []string {
+	var candidates []string
+	if executable != "" {
+		directory := executableDirectory(executable)
+		candidates = append(candidates, filepath.Join(directory, "bridges", "macos", product), filepath.Join(directory, product))
+	}
+	roots := []string{workingRoot}
+	if sourceRoot != "" && sourceRoot != workingRoot {
+		roots = append(roots, sourceRoot)
+	}
+	for _, root := range roots {
+		bridgeRoot := filepath.Join(root, "bridges", "macos")
+		for _, build := range []string{"artifacts", filepath.Join("out", "Products", "Release"), "release", filepath.Join("out", "Products", "Debug"), "debug"} {
+			candidates = append(candidates, filepath.Join(bridgeRoot, ".build", build, product))
+		}
+	}
+	// Preserve source-script distributions until the archive migration is complete.
+	if executable != "" {
+		candidates = append(candidates, filepath.Join(executableDirectory(executable), "bridges", "macos", legacyScript))
+	}
+	for _, root := range roots {
+		candidates = append(candidates, filepath.Join(root, "bridges", "macos", legacyScript))
+	}
+	return candidates
+}
+
+func selectBridgePath(candidates []string) string {
 	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
+		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
 			return candidate
 		}
 	}
@@ -107,12 +72,4 @@ func executableDirectory(executable string) string {
 		executable = resolved
 	}
 	return filepath.Dir(executable)
-}
-
-func transcriptBridgeCandidates(root string) []string {
-	return []string{
-		filepath.Join(root, ".build", "release", "TranscriptBridge"),
-		filepath.Join(root, ".build", "debug", "TranscriptBridge"),
-		filepath.Join(root, "transcribe.swift"),
-	}
 }

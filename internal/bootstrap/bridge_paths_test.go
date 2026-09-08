@@ -6,20 +6,64 @@ import (
 	"testing"
 )
 
-func TestTranscriptBridgeCandidatesPreferBuiltBinary(t *testing.T) {
-	got := transcriptBridgeCandidates("bridges/macos")
-	want := []string{
-		filepath.Join("bridges", "macos", ".build", "release", "TranscriptBridge"),
-		filepath.Join("bridges", "macos", ".build", "debug", "TranscriptBridge"),
-		filepath.Join("bridges", "macos", "transcribe.swift"),
+func TestBridgeDiscovery(t *testing.T) {
+	for _, product := range []string{"ReminderBridge", "CalendarBridge", "CategoryBridge", "TranscriptBridge"} {
+		t.Run(product, func(t *testing.T) {
+			root := t.TempDir()
+			executable := filepath.Join(root, "installed", "klap")
+			candidates := bridgeCandidates(product, "legacy.swift", executable, filepath.Join(root, "work"), filepath.Join(root, "source"))
+			write := func(path string) {
+				t.Helper()
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("fake"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := selectBridgePath(candidates); got != candidates[0] {
+				t.Fatalf("missing fallback = %q", got)
+			}
+			legacy := candidates[len(candidates)-1]
+			write(legacy)
+			if got := selectBridgePath(candidates); got != legacy {
+				t.Fatalf("legacy fallback = %q", got)
+			}
+			dev := candidates[2]
+			write(dev)
+			if got := selectBridgePath(candidates); got != dev {
+				t.Fatalf("development artifact = %q", got)
+			}
+			if err := os.MkdirAll(candidates[0], 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if got := selectBridgePath(candidates); got != dev {
+				t.Fatalf("directory accepted = %q", got)
+			}
+			write(candidates[1])
+			if got := selectBridgePath(candidates); got != candidates[1] {
+				t.Fatalf("installed artifact = %q", got)
+			}
+		})
 	}
-	if len(got) != len(want) {
-		t.Fatalf("transcriptBridgeCandidates() length = %d, want %d: %#v", len(got), len(want), got)
-	}
-	for index := range want {
-		if got[index] != want[index] {
-			t.Fatalf("transcriptBridgeCandidates()[%d] = %q, want %q", index, got[index], want[index])
-		}
+}
+
+func TestBridgeEnvironmentOverrides(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		resolve func() string
+	}{
+		{"KLAP_REMINDER_BRIDGE", defaultReminderBridgePath},
+		{"KLAP_CALENDAR_BRIDGE", defaultCalendarBridgePath},
+		{"KLAP_CATEGORY_BRIDGE", defaultCategoryBridgePath},
+		{"KLAP_TRANSCRIPT_BRIDGE", defaultTranscriptBridgePath},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(test.name, "/explicit/custom.swift")
+			if got := test.resolve(); got != "/explicit/custom.swift" {
+				t.Fatalf("override = %q", got)
+			}
+		})
 	}
 }
 
