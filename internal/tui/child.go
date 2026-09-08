@@ -28,6 +28,17 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 		m.err = action.err
 	}
 	if action.navigate {
+		if action.target == screenDownloadSelect {
+			m.active = screenDownloadSelect
+			m.loading = true
+			m.err = nil
+			m.content = ""
+			return m, m.loadDownloadRows()
+		}
+		if action.target == screenAttendConfirm {
+			return m.startAttendConfirm()
+		}
+
 		if action.target == screenSyllabus {
 			m.active = screenSyllabus
 			m.loading = true

@@ -62,12 +62,11 @@ type model struct {
 	dashboard           dashboardScreenModel
 	assignments         assignmentScreenModel
 	notices             noticeScreenModel
-	lectureRows         []app.LectureRow
+	lectures            lectureScreenModel
 	due                 dueScreenModel
 	academic            academicScreenModel
 	syllabus            syllabusScreenModel
 	detailBack          screen
-	pager               coursePager
 	syncStatus          string
 	width               int
 	height              int
@@ -339,8 +338,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applyChildAction(action)
 			}
 		}
-		if m.isCoursePagedScreen() && !m.loading && m.activePager().Update(msg, m.contentGroups(m.width)) {
-			return m, nil
+		if m.active == screenLectures {
+			if action, handled := m.lectures.Update(msg, m.width, m.loading); handled {
+				return m.applyChildAction(action)
+			}
 		}
 		key := msg.String()
 		switch {
@@ -442,14 +443,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 				return m, cmd
 			}
-		case m.active == screenLectures && keyMatches(key, "d", "ㅇ"):
-			m.active = screenDownloadSelect
-			m.loading = true
-			m.err = nil
-			m.content = ""
-			return m, m.loadDownloadRows()
-		case m.active == screenLectures && !m.loading && keyMatches(key, "a", "ㅁ"):
-			return m.startAttendConfirm()
 		}
 	case loadMsg:
 		m.applyLoadMsg(msg)
@@ -658,7 +651,7 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 	case screenNotices:
 		m.notices.Loaded(msg.notices)
 	case screenLectures:
-		m.lectureRows = msg.lectures
+		m.lectures.Loaded(msg.lectures)
 	case screenAcademic:
 		m.academic.Loaded(msg.academic, msg.screen == m.active, time.Now())
 	case screenConfig:
@@ -1953,7 +1946,7 @@ func (m *model) resetLoadedMainScreens() {
 	m.due.Reset()
 	m.assignments.Reset()
 	m.notices.Reset()
-	m.lectureRows = nil
+	m.lectures.Reset()
 	m.academic.Reset()
 	m.activePager().contentCourse = 0
 	m.activePager().contentCursor = 0
@@ -2774,6 +2767,9 @@ func (m model) loadPrefetch(target screen, refresh bool) tea.Cmd {
 }
 
 func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.Cmd {
+	if target == screenLectures {
+		return loadLectures(m.ctx, m.service, refresh, prefetch)
+	}
 	if target == screenAcademic {
 		return loadAcademic(m.ctx, m.service, refresh, prefetch)
 	}
@@ -2791,9 +2787,6 @@ func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.
 	}
 	return func() tea.Msg {
 		switch target {
-		case screenLectures:
-			rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: refresh})
-			return loadMsg{screen: target, prefetch: prefetch, lectures: rows, err: err}
 		case screenConfig:
 			msg := m.loadConfigMsg()
 			msg.screen = target

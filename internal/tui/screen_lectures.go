@@ -1,16 +1,18 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"strconv"
 	"strings"
 )
 
-func (m model) selectedLectureRow() (app.LectureRow, bool) {
-	group := m.currentContentGroup(m.width)
-	return selectedRowByCourse(m.lectureRows, group.name, m.activePager().contentCursor, func(row app.LectureRow) string {
+func (m lectureScreenModel) selectedRow(width int) (app.LectureRow, bool) {
+	group := m.pager.currentGroup(m.groups(width))
+	return selectedRowByCourse(m.lectureRows, group.name, m.pager.contentCursor, func(row app.LectureRow) string {
 		return row.CourseName
 	})
 }
@@ -88,3 +90,48 @@ func lectureProgress(lecture app.Lecture) string {
 	}
 	return achieved + "/" + required + "분"
 }
+
+type lectureScreenModel struct {
+	lectureRows []app.LectureRow
+	pager       coursePager
+}
+
+func (m *lectureScreenModel) Loaded(rows []app.LectureRow) { m.lectureRows = rows }
+func (m *lectureScreenModel) Reset()                       { *m = lectureScreenModel{} }
+func (m lectureScreenModel) groups(width int) []contentCourseGroup {
+	return lectureContentGroups(m.lectureRows, maxInt(24, minInt(92, width-12)))
+}
+func (m lectureScreenModel) View(width, height int) string {
+	return m.pager.View(m.groups(width), height, screenLectures)
+}
+func (m *lectureScreenModel) Update(msg tea.Msg, width int, loading bool) (childAction, bool) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	if keyMatches(key.String(), "d", "ㅇ") {
+		return childAction{navigate: true, target: screenDownloadSelect}, true
+	}
+	if loading {
+		return childAction{}, false
+	}
+	if m.pager.Update(msg, m.groups(width)) {
+		return childAction{}, true
+	}
+	if keyMatches(key.String(), "a", "ㅁ") {
+		return childAction{navigate: true, target: screenAttendConfirm}, true
+	}
+	return childAction{}, false
+}
+
+type lectureScreenService interface {
+	LectureList(context.Context, app.LectureListOptions) ([]app.LectureRow, error)
+}
+
+func loadLectures(ctx context.Context, service lectureScreenService, refresh, prefetch bool) tea.Cmd {
+	return func() tea.Msg {
+		rows, err := service.LectureList(ctx, app.LectureListOptions{Refresh: refresh})
+		return loadMsg{screen: screenLectures, prefetch: prefetch, lectures: rows, err: err}
+	}
+}
+func (m model) selectedLectureRow() (app.LectureRow, bool) { return m.lectures.selectedRow(m.width) }

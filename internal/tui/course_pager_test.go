@@ -11,12 +11,11 @@ import (
 func TestCoursePagedContentGroupsByCourse(t *testing.T) {
 	m := model{
 		active: screenLectures,
-		width:  96,
-		lectureRows: []app.LectureRow{
+		width:  96, lectures: lectureScreenModel{lectureRows: []app.LectureRow{
 			{CourseName: "컴퓨터그래픽스", Lecture: app.Lecture{Title: "렌더링", ModuleTitle: "1주차", Progress: "20", ContentID: "a"}},
 			{CourseName: "오픈소스소프트웨어실습", Lecture: app.Lecture{Title: "Git", ModuleTitle: "2주차", Progress: "0", ContentID: "b"}},
 			{CourseName: "컴퓨터그래픽스", Lecture: app.Lecture{Title: "셰이딩", ModuleTitle: "3주차", Progress: "30", ContentID: "c"}},
-		},
+		}},
 	}
 
 	groups := m.contentGroups(96)

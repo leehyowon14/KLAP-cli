@@ -34,8 +34,7 @@ func TestViewLinesFitTerminalWidth(t *testing.T) {
 	m := model{
 		active: screenLectures,
 		width:  80,
-		height: 24,
-		lectureRows: []app.LectureRow{{
+		height: 24, lectures: lectureScreenModel{lectureRows: []app.LectureRow{{
 			ID:         "1",
 			CourseName: "진로탐색및설계",
 			Lecture: app.Lecture{
@@ -44,7 +43,7 @@ func TestViewLinesFitTerminalWidth(t *testing.T) {
 				AchievedTime: "10",
 				RequiredTime: "10",
 			},
-		}},
+		}}},
 	}
 	view := m.View()
 	for index, line := range strings.Split(view, "\n") {

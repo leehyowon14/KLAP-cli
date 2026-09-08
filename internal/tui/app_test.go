@@ -70,8 +70,8 @@ func TestInactiveLoadMsgCachesWithoutClobberingOtherScreens(t *testing.T) {
 	if !m.loadedScreens[screenLectures] || m.loading {
 		t.Fatalf("loadedScreens=%+v loading=%t", m.loadedScreens, m.loading)
 	}
-	if len(m.lectureRows) != 1 {
-		t.Fatalf("lectureRows = %+v", m.lectureRows)
+	if len(m.lectures.lectureRows) != 1 {
+		t.Fatalf("lectureRows = %+v", m.lectures.lectureRows)
 	}
 	if len(m.assignments.assignmentRows) != 1 || m.assignments.assignmentRows[0].ID != "1" {
 		t.Fatalf("assignmentRows clobbered: %+v", m.assignments.assignmentRows)
@@ -240,17 +240,6 @@ func testChromeModel(active screen) model {
 		width:  80,
 		height: 24,
 
-		lectureRows: []app.LectureRow{{
-			ID:         "1",
-			CourseName: "강의",
-			Lecture: app.Lecture{
-				Title:        "영상",
-				Progress:     "100",
-				AchievedTime: "10",
-				RequiredTime: "10",
-			},
-		}},
-
 		configSettings: app.ConfigSettings{
 			Reminder: app.ReminderSettings{ListName: "Kwangwoon Univ.", AlarmBeforeMin: 1440},
 			Calendar: app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
@@ -321,7 +310,16 @@ func testChromeModel(active screen) model {
 				Title: "종강",
 			}},
 		},
-			academicMonth: 6},
+			academicMonth: 6}, lectures: lectureScreenModel{lectureRows: []app.LectureRow{{
+			ID:         "1",
+			CourseName: "강의",
+			Lecture: app.Lecture{
+				Title:        "영상",
+				Progress:     "100",
+				AchievedTime: "10",
+				RequiredTime: "10",
+			},
+		}}},
 	}
 	m.configInput.SetValue("입력값")
 	return m
@@ -461,8 +459,7 @@ func TestLectureDownloadProgressCursorWraps(t *testing.T) {
 func TestLectureAttendShortcutOpensConfirmation(t *testing.T) {
 	m := model{
 		active: screenLectures,
-		width:  96,
-		lectureRows: []app.LectureRow{{
+		width:  96, lectures: lectureScreenModel{lectureRows: []app.LectureRow{{
 			ID:         "1:video",
 			CourseName: "운영체제",
 			Lecture: app.Lecture{
@@ -470,7 +467,7 @@ func TestLectureAttendShortcutOpensConfirmation(t *testing.T) {
 				Title:     "프로세스",
 				Progress:  "25",
 			},
-		}},
+		}}},
 	}
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
@@ -488,11 +485,10 @@ func TestLectureAttendShortcutOpensConfirmation(t *testing.T) {
 
 func TestLectureAttendShortcutAcceptsKoreanKeyboardKey(t *testing.T) {
 	m := model{
-		active: screenLectures,
-		lectureRows: []app.LectureRow{{
+		active: screenLectures, lectures: lectureScreenModel{lectureRows: []app.LectureRow{{
 			ID:      "1:video",
 			Lecture: app.Lecture{ContentID: "video", Progress: "25"},
-		}},
+		}}},
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅁ")})
@@ -505,8 +501,7 @@ func TestIntegratedAttendFlowStartsProgress(t *testing.T) {
 	m := model{
 		ctx:     context.Background(),
 		service: newTUITestService(t),
-		active:  screenLectures,
-		lectureRows: []app.LectureRow{{
+		active:  screenLectures, lectures: lectureScreenModel{lectureRows: []app.LectureRow{{
 			ID:         "course/1:lecture/video",
 			CourseName: "운영체제",
 			Lecture: app.Lecture{
@@ -514,7 +509,7 @@ func TestIntegratedAttendFlowStartsProgress(t *testing.T) {
 				Title:     "프로세스",
 				Progress:  "25",
 			},
-		}},
+		}}},
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
