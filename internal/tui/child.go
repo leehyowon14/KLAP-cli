@@ -12,6 +12,8 @@ type childAction struct {
 	status      string
 	setError    bool
 	err         error
+	reload      bool
+	refresh     bool
 	routeOnly   bool
 	navigate    bool
 	target      screen
@@ -29,6 +31,12 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 		m.err = action.err
 	}
 	if action.navigate {
+		if action.reload {
+			m.active = action.target
+			m.loading = true
+			m.markScreenLoading(action.target)
+			return m, m.load(action.target, action.refresh)
+		}
 		if action.routeOnly {
 			m.active = action.target
 			return m, action.cmd
@@ -53,7 +61,7 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = nil
 			m.content = ""
-			return m, m.loadDownloadRows()
+			return m, loadDownloadRows(m.ctx, m.service)
 		}
 		if action.target == screenAttendConfirm {
 			return m.startAttendConfirm()

@@ -93,44 +93,42 @@ func TestLectureDownloadProgressCursorWraps(t *testing.T) {
 }
 
 func TestModelDownloadSelectionIDs(t *testing.T) {
-	m := model{
-		downloadRows: []app.LectureRow{
-			{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
-			{ID: "1:b", CourseName: "B", Lecture: app.Lecture{ContentID: "b"}},
-		},
-		downloadSelected: map[string]bool{"1:b": true},
+	m := model{download: downloadScreenModel{downloadRows: []app.LectureRow{
+		{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
+		{ID: "1:b", CourseName: "B", Lecture: app.Lecture{ContentID: "b"}},
+	},
+		downloadSelected: map[string]bool{"1:b": true}},
 	}
-	ids := m.selectedDownloadIDs()
+	ids := m.download.selectedDownloadIDs()
 	if len(ids) != 1 || ids[0] != "1:b" {
 		t.Fatalf("selectedDownloadIDs() = %v", ids)
 	}
 }
 
 func TestDownloadSelectionGroupsByCourse(t *testing.T) {
-	m := model{
-		downloadRows: []app.LectureRow{
-			{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
-			{ID: "1:b", CourseName: "A", Lecture: app.Lecture{ContentID: "b"}},
-			{ID: "2:c", CourseName: "B", Lecture: app.Lecture{ContentID: "c"}},
-		},
-		downloadSelected: map[string]bool{},
+	m := model{download: downloadScreenModel{downloadRows: []app.LectureRow{
+		{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
+		{ID: "1:b", CourseName: "A", Lecture: app.Lecture{ContentID: "b"}},
+		{ID: "2:c", CourseName: "B", Lecture: app.Lecture{ContentID: "c"}},
+	},
+		downloadSelected: map[string]bool{}},
 	}
-	groups := m.downloadGroups()
+	groups := m.download.downloadGroups()
 	if len(groups) != 2 || groups[0].name != "A" || len(groups[0].rows) != 2 || groups[1].name != "B" {
 		t.Fatalf("downloadGroups() = %+v", groups)
 	}
 
-	m.toggleDownloadCurrent()
-	if !m.downloadSelected["1:a"] || !m.downloadSelected["1:b"] || m.downloadSelected["2:c"] {
-		t.Fatalf("course toggle selected = %+v", m.downloadSelected)
+	m.download.toggleDownloadCurrent()
+	if !m.download.downloadSelected["1:a"] || !m.download.downloadSelected["1:b"] || m.download.downloadSelected["2:c"] {
+		t.Fatalf("course toggle selected = %+v", m.download.downloadSelected)
 	}
-	m.toggleDownloadAll()
-	if !m.downloadSelected["2:c"] {
-		t.Fatalf("global toggle should include every course: %+v", m.downloadSelected)
+	m.download.toggleDownloadAll()
+	if !m.download.downloadSelected["2:c"] {
+		t.Fatalf("global toggle should include every course: %+v", m.download.downloadSelected)
 	}
-	m.toggleDownloadAll()
-	if m.downloadSelected["1:a"] || m.downloadSelected["1:b"] || m.downloadSelected["2:c"] {
-		t.Fatalf("global toggle should clear every course: %+v", m.downloadSelected)
+	m.download.toggleDownloadAll()
+	if m.download.downloadSelected["1:a"] || m.download.downloadSelected["1:b"] || m.download.downloadSelected["2:c"] {
+		t.Fatalf("global toggle should clear every course: %+v", m.download.downloadSelected)
 	}
 }
 
@@ -140,8 +138,8 @@ func TestDownloadRowsStartUnselected(t *testing.T) {
 		{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
 	}})
 	got := updated.(model)
-	if len(got.downloadSelected) != 0 {
-		t.Fatalf("downloadSelected default = %+v, want empty", got.downloadSelected)
+	if len(got.download.downloadSelected) != 0 {
+		t.Fatalf("downloadSelected default = %+v, want empty", got.download.downloadSelected)
 	}
 }
 
@@ -149,13 +147,12 @@ func TestIntegratedDownloadFlowStartsSelectedTranscript(t *testing.T) {
 	m := model{
 		ctx:     context.Background(),
 		service: newTUITestService(t),
-		active:  screenDownloadSelect,
-		downloadRows: []app.LectureRow{{
+		active:  screenDownloadSelect, download: downloadScreenModel{downloadRows: []app.LectureRow{{
 			ID:         "course/1:lecture/video",
 			CourseName: "운영체제",
 			Lecture:    app.Lecture{ContentID: "video", Title: "프로세스"},
 		}},
-		downloadSelected: map[string]bool{},
+			downloadSelected: map[string]bool{}},
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
@@ -168,17 +165,22 @@ func TestIntegratedDownloadFlowStartsSelectedTranscript(t *testing.T) {
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	m = updated.(model)
-	if m.active != screenDownloadLanguage || !m.downloadTranscribe {
-		t.Fatalf("confirm state active=%v transcribe=%t", m.active, m.downloadTranscribe)
+	if m.active != screenDownloadLanguage || !m.download.downloadTranscribe {
+		t.Fatalf("confirm state active=%v transcribe=%t", m.active, m.download.downloadTranscribe)
 	}
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(model)
-	if cmd == nil || m.active != screenDownloadProgress || m.downloadProgress == nil {
-		t.Fatalf("progress state active=%v progress nil=%t cmd nil=%t", m.active, m.downloadProgress == nil, cmd == nil)
+	if cmd == nil || !m.download.preparing {
+		t.Fatal("missing preparation command")
 	}
-	defer m.downloadProgress.cancel()
-	request := m.downloadProgress.request
+	updated, cmd = m.Update(cmd())
+	m = updated.(model)
+	if cmd == nil || m.active != screenDownloadProgress || m.download.downloadProgress == nil {
+		t.Fatalf("progress state active=%v progress nil=%t cmd nil=%t", m.active, m.download.downloadProgress == nil, cmd == nil)
+	}
+	defer m.download.downloadProgress.cancel()
+	request := m.download.downloadProgress.request
 	if !request.Transcribe || request.TranscriptLocale != "ko-KR" || len(request.LectureIDs) != 1 || request.LectureIDs[0] != "course/1:lecture/video" {
 		t.Fatalf("download request = %+v", request)
 	}
@@ -186,18 +188,17 @@ func TestIntegratedDownloadFlowStartsSelectedTranscript(t *testing.T) {
 
 func TestDownloadSelectIgnoresSelectionWhileLoading(t *testing.T) {
 	m := model{
-		active:             screenDownloadSelect,
-		loading:            true,
-		downloadRows:       []app.LectureRow{{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}}},
-		downloadSelected:   map[string]bool{},
-		downloadCourse:     0,
-		downloadCursor:     1,
-		downloadTranscribe: false,
+		active:  screenDownloadSelect,
+		loading: true, download: downloadScreenModel{downloadRows: []app.LectureRow{{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}}},
+			downloadSelected:   map[string]bool{},
+			downloadCourse:     0,
+			downloadCursor:     1,
+			downloadTranscribe: false},
 	}
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	got := updated.(model)
-	if got.downloadSelected["1:a"] {
-		t.Fatalf("loading selection changed: %+v", got.downloadSelected)
+	if got.download.downloadSelected["1:a"] {
+		t.Fatalf("loading selection changed: %+v", got.download.downloadSelected)
 	}
 	if got.active != screenDownloadSelect {
 		t.Fatalf("active = %v, want screenDownloadSelect", got.active)
@@ -206,52 +207,50 @@ func TestDownloadSelectIgnoresSelectionWhileLoading(t *testing.T) {
 
 func TestDownloadSelectionLeftRightChangesCourse(t *testing.T) {
 	m := model{
-		active: screenDownloadSelect,
-		downloadRows: []app.LectureRow{
+		active: screenDownloadSelect, download: downloadScreenModel{downloadRows: []app.LectureRow{
 			{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
 			{ID: "2:b", CourseName: "B", Lecture: app.Lecture{ContentID: "b"}},
 		},
-		downloadSelected: map[string]bool{},
+			downloadSelected: map[string]bool{}},
 	}
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	got := updated.(model)
-	if got.downloadCourse != 1 || got.downloadCursor != 0 {
-		t.Fatalf("right key course=%d cursor=%d", got.downloadCourse, got.downloadCursor)
+	if got.download.downloadCourse != 1 || got.download.downloadCursor != 0 {
+		t.Fatalf("right key course=%d cursor=%d", got.download.downloadCourse, got.download.downloadCursor)
 	}
 	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	got = updated.(model)
-	if got.downloadCourse != 0 || got.downloadCursor != 0 {
-		t.Fatalf("left key course=%d cursor=%d", got.downloadCourse, got.downloadCursor)
+	if got.download.downloadCourse != 0 || got.download.downloadCursor != 0 {
+		t.Fatalf("left key course=%d cursor=%d", got.download.downloadCourse, got.download.downloadCursor)
 	}
 }
 
 func TestDownloadSelectCursorWraps(t *testing.T) {
 	m := model{
-		active: screenDownloadSelect,
-		downloadRows: []app.LectureRow{
+		active: screenDownloadSelect, download: downloadScreenModel{downloadRows: []app.LectureRow{
 			{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
 			{ID: "1:b", CourseName: "A", Lecture: app.Lecture{ContentID: "b"}},
 		},
-		downloadSelected: map[string]bool{},
+			downloadSelected: map[string]bool{}},
 	}
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	got := updated.(model)
-	if got.downloadCursor != 2 {
-		t.Fatalf("up from top downloadCursor = %d, want 2", got.downloadCursor)
+	if got.download.downloadCursor != 2 {
+		t.Fatalf("up from top downloadCursor = %d, want 2", got.download.downloadCursor)
 	}
 	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyDown})
 	got = updated.(model)
-	if got.downloadCursor != 0 {
-		t.Fatalf("down from bottom downloadCursor = %d, want 0", got.downloadCursor)
+	if got.download.downloadCursor != 0 {
+		t.Fatalf("down from bottom downloadCursor = %d, want 0", got.download.downloadCursor)
 	}
 }
 
 func TestTranscriptLanguageDefaultsToKoreanWithoutWarning(t *testing.T) {
-	m := model{downloadLanguage: 0}
-	if got := m.selectedTranscriptLocale(); got != "ko-KR" {
+	m := model{download: downloadScreenModel{downloadLanguage: 0}}
+	if got := m.download.selectedTranscriptLocale(); got != "ko-KR" {
 		t.Fatalf("selectedTranscriptLocale() = %q", got)
 	}
-	view := m.renderDownloadLanguageView(96)
+	view := m.download.renderDownloadLanguageView(96)
 	if !strings.Contains(view, "ko-KR") || !strings.Contains(view, "전사 주 언어를 선택하세요.") || strings.Contains(view, "language switching(code switching)") {
 		t.Fatalf("renderDownloadLanguageView() = %q", view)
 	}

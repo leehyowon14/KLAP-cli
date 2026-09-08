@@ -7,7 +7,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"strings"
-	"time"
 )
 
 type transcriptLanguage struct {
@@ -30,26 +29,31 @@ type downloadRowsMsg struct {
 	err  error
 }
 
-func (m model) loadDownloadRows() tea.Cmd {
+func loadDownloadRows(ctx context.Context, service downloadScreenService) tea.Cmd {
 	return func() tea.Msg {
-		rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: true})
+		rows, err := service.LectureList(ctx, app.LectureListOptions{Refresh: true})
 		return downloadRowsMsg{rows: rows, err: err}
 	}
 }
 
-func (m model) updateDownloadSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *downloadScreenModel) updateDownloadSelect(msg tea.KeyMsg, loading bool, ctx context.Context, service downloadScreenService) childAction {
+	action := childAction{}
 	key := msg.String()
 	switch {
 	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
-		return m, tea.Quit
+		return childAction{cmd: tea.Quit}
 	case key == "esc" || keyMatches(key, "b", "ㅠ"):
-		m.active = screenLectures
-		m.loading = true
-		m.err = nil
-		m.markScreenLoading(screenLectures)
-		return m, m.load(screenLectures, false)
-	case m.loading:
-		return m, nil
+		action.navigate = true
+		action.routeOnly = true
+		action.target = screenLectures
+		action.setLoading = true
+		action.loading = true
+		action.setError = true
+		action.err = nil
+		action.reload = true
+		return action
+	case loading:
+		return action
 	case key == "up" || keyMatches(key, "k", "ㅏ"):
 		maxCursor := len(m.currentDownloadRows())
 		if maxCursor <= 0 {
@@ -82,50 +86,64 @@ func (m model) updateDownloadSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.toggleDownloadAll()
 	case key == "enter":
 		if len(m.selectedDownloadIDs()) == 0 {
-			m.err = errors.New("선택된 강의가 없습니다")
-			return m, nil
+			action.setError = true
+			action.err = errors.New("선택된 강의가 없습니다")
+			return action
 		}
-		m.err = nil
-		m.active = screenDownloadConfirm
+		action.setError = true
+		action.err = nil
+		action.navigate = true
+		action.routeOnly = true
+		action.target = screenDownloadConfirm
 		m.downloadTranscribe = false
 	}
-	return m, nil
+	return action
 }
 
-func (m model) updateDownloadConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *downloadScreenModel) updateDownloadConfirm(msg tea.KeyMsg, loading bool, ctx context.Context, service downloadScreenService) childAction {
+	action := childAction{}
 	key := msg.String()
 	switch {
 	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
-		return m, tea.Quit
+		return childAction{cmd: tea.Quit}
 	case key == "esc" || keyMatches(key, "b", "ㅠ"):
-		m.active = screenDownloadSelect
+		action.navigate = true
+		action.routeOnly = true
+		action.target = screenDownloadSelect
 	case keyMatches(key, "y", "ㅛ"):
 		m.downloadTranscribe = true
-		m.active = screenDownloadLanguage
+		action.navigate = true
+		action.routeOnly = true
+		action.target = screenDownloadLanguage
 		m.downloadLanguage = 0
 	case keyMatches(key, "n", "ㅜ"):
 		m.downloadTranscribe = false
-		return m.startDownloadProgress()
+		return m.prepare(ctx, service)
 	case key == "left" || key == "right" || key == "tab":
 		m.downloadTranscribe = !m.downloadTranscribe
 	case key == "enter":
 		if m.downloadTranscribe {
-			m.active = screenDownloadLanguage
+			action.navigate = true
+			action.routeOnly = true
+			action.target = screenDownloadLanguage
 			m.downloadLanguage = 0
-			return m, nil
+			return action
 		}
-		return m.startDownloadProgress()
+		return m.prepare(ctx, service)
 	}
-	return m, nil
+	return action
 }
 
-func (m model) updateDownloadLanguage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *downloadScreenModel) updateDownloadLanguage(msg tea.KeyMsg, loading bool, ctx context.Context, service downloadScreenService) childAction {
+	action := childAction{}
 	key := msg.String()
 	switch {
 	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
-		return m, tea.Quit
+		return childAction{cmd: tea.Quit}
 	case key == "esc" || keyMatches(key, "b", "ㅠ"):
-		m.active = screenDownloadConfirm
+		action.navigate = true
+		action.routeOnly = true
+		action.target = screenDownloadConfirm
 	case key == "up" || keyMatches(key, "k", "ㅏ"):
 		if len(transcriptLanguages) == 0 {
 			m.downloadLanguage = 0
@@ -141,80 +159,12 @@ func (m model) updateDownloadLanguage(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.downloadLanguage++
 		}
 	case key == "enter":
-		return m.startDownloadProgress()
+		return m.prepare(ctx, service)
 	}
-	return m, nil
+	return action
 }
 
-func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
-	settings, err := m.service.DownloadSettings()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	transcriptSettings, err := m.service.TranscriptSettings()
-	if err != nil {
-		m.err = err
-		return m, nil
-	}
-	selectedRows := m.selectedDownloadRows()
-	runCtx, cancel := context.WithCancel(m.ctx)
-	progress := lectureDownloadModel{
-		ctx:    runCtx,
-		cancel: cancel,
-		request: LectureDownloadRequest{
-			LectureIDs:            m.selectedDownloadIDs(),
-			Concurrency:           settings.Concurrency,
-			Transcribe:            m.downloadTranscribe,
-			TranscriptLocale:      m.selectedTranscriptLocale(),
-			TranscriptConcurrency: transcriptSettings.Concurrency,
-		},
-		updates:   make(chan tea.Msg, 64),
-		items:     initialDownloadStatusLines(selectedRows),
-		startedAt: time.Now(),
-	}
-	progress.pipeline = m.service.NewLectureDownloadRun(runCtx, progress.pipelineOptions())
-	m.active = screenDownloadProgress
-	m.err = nil
-	m.downloadProgress = &progress
-	return m, progress.Init()
-}
-
-func (m model) updateDownloadProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.downloadProgress == nil {
-		m.active = screenLectures
-		return m, nil
-	}
-	if key, ok := msg.(tea.KeyMsg); ok {
-		if m.downloadProgress.canceling {
-			return m, nil
-		}
-		if key.String() == "ctrl+c" || keyMatches(key.String(), "q", "ㅂ") {
-			return m, m.downloadProgress.cancelAndWait(true)
-		}
-		if keyMatches(key.String(), "h", "ㅗ") {
-			return m, m.downloadProgress.cancelAndWait(false)
-		}
-		if m.downloadProgress.done && (key.String() == "esc" || keyMatches(key.String(), "b", "ㅠ")) {
-			m.active = screenLectures
-			m.loading = true
-			m.downloadProgress = nil
-			return m, m.load(screenLectures, true)
-		}
-		if key.String() == "esc" && !m.downloadProgress.done {
-			return m, m.downloadProgress.cancelAndCleanup()
-		}
-	}
-	updated, cmd := m.downloadProgress.Update(msg)
-	progress, ok := updated.(lectureDownloadModel)
-	if !ok {
-		return m, cmd
-	}
-	m.downloadProgress = &progress
-	return m, cmd
-}
-
-func (m *model) toggleDownloadCurrent() {
+func (m *downloadScreenModel) toggleDownloadCurrent() {
 	rows := m.currentDownloadRows()
 	if m.downloadCursor == 0 {
 		m.toggleDownloadCourse()
@@ -231,7 +181,7 @@ func (m *model) toggleDownloadCurrent() {
 	m.downloadSelected[row.ID] = !m.downloadSelected[row.ID]
 }
 
-func (m *model) toggleDownloadCourse() {
+func (m *downloadScreenModel) toggleDownloadCourse() {
 	rows := m.currentDownloadRows()
 	allSelected := true
 	for _, row := range rows {
@@ -247,7 +197,7 @@ func (m *model) toggleDownloadCourse() {
 	}
 }
 
-func (m *model) toggleDownloadAll() {
+func (m *downloadScreenModel) toggleDownloadAll() {
 	allSelected := true
 	hasDownloadable := false
 	for _, row := range m.downloadRows {
@@ -270,7 +220,7 @@ func (m *model) toggleDownloadAll() {
 	}
 }
 
-func (m model) selectedDownloadIDs() []string {
+func (m downloadScreenModel) selectedDownloadIDs() []string {
 	ids := make([]string, 0)
 	for _, row := range m.downloadRows {
 		if m.downloadSelected[row.ID] {
@@ -280,7 +230,7 @@ func (m model) selectedDownloadIDs() []string {
 	return ids
 }
 
-func (m model) selectedDownloadRows() []app.LectureRow {
+func (m downloadScreenModel) selectedDownloadRows() []app.LectureRow {
 	rows := make([]app.LectureRow, 0)
 	for _, row := range m.downloadRows {
 		if m.downloadSelected[row.ID] {
@@ -290,7 +240,7 @@ func (m model) selectedDownloadRows() []app.LectureRow {
 	return rows
 }
 
-func (m model) selectedTranscriptLocale() string {
+func (m downloadScreenModel) selectedTranscriptLocale() string {
 	if m.downloadLanguage < 0 || m.downloadLanguage >= len(transcriptLanguages) {
 		return transcriptLanguages[0].locale
 	}
@@ -302,7 +252,7 @@ type downloadCourseGroup struct {
 	rows []app.LectureRow
 }
 
-func (m model) downloadGroups() []downloadCourseGroup {
+func (m downloadScreenModel) downloadGroups() []downloadCourseGroup {
 	groups := make([]downloadCourseGroup, 0)
 	indexByName := make(map[string]int)
 	for _, row := range m.downloadRows {
@@ -321,7 +271,7 @@ func (m model) downloadGroups() []downloadCourseGroup {
 	return groups
 }
 
-func (m model) currentDownloadGroup() downloadCourseGroup {
+func (m downloadScreenModel) currentDownloadGroup() downloadCourseGroup {
 	groups := m.downloadGroups()
 	if len(groups) == 0 {
 		return downloadCourseGroup{}
@@ -336,11 +286,11 @@ func (m model) currentDownloadGroup() downloadCourseGroup {
 	return groups[index]
 }
 
-func (m model) currentDownloadRows() []app.LectureRow {
+func (m downloadScreenModel) currentDownloadRows() []app.LectureRow {
 	return m.currentDownloadGroup().rows
 }
 
-func (m model) currentDownloadCourseSelected() bool {
+func (m downloadScreenModel) currentDownloadCourseSelected() bool {
 	rows := m.currentDownloadRows()
 	hasDownloadable := false
 	for _, row := range rows {
@@ -355,23 +305,23 @@ func (m model) currentDownloadCourseSelected() bool {
 	return hasDownloadable
 }
 
-func (m model) renderDownloadSelectView(width int) string {
+func (m downloadScreenModel) renderDownloadSelectView(width, height int, loading bool, err error) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, "Download"))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
 	b.WriteString(sectionStyle.Render("Download"))
 	b.WriteString("\n")
-	if m.loading {
+	if loading {
 		b.WriteString(warnBadgeStyle.Render("LOADING"))
 		b.WriteString(" 강의 목록을 불러오는 중입니다\n")
 		return b.String()
 	}
-	if m.err != nil {
+	if err != nil {
 		b.WriteString(errorStyle.Render("ERROR"))
 		b.WriteString(" ")
-		b.WriteString(m.err.Error())
+		b.WriteString(err.Error())
 		b.WriteString("\n\n")
 	}
 	if len(m.downloadRows) == 0 {
@@ -392,8 +342,8 @@ func (m model) renderDownloadSelectView(width int) string {
 	b.WriteString(mutedStyle.Render(fmt.Sprintf("%d/%d  %s", page, len(groups), group.name)))
 	b.WriteString("\n\n")
 
-	visibleRows := maxInt(5, m.height-10)
-	if m.height <= 0 {
+	visibleRows := maxInt(5, height-10)
+	if height <= 0 {
 		visibleRows = 16
 	}
 	totalItems := len(rows) + 1
@@ -452,9 +402,9 @@ func (m model) renderDownloadSelectView(width int) string {
 	return b.String()
 }
 
-func (m model) renderDownloadConfirmView(width int) string {
+func (m downloadScreenModel) renderDownloadConfirmView(width int) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, "Transcript"))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
@@ -476,9 +426,9 @@ func (m model) renderDownloadConfirmView(width int) string {
 	return b.String()
 }
 
-func (m model) renderDownloadLanguageView(width int) string {
+func (m downloadScreenModel) renderDownloadLanguageView(width int) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, "Transcript"))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")

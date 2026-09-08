@@ -43,45 +43,39 @@ const (
 )
 
 type model struct {
-	ctx                context.Context
-	service            *app.Service
-	home               homeModel
-	active             screen
-	loading            bool
-	loadedScreens      map[screen]bool
-	loadingScreens     map[screen]bool
-	screenErrors       map[screen]error
-	prefetchQueue      []screen
-	prefetchCurrent    screen
-	prefetchActive     bool
-	err                error
-	content            string
-	dashboard          dashboardScreenModel
-	assignments        assignmentScreenModel
-	notices            noticeScreenModel
-	lectures           lectureScreenModel
-	due                dueScreenModel
-	academic           academicScreenModel
-	syllabus           syllabusScreenModel
-	detailBack         screen
-	syncStatus         string
-	width              int
-	height             int
-	loadedAt           time.Time
-	lastSyncAt         time.Time
-	config             configScreenModel
-	downloadRows       []app.LectureRow
-	downloadSelected   map[string]bool
-	downloadCourse     int
-	downloadCursor     int
-	downloadTranscribe bool
-	downloadLanguage   int
-	downloadProgress   *lectureDownloadModel
-	attendRow          app.LectureRow
-	attendProgress     *lectureAttendModel
-	room               roomScreenModel
-	sync               syncScreenModel
-	auth               authScreenModel
+	ctx             context.Context
+	service         *app.Service
+	home            homeModel
+	active          screen
+	loading         bool
+	loadedScreens   map[screen]bool
+	loadingScreens  map[screen]bool
+	screenErrors    map[screen]error
+	prefetchQueue   []screen
+	prefetchCurrent screen
+	prefetchActive  bool
+	err             error
+	content         string
+	dashboard       dashboardScreenModel
+	assignments     assignmentScreenModel
+	notices         noticeScreenModel
+	lectures        lectureScreenModel
+	due             dueScreenModel
+	academic        academicScreenModel
+	syllabus        syllabusScreenModel
+	detailBack      screen
+	syncStatus      string
+	width           int
+	height          int
+	loadedAt        time.Time
+	lastSyncAt      time.Time
+	config          configScreenModel
+	download        downloadScreenModel
+	attendRow       app.LectureRow
+	attendProgress  *lectureAttendModel
+	room            roomScreenModel
+	sync            syncScreenModel
+	auth            authScreenModel
 }
 
 type loadMsg struct {
@@ -138,37 +132,12 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if cleaned, ok := msg.(lectureDownloadCleanupMsg); ok {
-		if m.downloadProgress == nil || m.downloadProgress.updates != cleaned.updates {
-			if cleaned.err != nil {
-				m.err = cleaned.err
-			}
-			return m, nil
-		}
-		if cleaned.err != nil {
-			m.downloadProgress.err = cleaned.err
-			m.downloadProgress.done = true
-			m.downloadProgress.canceling = false
-			return m, nil
-		}
-		m.active = screenLectures
-		m.loading = true
-		m.downloadProgress = nil
-		return m, m.load(screenLectures, true)
+	if action, handled := m.download.Lifecycle(msg); handled {
+		return m.applyChildAction(action)
 	}
-	if stopped, ok := msg.(lectureDownloadStoppedMsg); ok {
-		if m.downloadProgress != nil && m.downloadProgress.updates == stopped.updates {
-			m.active = screenHome
-			m.loading = false
-			m.err = nil
-			m.content = ""
-			m.downloadProgress = nil
-		}
-		return m, nil
-	}
-
 	if m.active == screenDownloadProgress {
-		return m.updateDownloadProgress(msg)
+		action, _ := m.download.Update(msg, m.active, m.loading, m.ctx, m.service)
+		return m.applyChildAction(action)
 	}
 	if m.active == screenAttendProgress {
 		return m.updateAttendProgress(msg)
@@ -182,14 +151,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			action, _ := m.auth.Update(msg, m.ctx, m.service)
 			return m.applyChildAction(action)
 		}
-		if m.active == screenDownloadSelect {
-			return m.updateDownloadSelect(msg)
-		}
-		if m.active == screenDownloadConfirm {
-			return m.updateDownloadConfirm(msg)
-		}
-		if m.active == screenDownloadLanguage {
-			return m.updateDownloadLanguage(msg)
+		if m.active == screenDownloadSelect || m.active == screenDownloadConfirm || m.active == screenDownloadLanguage {
+			action, _ := m.download.Update(msg, m.active, m.loading, m.ctx, m.service)
+			return m.applyChildAction(action)
 		}
 		if m.active == screenAttendConfirm {
 			return m.updateAttendConfirm(msg)
@@ -430,10 +394,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading = false
 		m.err = msg.err
-		m.downloadRows = msg.rows
-		m.downloadSelected = make(map[string]bool, len(msg.rows))
-		m.downloadCourse = 0
-		m.downloadCursor = 0
+		m.download.Loaded(msg.rows)
 	case roomAvailableResultsMsg:
 		if m.active != screenRoomResult {
 			return m, nil
@@ -705,16 +666,13 @@ func (m model) View() string {
 	case screenAuth:
 		return appStyle.Render(m.auth.View(contentWidth, m.loading, m.err))
 	case screenDownloadSelect:
-		return appStyle.Render(m.renderDownloadSelectView(contentWidth))
+		return appStyle.Render(m.download.View(contentWidth, m.height, m.active, m.loading, m.err))
 	case screenDownloadConfirm:
-		return appStyle.Render(m.renderDownloadConfirmView(contentWidth))
+		return appStyle.Render(m.download.View(contentWidth, m.height, m.active, m.loading, m.err))
 	case screenDownloadLanguage:
-		return appStyle.Render(m.renderDownloadLanguageView(contentWidth))
+		return appStyle.Render(m.download.View(contentWidth, m.height, m.active, m.loading, m.err))
 	case screenDownloadProgress:
-		if m.downloadProgress == nil {
-			return appStyle.Render(errorStyle.Render("다운로드 상태가 없습니다"))
-		}
-		return m.downloadProgress.View()
+		return m.download.View(contentWidth, m.height, m.active, m.loading, m.err)
 	case screenAttendConfirm:
 		return appStyle.Render(m.renderAttendConfirmView(contentWidth))
 	case screenAttendProgress:

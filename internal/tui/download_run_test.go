@@ -35,15 +35,15 @@ func TestDownloadCleanupRunsInCommandAndReportsErrors(t *testing.T) {
 	if run.cleanupCalls != 1 || !errors.Is(message.err, wantErr) {
 		t.Fatalf("message=%#v calls=%d", message, run.cleanupCalls)
 	}
-	root := model{active: screenDownloadProgress, downloadProgress: &child}
+	root := model{active: screenDownloadProgress, download: downloadScreenModel{downloadProgress: &child}}
 	next, _ := root.Update(message)
 	got := next.(model)
-	if !got.downloadProgress.done || !errors.Is(got.downloadProgress.err, wantErr) {
+	if !got.download.downloadProgress.done || !errors.Is(got.download.downloadProgress.err, wantErr) {
 		t.Fatal("cleanup error hidden")
 	}
 	next, _ = got.Update(lectureDownloadDoneMsg{err: context.Canceled})
 	got = next.(model)
-	if !errors.Is(got.downloadProgress.err, wantErr) || !strings.Contains(got.downloadProgress.View(), wantErr.Error()) {
+	if !errors.Is(got.download.downloadProgress.err, wantErr) || !strings.Contains(got.download.downloadProgress.View(), wantErr.Error()) {
 		t.Fatal("late terminal replaced or hid cleanup failure")
 	}
 }
@@ -66,10 +66,10 @@ func TestDownloadNavigationWaitsForRunCommand(t *testing.T) {
 				t.Fatalf("message=%T", message)
 			}
 		} else {
-			root := model{active: screenDownloadProgress, downloadProgress: &child}
+			root := model{active: screenDownloadProgress, download: downloadScreenModel{downloadProgress: &child}}
 			next, _ := root.Update(message)
 			got := next.(model)
-			if got.active != screenHome || got.downloadProgress != nil {
+			if got.active != screenHome || got.download.downloadProgress != nil {
 				t.Fatal("home transition missing")
 			}
 		}
@@ -79,21 +79,21 @@ func TestDownloadNavigationWaitsForRunCommand(t *testing.T) {
 func TestDownloadCleanupIgnoresStaleNavigation(t *testing.T) {
 	current := make(chan tea.Msg, 1)
 	previous := make(chan tea.Msg, 1)
-	root := model{active: screenDownloadProgress, downloadProgress: &lectureDownloadModel{updates: current}}
+	root := model{active: screenDownloadProgress, download: downloadScreenModel{downloadProgress: &lectureDownloadModel{updates: current}}}
 	next, _ := root.Update(lectureDownloadCleanupMsg{updates: previous})
 	got := next.(model)
-	if got.active != screenDownloadProgress || got.downloadProgress == nil || got.downloadProgress.updates != current {
+	if got.active != screenDownloadProgress || got.download.downloadProgress == nil || got.download.downloadProgress.updates != current {
 		t.Fatal("stale cleanup navigated away")
 	}
 }
 
 func TestDownloadCleanupCannotBeBypassedByNavigation(t *testing.T) {
 	child := lectureDownloadModel{canceling: true, updates: make(chan tea.Msg, 1)}
-	root := model{active: screenDownloadProgress, downloadProgress: &child}
+	root := model{active: screenDownloadProgress, download: downloadScreenModel{downloadProgress: &child}}
 	for _, key := range []tea.KeyMsg{{Type: tea.KeyEsc}, {Type: tea.KeyCtrlC}, {Type: tea.KeyRunes, Runes: []rune("h")}} {
 		next, cmd := root.Update(key)
 		got := next.(model)
-		if cmd != nil || got.active != screenDownloadProgress || got.downloadProgress == nil {
+		if cmd != nil || got.active != screenDownloadProgress || got.download.downloadProgress == nil {
 			t.Fatal("navigation bypassed pending cleanup")
 		}
 	}
