@@ -51,7 +51,7 @@ type DashboardAttendance struct {
 
 type DashboardAttendanceRow struct {
 	Index      int
-	Course     klas.AttendanceCourse
+	Course     AttendanceCourse
 	Completed  int
 	Absent     int
 	Late       int

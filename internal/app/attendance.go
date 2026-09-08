@@ -30,8 +30,8 @@ type AttendanceListResult struct {
 
 type AttendanceRow struct {
 	Index    int
-	Course   klas.AttendanceCourse
-	Sessions []klas.AttendanceSession
+	Course   AttendanceCourse
+	Sessions []AttendanceSession
 	Err      error
 }
 
@@ -41,7 +41,7 @@ type AttendanceDetailResult struct {
 }
 
 type CdpAttendanceResult struct {
-	Report klas.CdpAttendanceReport
+	Report CdpAttendanceReport
 }
 
 func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions) (AttendanceListResult, error) {
@@ -76,8 +76,8 @@ func (s *Service) AttendanceList(ctx context.Context, opts AttendanceListOptions
 		})
 		rows = append(rows, AttendanceRow{
 			Index:    index + 1,
-			Course:   course,
-			Sessions: sessions,
+			Course:   attendanceCourseModel(course),
+			Sessions: attendanceSessionModels(sessions),
 			Err:      detailErr,
 		})
 	}
@@ -129,7 +129,7 @@ func (s *Service) CdpAttendance(ctx context.Context, opts CdpAttendanceOptions) 
 	if err != nil {
 		return CdpAttendanceResult{}, err
 	}
-	return CdpAttendanceResult{Report: report}, nil
+	return CdpAttendanceResult{Report: cdpAttendanceReportModel(report)}, nil
 }
 
 func attendanceCacheable(result AttendanceListResult) bool {

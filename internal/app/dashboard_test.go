@@ -24,7 +24,7 @@ func TestDashboardCoursesBuildsCourseScopedSummary(t *testing.T) {
 		{CourseName: "컴퓨터그래픽스", Notice: Notice{Title: "공지"}},
 	}
 	attendance := DashboardAttendance{Rows: []DashboardAttendanceRow{{
-		Course:    klas.AttendanceCourse{Name: "컴퓨터그래픽스"},
+		Course:    AttendanceCourse{Name: "컴퓨터그래픽스"},
 		Completed: 10,
 	}}}
 
@@ -103,8 +103,8 @@ func TestDashboardAssignmentsKeepsUpcomingUnsubmitted(t *testing.T) {
 func TestDashboardAttendanceCountsMarks(t *testing.T) {
 	got := dashboardAttendance([]AttendanceRow{
 		{
-			Sessions: []klas.AttendanceSession{
-				{Slots: []klas.AttendanceSlot{
+			Sessions: []AttendanceSession{
+				{Slots: []AttendanceSlot{
 					{Mark: "O"},
 					{Mark: "X"},
 					{Mark: "L"},
