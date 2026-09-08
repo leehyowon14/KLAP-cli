@@ -9,10 +9,7 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/ui"
 	"io"
-	"os"
-	"os/exec"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -2747,20 +2744,6 @@ func lectureStatusPercent(lecture klas.Lecture) float64 {
 	return boundedPercent(achieved / required * 100)
 }
 
-func lectureStatusLabel(lecture klas.Lecture, percent float64) string {
-	if percent >= 100 {
-		return "완료"
-	}
-	now := time.Now()
-	if lecture.StartAt != nil && now.Before(*lecture.StartAt) {
-		return "예정"
-	}
-	if lecture.EndAt != nil && now.After(*lecture.EndAt) {
-		return "기간 종료"
-	}
-	return "미완료"
-}
-
 func formatLectureStatusMinutes(lecture klas.Lecture) string {
 	if lecture.ContentID != "" {
 		return emptyFallback(lecture.AchievedTime, "0") + "/" + emptyFallback(lecture.RequiredTime, "?") + "분"
@@ -2865,67 +2848,6 @@ func formatNoticeTime(value *time.Time) string {
 }
 
 var urlPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
-
-func linkifyForTerminal(text string) string {
-	if !terminalHyperlinksEnabled() {
-		return text
-	}
-	return hyperlinkURLs(text)
-}
-
-func openAndPrintURL(url string, err error) error {
-	if err != nil {
-		return err
-	}
-	fmt.Printf("URL: %s\n", linkifyForTerminal(url))
-	return openExternal(url, "URL")
-}
-
-func openExternal(target string, kind string) error {
-	target = strings.TrimSpace(target)
-	if target == "" {
-		return fmt.Errorf("열 %s이 없습니다", kind)
-	}
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		command = exec.Command("open", target)
-	case "windows":
-		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
-	default:
-		command = exec.Command("xdg-open", target)
-	}
-	if err := command.Start(); err != nil {
-		return fmt.Errorf("%s 열기 실패: %w", kind, err)
-	}
-	return nil
-}
-
-func terminalHyperlinksEnabled() bool {
-	if os.Getenv("KLAP_NO_HYPERLINKS") != "" || os.Getenv("TERM") == "dumb" {
-		return false
-	}
-	if os.Getenv("KLAP_FORCE_HYPERLINKS") != "" {
-		return true
-	}
-
-	return stdoutIsTerminal()
-}
-
-func stdoutSupportsInPlaceProgress() bool {
-	if os.Getenv("TERM") == "dumb" {
-		return false
-	}
-	return stdoutIsTerminal()
-}
-
-func stdoutIsTerminal() bool {
-	stdout, err := os.Stdout.Stat()
-	if err != nil {
-		return false
-	}
-	return stdout.Mode()&os.ModeCharDevice != 0
-}
 
 func hyperlinkURLs(text string) string {
 	return urlPattern.ReplaceAllStringFunc(text, func(rawURL string) string {
