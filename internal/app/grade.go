@@ -48,17 +48,9 @@ func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, er
 		}
 	}
 
-	report, err := client.Grades(ctx)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return GradeResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			report, err = client.Grades(ctx)
-		}
-	}
+	report, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.GradeReport, error) {
+		return client.Grades(ctx)
+	})
 	if err != nil {
 		return GradeResult{}, err
 	}
@@ -98,17 +90,9 @@ func (s *Service) Rank(ctx context.Context, opts RankOptions) (RankResult, error
 		}
 	}
 
-	rows, err := client.Ranks(ctx)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return RankResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			rows, err = client.Ranks(ctx)
-		}
-	}
+	rows, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.Rank, error) {
+		return client.Ranks(ctx)
+	})
 	if err != nil {
 		return RankResult{}, err
 	}
