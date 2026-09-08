@@ -64,17 +64,9 @@ func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]Not
 
 	rows := make([]NoticeRow, 0)
 	for _, selectedCourse := range courses {
-		notices, err := client.Notices(ctx, term.Value, selectedCourse.Course)
-		if err != nil {
-			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-			if refreshErr != nil {
-				return nil, refreshErr
-			}
-			if refreshed {
-				client = refreshedClient
-				notices, err = client.Notices(ctx, term.Value, selectedCourse.Course)
-			}
-		}
+		notices, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.Notice, error) {
+			return client.Notices(ctx, term.Value, selectedCourse.Course)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -154,17 +146,9 @@ func (s *Service) NoticeDetail(ctx context.Context, id string, user UserOption) 
 	if err != nil {
 		return NoticeDetailResult{}, err
 	}
-	detail, err := client.NoticeDetail(ctx, term.Value, course, boardNo, masterNo)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return NoticeDetailResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			detail, err = client.NoticeDetail(ctx, term.Value, course, boardNo, masterNo)
-		}
-	}
+	detail, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.NoticeDetail, error) {
+		return client.NoticeDetail(ctx, term.Value, course, boardNo, masterNo)
+	})
 	if err != nil {
 		return NoticeDetailResult{}, err
 	}
