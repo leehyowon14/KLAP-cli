@@ -5,15 +5,20 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/leehyowon14/KLAP-cli/internal/domain"
 )
 
-type Term struct {
-	Label   string   `json:"label"`
-	Value   string   `json:"value"`
-	Courses []Course `json:"subjList"`
+type Term = domain.Term
+type Course = domain.Course
+
+type termResponse struct {
+	Label   string           `json:"label"`
+	Value   string           `json:"value"`
+	Courses []courseResponse `json:"subjList"`
 }
 
-type Course struct {
+type courseResponse struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
@@ -24,9 +29,23 @@ func (c *Client) Courses(ctx context.Context) ([]Term, error) {
 		return nil, err
 	}
 
-	var terms []Term
-	if err := decodeResponseJSON(body, &terms); err != nil {
+	var response []termResponse
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("수업 목록 응답 파싱 실패: %w", err)
+	}
+	var terms []Term
+	if response != nil {
+		terms = make([]Term, len(response))
+	}
+	for index, item := range response {
+		var courses []Course
+		if item.Courses != nil {
+			courses = make([]Course, len(item.Courses))
+		}
+		for courseIndex, course := range item.Courses {
+			courses[courseIndex] = Course{Name: course.Name, Value: course.Value}
+		}
+		terms[index] = Term{Label: item.Label, Value: item.Value, Courses: courses}
 	}
 
 	for termIndex := range terms {
