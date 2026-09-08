@@ -11,7 +11,7 @@ import (
 	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
 	category "github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
-	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
+	"github.com/leehyowon14/KLAP-cli/internal/platform/macos"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	transcript "github.com/leehyowon14/KLAP-cli/internal/transcript"
 )
@@ -32,7 +32,7 @@ func testDependencies(t *testing.T) Dependencies {
 		AssignmentGateway: func(c *klas.Client) AssignmentGateway { return c },
 		Accounts:          store, Sessions: store, Settings: &settings.Store{}, Cache: &cache.Store{},
 		SyncState:     &fakeSyncStateStore{},
-		Reminder:      reminder.NewMacOSBridge("unused"),
+		Reminder:      macos.NewReminderBridge("unused"),
 		Calendar:      klapcalendar.NewMacOSBridge("unused"),
 		Categories:    category.NewMacOSBridge("unused"),
 		Transcriber:   transcript.NewMacOSBridge("unused"),
@@ -86,7 +86,7 @@ func TestDependenciesRejectMissingAndTypedNil(t *testing.T) {
 }
 
 func TestDependenciesRequireReminder(t *testing.T) {
-	for _, value := range []ReminderSyncer{nil, (*reminder.MacOSBridge)(nil)} {
+	for _, value := range []ReminderSyncer{nil, (*macos.ReminderBridge)(nil)} {
 		deps := testDependencies(t)
 		deps.Reminder = value
 		s, err := NewService(deps)

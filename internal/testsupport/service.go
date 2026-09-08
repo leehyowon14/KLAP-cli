@@ -12,7 +12,7 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/download"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/kwcommons"
-	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
+	"github.com/leehyowon14/KLAP-cli/internal/platform/macos"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
 	transcript "github.com/leehyowon14/KLAP-cli/internal/transcript"
@@ -45,7 +45,7 @@ func NewService(t *testing.T) *app.Service {
 		Media:             kwcommons.NewClient(nil),
 		AssignmentGateway: func(c *klas.Client) app.AssignmentGateway { return c },
 		Accounts:          store, Sessions: store, Settings: settingsStore, Cache: cacheStore, SyncState: syncStore,
-		Reminder:      reminder.NewMacOSBridge("unused"),
+		Reminder:      macos.NewReminderBridge("unused"),
 		Calendar:      klapcalendar.NewMacOSBridge("unused"),
 		Categories:    category.NewMacOSBridge("unused"),
 		Transcriber:   transcript.NewMacOSBridge("unused"),

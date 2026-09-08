@@ -112,7 +112,7 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentSy
 		return ReminderSyncResult{Result: reminder.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(assignments)}, nil
 	}
 
-	result, err := s.reminderSyncer.Sync(reminder.SyncRequest{
+	result, err := s.reminderSyncer.Sync(ctx, reminder.SyncRequest{
 		ListName:        currentSettings.Reminder.ListName,
 		UseExistingList: currentSettings.Reminder.UseExistingList,
 		AlarmBeforeMin:  currentSettings.Reminder.AlarmBeforeMin,
@@ -183,7 +183,7 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureSyncOpti
 		return ReminderSyncResult{Result: reminder.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(assignments)}, nil
 	}
 
-	result, err := s.reminderSyncer.Sync(reminder.SyncRequest{
+	result, err := s.reminderSyncer.Sync(ctx, reminder.SyncRequest{
 		ListName:        currentSettings.Reminder.ListName,
 		UseExistingList: currentSettings.Reminder.UseExistingList,
 		AlarmBeforeMin:  currentSettings.Reminder.AlarmBeforeMin,
@@ -853,7 +853,7 @@ func lectureReminderID(rowID string) string {
 }
 
 type ReminderSyncer interface {
-	Sync(reminder.SyncRequest) (reminder.SyncResult, error)
+	Sync(context.Context, reminder.SyncRequest) (reminder.SyncResult, error)
 }
 
 type CalendarSyncer interface {
