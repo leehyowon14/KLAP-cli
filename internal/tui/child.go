@@ -3,18 +3,31 @@ package tui
 import tea "github.com/charmbracelet/bubbletea"
 
 type childAction struct {
-	setError bool
-	err      error
-	navigate bool
-	target   screen
-	cmd      tea.Cmd
+	setStatus bool
+	status    string
+	setError  bool
+	err       error
+	navigate  bool
+	target    screen
+	cmd       tea.Cmd
 }
 
 func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
+	if action.setStatus {
+		m.syncStatus = action.status
+	}
 	if action.setError {
 		m.err = action.err
 	}
 	if action.navigate {
+		if action.target == screenAssignmentDetail || action.target == screenNoticeDetail {
+			m.detailBack = m.active
+			m.active = action.target
+			m.loading = true
+			m.err = nil
+			m.syncStatus = ""
+			return m, action.cmd
+		}
 		if action.target == screenRoomDay {
 			return m.startRoomFlow()
 		}

@@ -46,7 +46,7 @@ func (m model) contentGroups(width int) []contentCourseGroup {
 	lineWidth := maxInt(24, minInt(92, width-12))
 	switch m.active {
 	case screenAssignments:
-		return assignmentContentGroups(m.assignmentRows, lineWidth)
+		return assignmentContentGroups(m.assignments.assignmentRows, lineWidth)
 	case screenNotices:
 		return noticeContentGroups(m.noticeRows, lineWidth)
 	case screenLectures:
@@ -57,7 +57,7 @@ func (m model) contentGroups(width int) []contentCourseGroup {
 }
 
 func (m model) currentContentGroup(width int) contentCourseGroup {
-	return m.pager.currentGroup(m.contentGroups(width))
+	return m.activePager().currentGroup(m.contentGroups(width))
 }
 
 func (m coursePager) currentGroup(groups []contentCourseGroup) contentCourseGroup {
@@ -74,7 +74,9 @@ func (m coursePager) currentGroup(groups []contentCourseGroup) contentCourseGrou
 	return groups[index]
 }
 
-func (m *model) moveContentCourse(delta int) { m.pager.moveCourse(m.contentGroups(m.width), delta) }
+func (m *model) moveContentCourse(delta int) {
+	m.activePager().moveCourse(m.contentGroups(m.width), delta)
+}
 
 func (m *coursePager) moveCourse(groups []contentCourseGroup, delta int) {
 	if len(groups) == 0 {
@@ -92,7 +94,9 @@ func (m *coursePager) moveCourse(groups []contentCourseGroup, delta int) {
 	m.contentCursor = 0
 }
 
-func (m *model) moveContentCursor(delta int) { m.pager.moveCursor(m.contentGroups(m.width), delta) }
+func (m *model) moveContentCursor(delta int) {
+	m.activePager().moveCursor(m.contentGroups(m.width), delta)
+}
 
 func (m *coursePager) moveCursor(groups []contentCourseGroup, delta int) {
 	group := m.currentGroup(groups)
@@ -124,7 +128,10 @@ func contentGroupIndex(groups *[]contentCourseGroup, indexByName map[string]int,
 }
 
 func (m model) renderCoursePagedPanel(width int) string {
-	return m.pager.View(m.contentGroups(width), m.height, m.active)
+	if m.active == screenAssignments {
+		return m.assignments.View(width, m.height, false, "")
+	}
+	return m.activePager().View(m.contentGroups(width), m.height, m.active)
 }
 
 func (m coursePager) View(groups []contentCourseGroup, height int, active screen) string {
@@ -221,4 +228,11 @@ func (m *coursePager) Update(msg tea.Msg, groups []contentCourseGroup) bool {
 		return false
 	}
 	return true
+}
+
+func (m *model) activePager() *coursePager {
+	if m.active == screenAssignments || m.active == screenAssignmentDetail {
+		return &m.assignments.pager
+	}
+	return &m.pager
 }

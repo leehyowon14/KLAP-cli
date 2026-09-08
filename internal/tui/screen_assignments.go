@@ -1,38 +1,96 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"strings"
 )
 
-func (m model) openAssignmentDetail() (tea.Model, tea.Cmd) {
-	row, ok := m.selectedAssignmentRow()
-	if !ok {
-		m.syncStatus = "선택된 과제가 없습니다"
-		return m, nil
-	}
-	m.active = screenAssignmentDetail
-	m.detailBack = screenAssignments
-	m.loading = true
-	m.err = nil
-	m.syncStatus = ""
-	return m, m.loadAssignmentDetail(row.ID)
+type assignmentScreenModel struct {
+	assignmentRows   []app.AssignmentRow
+	assignmentDetail app.AssignmentDetailResult
+	pager            coursePager
+	detailCursor     int
 }
 
-func (m model) loadAssignmentDetail(id string) tea.Cmd {
+type assignmentScreenService interface {
+	AssignmentList(context.Context, app.AssignmentListOptions) ([]app.AssignmentRow, error)
+	AssignmentDetail(context.Context, string, app.UserOption) (app.AssignmentDetailResult, error)
+}
+
+func (m *assignmentScreenModel) Loaded(rows []app.AssignmentRow) { m.assignmentRows = rows }
+func (m *assignmentScreenModel) DetailLoaded(result app.AssignmentDetailResult) {
+	m.assignmentDetail = result
+	m.detailCursor = 0
+}
+func (m *assignmentScreenModel) resetDetailCursor() { m.detailCursor = 0 }
+
+func (m assignmentScreenModel) groups(width int) []contentCourseGroup {
+	return assignmentContentGroups(m.assignmentRows, maxInt(24, minInt(92, width-12)))
+}
+func (m assignmentScreenModel) selectedRow(width int) (app.AssignmentRow, bool) {
+	group := m.pager.currentGroup(m.groups(width))
+	return selectedRowByCourse(m.assignmentRows, group.name, m.pager.contentCursor, func(row app.AssignmentRow) string { return row.CourseName })
+}
+func (m model) selectedAssignmentRow() (app.AssignmentRow, bool) {
+	return m.assignments.selectedRow(m.width)
+}
+
+func (m *assignmentScreenModel) Update(msg tea.Msg, width, height int, detail bool, ctx context.Context, service assignmentScreenService) (childAction, bool) {
+	if !detail && m.pager.Update(msg, m.groups(width)) {
+		return childAction{}, true
+	}
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	if detail {
+		switch {
+		case key.String() == "up":
+			m.moveDetailCursor(-1, width, height)
+		case key.String() == "down" || keyMatches(key.String(), "j", "ㅓ"):
+			m.moveDetailCursor(1, width, height)
+		default:
+			return childAction{}, false
+		}
+		return childAction{}, true
+	}
+	if key.String() != "enter" {
+		return childAction{}, false
+	}
+	row, ok := m.selectedRow(width)
+	if !ok {
+		return childAction{setStatus: true, status: "선택된 과제가 없습니다"}, true
+	}
+	return childAction{navigate: true, target: screenAssignmentDetail, cmd: loadAssignmentDetail(ctx, service, row.ID)}, true
+}
+
+func loadAssignmentDetail(ctx context.Context, service assignmentScreenService, id string) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.AssignmentDetail(m.ctx, id, app.UserOption{})
+		result, err := service.AssignmentDetail(ctx, id, app.UserOption{})
 		return detailMsg{screen: screenAssignmentDetail, assignment: result, err: err}
 	}
 }
-
-func (m model) selectedAssignmentRow() (app.AssignmentRow, bool) {
-	group := m.currentContentGroup(m.width)
-	return selectedRowByCourse(m.assignmentRows, group.name, m.pager.contentCursor, func(row app.AssignmentRow) string {
-		return row.CourseName
-	})
+func (m *assignmentScreenModel) moveDetailCursor(delta, width, height int) {
+	lines := assignmentDetailLines(m.assignmentDetail, width)
+	maxCursor := maxInt(0, len(lines)-visibleBodyRows(height, 0))
+	m.detailCursor = clampInt(m.detailCursor+delta, 0, maxCursor)
+}
+func (m assignmentScreenModel) View(width, height int, detail bool, status string) string {
+	if !detail {
+		return m.pager.View(m.groups(width), height, screenAssignments)
+	}
+	lines := assignmentDetailLines(m.assignmentDetail, width)
+	if len(lines) == 0 {
+		return emptyStyle.Render("상세 정보가 없습니다") + "\n"
+	}
+	rendered := renderWindowedLines(lines, m.detailCursor, visibleBodyRows(height, 0))
+	if status != "" {
+		rendered += "\n" + footerStyle.Render(status) + "\n"
+	}
+	return rendered
 }
 
 func assignmentContentGroups(rows []app.AssignmentRow, width int) []contentCourseGroup {
@@ -119,4 +177,13 @@ func formatAssignments(rows []app.AssignmentRow) string {
 		))
 	}
 	return b.String()
+}
+
+func (m *assignmentScreenModel) Reset() { *m = assignmentScreenModel{} }
+
+func loadAssignments(ctx context.Context, service assignmentScreenService, refresh, prefetch bool) tea.Cmd {
+	return func() tea.Msg {
+		rows, err := service.AssignmentList(ctx, app.AssignmentListOptions{Refresh: refresh})
+		return loadMsg{screen: screenAssignments, prefetch: prefetch, assignments: rows, err: err}
+	}
 }

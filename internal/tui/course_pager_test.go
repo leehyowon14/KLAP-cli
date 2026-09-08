@@ -36,28 +36,28 @@ func TestCoursePagedCursorAndCourseWrap(t *testing.T) {
 	m := model{
 		active: screenAssignments,
 		width:  96,
-		assignmentRows: []app.AssignmentRow{
+		assignments: assignmentScreenModel{assignmentRows: []app.AssignmentRow{
 			{CourseName: "컴퓨터그래픽스", Assignment: app.Assignment{Title: "과제1", DueAt: &due}},
 			{CourseName: "컴퓨터그래픽스", Assignment: app.Assignment{Title: "과제2", DueAt: &due}},
 			{CourseName: "오픈소스소프트웨어실습", Assignment: app.Assignment{Title: "기말", DueAt: &due}},
-		},
+		}},
 	}
 
 	m.moveContentCursor(-1)
-	if m.pager.contentCursor != 1 {
-		t.Fatalf("cursor after wrapping up = %d, want 1", m.pager.contentCursor)
+	if m.activePager().contentCursor != 1 {
+		t.Fatalf("cursor after wrapping up = %d, want 1", m.activePager().contentCursor)
 	}
 	m.moveContentCursor(1)
-	if m.pager.contentCursor != 0 {
-		t.Fatalf("cursor after wrapping down = %d, want 0", m.pager.contentCursor)
+	if m.activePager().contentCursor != 0 {
+		t.Fatalf("cursor after wrapping down = %d, want 0", m.activePager().contentCursor)
 	}
 	m.moveContentCourse(-1)
-	if m.pager.contentCourse != 1 || m.pager.contentCursor != 0 {
-		t.Fatalf("course/cursor after wrapping left = %d/%d, want 1/0", m.pager.contentCourse, m.pager.contentCursor)
+	if m.activePager().contentCourse != 1 || m.activePager().contentCursor != 0 {
+		t.Fatalf("course/cursor after wrapping left = %d/%d, want 1/0", m.activePager().contentCourse, m.activePager().contentCursor)
 	}
 	m.moveContentCourse(1)
-	if m.pager.contentCourse != 0 || m.pager.contentCursor != 0 {
-		t.Fatalf("course/cursor after wrapping right = %d/%d, want 0/0", m.pager.contentCourse, m.pager.contentCursor)
+	if m.activePager().contentCourse != 0 || m.activePager().contentCursor != 0 {
+		t.Fatalf("course/cursor after wrapping right = %d/%d, want 0/0", m.activePager().contentCourse, m.activePager().contentCursor)
 	}
 }
 
@@ -67,12 +67,11 @@ func TestCoursePagedRenderShowsCurrentCourseOnly(t *testing.T) {
 		active: screenAssignments,
 		width:  96,
 		height: 24,
-
-		assignmentRows: []app.AssignmentRow{
+		assignments: assignmentScreenModel{assignmentRows: []app.AssignmentRow{
 			{CourseName: "컴퓨터그래픽스", Assignment: app.Assignment{Title: "과제1", DueAt: &due}},
 			{CourseName: "오픈소스소프트웨어실습", Assignment: app.Assignment{Title: "기말고사 대체 과제", DueAt: &due}},
 		},
-		pager: coursePager{contentCourse: 1},
+			pager: coursePager{contentCourse: 1}},
 	}
 
 	view := m.renderCoursePagedPanel(96)
@@ -89,14 +88,13 @@ func TestCoursePagedSelectionUsesCurrentCourseAndCursor(t *testing.T) {
 	m := model{
 		active: screenAssignments,
 		width:  96,
-
-		assignmentRows: []app.AssignmentRow{
+		assignments: assignmentScreenModel{assignmentRows: []app.AssignmentRow{
 			{ID: "1:1", CourseName: "컴퓨터그래픽스", Assignment: app.Assignment{Title: "과제1", DueAt: &due}},
 			{ID: "2:1", CourseName: "오픈소스소프트웨어실습", Assignment: app.Assignment{Title: "과제A", DueAt: &due}},
 			{ID: "2:2", CourseName: "오픈소스소프트웨어실습", Assignment: app.Assignment{Title: "과제B", DueAt: &due}},
 		},
-		pager: coursePager{contentCourse: 1,
-			contentCursor: 1},
+			pager: coursePager{contentCourse: 1,
+				contentCursor: 1}},
 	}
 
 	row, ok := m.selectedAssignmentRow()
@@ -110,18 +108,17 @@ func TestKlasShortcutDoesNotMoveListCursor(t *testing.T) {
 	m := model{
 		active: screenAssignments,
 		width:  96,
-
-		assignmentRows: []app.AssignmentRow{
+		assignments: assignmentScreenModel{assignmentRows: []app.AssignmentRow{
 			{ID: "1:1", CourseName: "컴퓨터그래픽스", DetailURL: "https://klas.example/1", Assignment: app.Assignment{Title: "과제1", DueAt: &due}},
 			{ID: "1:2", CourseName: "컴퓨터그래픽스", DetailURL: "https://klas.example/2", Assignment: app.Assignment{Title: "과제2", DueAt: &due}},
 		},
-		pager: coursePager{contentCursor: 1},
+			pager: coursePager{contentCursor: 1}},
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
 	got := updated.(model)
-	if got.pager.contentCursor != 1 {
-		t.Fatalf("contentCursor after k = %d, want 1", got.pager.contentCursor)
+	if got.activePager().contentCursor != 1 {
+		t.Fatalf("contentCursor after k = %d, want 1", got.activePager().contentCursor)
 	}
 }
 

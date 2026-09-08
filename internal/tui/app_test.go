@@ -23,9 +23,9 @@ func newTUITestService(t *testing.T) *app.Service {
 func TestEnterScreenUsesPrefetchedData(t *testing.T) {
 	m := model{
 		loadedScreens: map[screen]bool{screenAssignments: true},
-		assignmentRows: []app.AssignmentRow{
+		assignments: assignmentScreenModel{assignmentRows: []app.AssignmentRow{
 			{ID: "1", CourseName: "오픈소스소프트웨어실습"},
-		},
+		}},
 	}
 	updated, cmd := m.enterScreen(screenAssignments)
 	got := updated.(model)
@@ -35,8 +35,8 @@ func TestEnterScreenUsesPrefetchedData(t *testing.T) {
 	if got.active != screenAssignments || got.loading {
 		t.Fatalf("active=%v loading=%t", got.active, got.loading)
 	}
-	if len(got.assignmentRows) != 1 {
-		t.Fatalf("assignmentRows = %+v", got.assignmentRows)
+	if len(got.assignments.assignmentRows) != 1 {
+		t.Fatalf("assignmentRows = %+v", got.assignments.assignmentRows)
 	}
 }
 
@@ -57,9 +57,9 @@ func TestEnterScreenShowsLoadingForPendingPrefetch(t *testing.T) {
 func TestInactiveLoadMsgCachesWithoutClobberingOtherScreens(t *testing.T) {
 	m := model{
 		active: screenHome,
-		assignmentRows: []app.AssignmentRow{
+		assignments: assignmentScreenModel{assignmentRows: []app.AssignmentRow{
 			{ID: "1", CourseName: "컴퓨터그래픽스"},
-		},
+		}},
 	}
 	m.applyLoadMsg(loadMsg{
 		screen: screenLectures,
@@ -73,8 +73,8 @@ func TestInactiveLoadMsgCachesWithoutClobberingOtherScreens(t *testing.T) {
 	if len(m.lectureRows) != 1 {
 		t.Fatalf("lectureRows = %+v", m.lectureRows)
 	}
-	if len(m.assignmentRows) != 1 || m.assignmentRows[0].ID != "1" {
-		t.Fatalf("assignmentRows clobbered: %+v", m.assignmentRows)
+	if len(m.assignments.assignmentRows) != 1 || m.assignments.assignmentRows[0].ID != "1" {
+		t.Fatalf("assignmentRows clobbered: %+v", m.assignments.assignmentRows)
 	}
 }
 
@@ -101,7 +101,8 @@ func TestPrefetchLoadMsgStartsNextQueuedScreen(t *testing.T) {
 		prefetchCurrent: screenAssignments,
 		prefetchQueue:   []screen{screenLectures},
 	}
-	updated, cmd := m.Update(loadMsg{screen: screenAssignments, prefetch: true, assignments: []app.AssignmentRow{{ID: "1"}}})
+	updated, cmd := m.Update(loadMsg{screen: screenAssignments, prefetch: true,
+		assignments: []app.AssignmentRow{{ID: "1"}}})
 	got := updated.(model)
 	if cmd == nil {
 		t.Fatal("next prefetch command is nil")
@@ -385,14 +386,7 @@ func testChromeModel(active screen) model {
 			From:  time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local),
 			Until: time.Date(2026, 6, 24, 0, 0, 0, 0, time.Local),
 		},
-		assignmentRows: []app.AssignmentRow{{
-			ID:         "1",
-			CourseName: "강의",
-			Assignment: app.Assignment{
-				Title: "과제",
-				DueAt: &dueAt,
-			},
-		}},
+
 		noticeRows: []app.NoticeRow{{
 			ID:         "1",
 			CourseName: "강의",
@@ -421,12 +415,7 @@ func testChromeModel(active screen) model {
 			}},
 		},
 		academicMonth: 6,
-		assignmentDetail: app.AssignmentDetailResult{
-			ID:         "1",
-			CourseName: "강의",
-			DetailURL:  "https://klas.kw.ac.kr",
-			Detail:     app.AssignmentDetail{Title: "과제", DueAt: &dueAt, ContentText: "본문"},
-		},
+
 		noticeDetail: app.NoticeDetailResult{
 			ID:         "1",
 			CourseName: "강의",
@@ -455,6 +444,21 @@ func testChromeModel(active screen) model {
 			Summary: "기말 과제 · 2026-06-17 23:59",
 		}},
 		syncConflictActions: map[string]app.SyncDecision{"assignment:1": app.SyncDecisionKeep},
+		assignments: assignmentScreenModel{assignmentRows: []app.AssignmentRow{{
+			ID:         "1",
+			CourseName: "강의",
+			Assignment: app.Assignment{
+				Title: "과제",
+				DueAt: &dueAt,
+			},
+		}},
+
+			assignmentDetail: app.AssignmentDetailResult{
+				ID:         "1",
+				CourseName: "강의",
+				DetailURL:  "https://klas.kw.ac.kr",
+				Detail:     app.AssignmentDetail{Title: "과제", DueAt: &dueAt, ContentText: "본문"},
+			}},
 	}
 	m.configInput.SetValue("입력값")
 	return m
