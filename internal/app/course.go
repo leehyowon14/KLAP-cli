@@ -143,17 +143,9 @@ func (s *Service) CourseList(ctx context.Context, opts CourseListOptions) ([]kla
 }
 
 func (s *Service) courses(ctx context.Context, studentID string, client *klas.Client) ([]klas.Term, *klas.Client, error) {
-	terms, err := client.Courses(ctx)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return nil, client, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			terms, err = client.Courses(ctx)
-		}
-	}
+	terms, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.Term, error) {
+		return client.Courses(ctx)
+	})
 	if err != nil {
 		return nil, client, err
 	}
