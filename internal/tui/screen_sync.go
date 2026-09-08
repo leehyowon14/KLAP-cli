@@ -261,6 +261,7 @@ type syncScreenModel struct {
 	syncConflictActions map[string]app.SyncDecision
 	syncPhase           string
 }
+
 type syncScreenService interface {
 	SyncDashboard(context.Context, app.DashboardSyncOptions) app.DashboardSyncResult
 	SyncAssignmentReminders(context.Context, app.AssignmentSyncOptions) (app.ReminderSyncResult, error)
@@ -273,7 +274,9 @@ func (m *syncScreenModel) Start(source screen) {
 	m.syncConflictActions = map[string]app.SyncDecision{}
 	m.syncPhase = "syncing"
 }
+
 func (m *syncScreenModel) ClearPhase() { m.syncPhase = "" }
+
 func (m *syncScreenModel) Loaded(msg syncMsg) {
 	if len(msg.conflicts) > 0 {
 		m.syncPhase = ""
@@ -294,6 +297,7 @@ func (m *syncScreenModel) Loaded(msg syncMsg) {
 		m.syncPhase = "error"
 	}
 }
+
 func (m *syncScreenModel) Update(msg tea.Msg, ctx context.Context, service syncScreenService, allowDue bool) (childAction, bool) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -344,4 +348,19 @@ func (m *syncScreenModel) Update(msg tea.Msg, ctx context.Context, service syncS
 		return childAction{navigate: true, routeOnly: true, target: source, setStatus: true, setError: true, cmd: syncForScreen(ctx, service, source, allowDue, decisions)}, true
 	}
 	return childAction{}, true
+}
+
+func conflictLabel(conflict app.SyncConflict) string {
+	switch conflict.Scope {
+	case "assignment":
+		return "과제 미리알림"
+	case "lecture":
+		return "강의 미리알림"
+	case "academic":
+		return "학사일정 캘린더"
+	case "timetable":
+		return "시간표 캘린더"
+	default:
+		return conflict.Scope
+	}
 }
