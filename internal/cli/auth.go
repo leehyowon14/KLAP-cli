@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
-	"github.com/leehyowon14/KLAP-cli/internal/ui"
 )
 
 func (r Runner) runAuth(ctx context.Context, service *app.Service) error {
-	credentials, err := ui.RunAuthForm()
+	credentials, err := RunAuthForm()
 	if err != nil {
 		return err
 	}
