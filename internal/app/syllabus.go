@@ -81,17 +81,9 @@ func (s *Service) Syllabus(ctx context.Context, opts SyllabusOptions) (SyllabusR
 		subjectID = course.Value
 	}
 
-	syllabus, err := client.SyllabusBySubjectID(ctx, subjectID)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return SyllabusResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			syllabus, err = client.SyllabusBySubjectID(ctx, subjectID)
-		}
-	}
+	syllabus, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.Syllabus, error) {
+		return client.SyllabusBySubjectID(ctx, subjectID)
+	})
 	if err != nil {
 		return SyllabusResult{}, err
 	}
@@ -130,17 +122,9 @@ func (s *Service) SubjectSearch(ctx context.Context, opts SubjectSearchOptions) 
 		return SubjectSearchResult{}, err
 	}
 
-	items, err := client.SyllabusList(ctx, term.Value, name, professor)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return SubjectSearchResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			items, err = client.SyllabusList(ctx, term.Value, name, professor)
-		}
-	}
+	items, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.SyllabusListItem, error) {
+		return client.SyllabusList(ctx, term.Value, name, professor)
+	})
 	if err != nil {
 		return SubjectSearchResult{}, err
 	}
@@ -156,19 +140,10 @@ func (s *Service) SubjectSearch(ctx context.Context, opts SubjectSearchOptions) 
 			Err:        idErr,
 		}
 		if idErr == nil {
-			syllabus, detailErr := client.SyllabusBySubjectID(ctx, subjectID)
-			if detailErr != nil {
-				refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, detailErr)
-				if refreshErr != nil {
-					row.Err = refreshErr
-				} else if refreshed {
-					client = refreshedClient
-					syllabus, detailErr = client.SyllabusBySubjectID(ctx, subjectID)
-					row.Err = detailErr
-				} else {
-					row.Err = detailErr
-				}
-			}
+			syllabus, detailErr := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.Syllabus, error) {
+				return client.SyllabusBySubjectID(ctx, subjectID)
+			})
+			row.Err = detailErr
 			if row.Err == nil {
 				row.Times = syllabus.Times
 				if strings.TrimSpace(row.Name) == "" {
