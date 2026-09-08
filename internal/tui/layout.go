@@ -172,3 +172,12 @@ func clampInt(value int, minValue int, maxValue int) int {
 	}
 	return value
 }
+
+func (m model) visibleBodyRows(reserved int) int { return visibleBodyRows(m.height, reserved) }
+
+func visibleBodyRows(height, reserved int) int {
+	if height <= 0 {
+		return 16
+	}
+	return maxInt(4, height-11-reserved)
+}
