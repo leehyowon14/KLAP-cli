@@ -209,7 +209,7 @@ func selectEvaluationRows(rows []EvaluationRow, selector string) ([]EvaluationRo
 		return matches, nil
 	}
 	if len(matches) > 1 {
-		return nil, fmt.Errorf("수업평가 과목이 여러 개와 일치합니다. evaluation list 번호를 사용하세요: %s", selector)
+		return nil, fmt.Errorf("수업평가 과목이 여러 개와 일치합니다. 수업평가 목록 번호를 사용하세요: %s", selector)
 	}
 	return nil, fmt.Errorf("수업평가 과목을 찾을 수 없습니다: %s", selector)
 }
