@@ -7,6 +7,7 @@ import (
 )
 
 type Service struct {
+	requestSession    *requestSession
 	assignmentGateway func(*klas.Client) AssignmentGateway
 	store             AccountStore
 	sessions          sessionStore

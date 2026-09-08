@@ -25,10 +25,31 @@ func executeSessionRequest[T any](ctx context.Context, s *Service, studentID str
 		return result, refreshErr
 	}
 	*client = refreshed
+	if s.requestSession != nil {
+		s.requestSession.mu.Lock()
+		s.requestSession.clients[studentID] = refreshed
+		s.requestSession.mu.Unlock()
+	}
 	return request(refreshed)
 }
 
 func (s *Service) authenticatedClient(ctx context.Context, studentID string) (*klas.Client, error) {
+	if scope := s.requestSession; scope != nil {
+		scope.mu.Lock()
+		defer scope.mu.Unlock()
+		if client := scope.clients[studentID]; client != nil {
+			return client, nil
+		}
+		client, err := s.newAuthenticatedClient(ctx, studentID)
+		if err == nil {
+			scope.clients[studentID] = client
+		}
+		return client, err
+	}
+	return s.newAuthenticatedClient(ctx, studentID)
+}
+
+func (s *Service) newAuthenticatedClient(ctx context.Context, studentID string) (*klas.Client, error) {
 	client, err := s.newKlasClient()
 	if err != nil {
 		return nil, err

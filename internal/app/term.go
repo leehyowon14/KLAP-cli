@@ -122,6 +122,24 @@ func (s *Service) latestTerm(ctx context.Context, studentID string) (*klas.Clien
 }
 
 func (s *Service) selectedTerm(ctx context.Context, studentID string, client *klas.Client) (klas.Term, *klas.Client, error) {
+	if scope := s.requestSession; scope != nil {
+		scope.mu.Lock()
+		term, ok := scope.terms[studentID]
+		scope.mu.Unlock()
+		if ok {
+			return term, client, nil
+		}
+	}
+	term, client, err := s.uncachedSelectedTerm(ctx, studentID, client)
+	if scope := s.requestSession; scope != nil && err == nil {
+		scope.mu.Lock()
+		scope.terms[studentID] = term
+		scope.mu.Unlock()
+	}
+	return term, client, err
+}
+
+func (s *Service) uncachedSelectedTerm(ctx context.Context, studentID string, client *klas.Client) (klas.Term, *klas.Client, error) {
 	terms, client, err := s.courses(ctx, studentID, client)
 	if err != nil {
 		return klas.Term{}, client, err

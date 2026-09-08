@@ -70,7 +70,22 @@ func (s *Service) selectedStudentID(ctx context.Context, user UserOption) (strin
 	if strings.TrimSpace(user.StudentID) != "" {
 		return strings.TrimSpace(user.StudentID), nil
 	}
+	if scope := s.requestSession; scope != nil {
+		scope.mu.Lock()
+		defer scope.mu.Unlock()
+		if scope.studentID != "" {
+			return scope.studentID, nil
+		}
+		studentID, err := s.currentStudentID(ctx)
+		if err == nil {
+			scope.studentID = studentID
+		}
+		return studentID, err
+	}
+	return s.currentStudentID(ctx)
+}
 
+func (s *Service) currentStudentID(ctx context.Context) (string, error) {
 	currentStudentID, err := s.store.Current(ctx)
 	if err != nil {
 		return "", err
