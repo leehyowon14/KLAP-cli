@@ -22,17 +22,17 @@ type EvaluationSubmitOptions struct {
 }
 
 type EvaluationListResult struct {
-	Term klas.EvaluationTerm
+	Term EvaluationTerm
 	Rows []EvaluationRow
 }
 
 type EvaluationRow struct {
 	Index  int
-	Course klas.EvaluationCourse
+	Course EvaluationCourse
 }
 
 type EvaluationSubmitResult struct {
-	Term      klas.EvaluationTerm
+	Term      EvaluationTerm
 	Items     []EvaluationSubmitItem
 	Submitted bool
 }
@@ -67,7 +67,7 @@ func (s *Service) EvaluationList(ctx context.Context, opts EvaluationListOptions
 		return EvaluationListResult{}, err
 	}
 	rows := makeEvaluationRows(courses)
-	result := EvaluationListResult{Term: term, Rows: rows}
+	result := EvaluationListResult{Term: evaluationTermModel(term), Rows: rows}
 	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
 	return result, nil
 }
@@ -97,7 +97,7 @@ func (s *Service) EvaluationSubmit(ctx context.Context, opts EvaluationSubmitOpt
 	}
 
 	result := EvaluationSubmitResult{
-		Term:      term,
+		Term:      evaluationTermModel(term),
 		Submitted: opts.Confirm,
 		Items:     make([]EvaluationSubmitItem, 0, len(targets)),
 	}
@@ -108,6 +108,9 @@ func (s *Service) EvaluationSubmit(ctx context.Context, opts EvaluationSubmitOpt
 		IncludeEngineering: opts.IncludeEngineering,
 	}
 	for _, target := range targets {
+		// The selection keeps the original one-based position; use the freshly
+		// fetched adapter course for submission, never a presentation/cache DTO.
+		course := courses[target.Index-1]
 		item := EvaluationSubmitItem{Row: target}
 		if target.Course.Evaluated {
 			item.Skipped = true
@@ -117,7 +120,7 @@ func (s *Service) EvaluationSubmit(ctx context.Context, opts EvaluationSubmitOpt
 		}
 
 		form, formErr := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.EvaluationForm, error) {
-			return client.EvaluationForm(ctx, term, target.Course)
+			return client.EvaluationForm(ctx, term, course)
 		})
 		if formErr != nil {
 			item.Err = formErr
@@ -129,7 +132,7 @@ func (s *Service) EvaluationSubmit(ctx context.Context, opts EvaluationSubmitOpt
 			continue
 		}
 		_, submitErr := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.EvaluationSubmitResult, error) {
-			return client.SubmitEvaluation(ctx, term, target.Course, form, answerOpts)
+			return client.SubmitEvaluation(ctx, term, course, form, answerOpts)
 		})
 		item.Err = submitErr
 		result.Items = append(result.Items, item)
@@ -169,7 +172,7 @@ func makeEvaluationRows(courses []klas.EvaluationCourse) []EvaluationRow {
 	for index, course := range courses {
 		rows = append(rows, EvaluationRow{
 			Index:  index + 1,
-			Course: course,
+			Course: evaluationCourseModel(course),
 		})
 	}
 	return rows

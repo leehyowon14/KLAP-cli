@@ -2403,14 +2403,14 @@ func formatCompactDate(value string) string {
 	return emptyFallback(value, "-")
 }
 
-func evaluationStatusLabel(course klas.EvaluationCourse) string {
+func evaluationStatusLabel(course app.EvaluationCourse) string {
 	if course.Evaluated {
 		return "완료"
 	}
 	return "미완료"
 }
 
-func evaluationCourseType(course klas.EvaluationCourse) string {
+func evaluationCourseType(course app.EvaluationCourse) string {
 	parts := []string{}
 	if strings.TrimSpace(course.CourseType) != "" {
 		parts = append(parts, strings.TrimSpace(course.CourseType))

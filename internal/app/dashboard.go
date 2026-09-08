@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"sort"
 	"strings"
 	"time"
@@ -62,7 +61,7 @@ type DashboardAttendanceRow struct {
 }
 
 type DashboardEvaluation struct {
-	Term    klas.EvaluationTerm
+	Term    EvaluationTerm
 	Enabled bool
 	Done    int
 	Pending int
