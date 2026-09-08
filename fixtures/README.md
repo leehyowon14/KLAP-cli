@@ -1,7 +1,8 @@
 # KLAS API Fixtures
 
-이 폴더는 KLAP CLI를 새로 만들 때 사용할 KLAS API 응답 fixture 기준 문서다.
-실제 응답 원본은 개인정보와 세션 정보를 제거한 뒤 저장한다.
+이 폴더의 Markdown은 KLAS API fixture 수집 기준과 reverse-engineering 연구 메모다. 현재 실행되는 payload fixture 파일 모음이 아니며, 아래 예시의 `payloads/` 디렉터리는 아직 존재하지 않는다.
+
+구현된 adapter와 실제 `_test.go`의 sanitized fixture는 [API_CONTRACTS](../docs/API_CONTRACTS.md)에서 찾는다. 실제 응답 원본을 추가할 때는 개인정보와 세션 정보를 먼저 제거한다.
 
 ## 목적
 
@@ -96,4 +97,4 @@ CLI 파서 테스트는 최소 다음을 검증한다.
 
 - 상세 API와 목록 API는 분리해서 테스트한다.
 - KLAS 원문 페이지 HTML은 네이티브/CLI 데이터 소스로 쓰지 않는다.
-- `API.md`가 API 계약의 원본 문서이고, 이 폴더는 fixture 수집과 테스트 기준을 담당한다.
+- [API.md](../API.md)는 과거 연구 기록이다. 현재 구현·테스트로 고정한 계약은 [API_CONTRACTS](../docs/API_CONTRACTS.md)를 기준으로 한다.

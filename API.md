@@ -1,4 +1,6 @@
-# KLAP KLAS API 정리
+# KLAS API reverse-engineering 연구 기록
+
+> 분류: 과거 캡처·다른 구현·미확정 동작을 포함하는 연구 자료. 현재 CLI가 지원하거나 자동 검증한 계약의 목록이 아니다. 구현 기준과 실행 테스트는 [API_CONTRACTS](docs/API_CONTRACTS.md)를 우선한다. 아래의 과거 확인·목표 표현은 당시 연구 맥락을 보존한 것이며 현재 live 검증 완료를 의미하지 않는다.
 
 이 문서는 광운대학교 KLAS를 대체하는 macOS 앱 `KLAP` 구현을 위한 비공식 API 메모다.
 현재 확인된 내용은 `/Users/wonny/src/Project/Personal/KLAS_video_downloader`의 JS 구현, KLAS 웹 페이지 스크립트 캡처, 실제 로그인 세션 기반 API 호출을 근거로 정리했다.

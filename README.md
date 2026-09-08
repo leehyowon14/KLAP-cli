@@ -225,4 +225,4 @@ CI/CD와 Homebrew 배포 절차는 [docs/RELEASE.md](docs/RELEASE.md)를 기준�
 
 ## 아키텍처
 
-현재 구현과 목표 리팩터링 경계는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 기준으로 한다.
+현재 구현과 책임 경계는 [Architecture](docs/ARCHITECTURE.md), endpoint별 구현·테스트·presenter는 [API contracts](docs/API_CONTRACTS.md)를 기준으로 한다. 미구현 목표와 추가 검증은 [ROADMAP](docs/ROADMAP.md), 과거 reverse-engineering 자료는 [API 연구 기록](API.md)에 구분한다.

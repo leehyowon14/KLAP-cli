@@ -1,0 +1,39 @@
+# 구현·테스트 기준 API contracts
+
+이 문서는 **현재 저장소가 사용하는 계약과 자동 테스트 근거**를 연결한다. KLAS의 공식 명세 또는 현재 서버 전체를 실시간 검증한 결과가 아니다. 과거 캡처·다른 앱의 구현·추측은 [API 연구 기록](../API.md)과 [fixture 수집 메모](../fixtures/README.md)에 분리한다.
+
+## 공통 계약
+
+- KLAS 요청은 [transport](../internal/klas/transport.go)와 [typed error](../internal/klas/errors.go)를 거친다. Network, HTTP, SessionExpired, RemoteBusiness, Schema를 구분하며 [transport 오류 테스트](../internal/klas/transport_error_test.go)가 응답·오류 분류를 고정한다.
+- [Session executor](../internal/app/session.go)는 SessionExpired에 한해 로그인·Session 저장 후 한 번만 retry한다. [executor 테스트](../internal/app/session_executor_test.go)는 비세션 오류와 재시도 한도·저장 실패를 검증한다.
+- wire DTO는 adapter 내부에 둔다. app의 `*_models.go`와 `*_models_test.go`가 정규화 및 cache round-trip 계약을 검증한다. 원격 payload의 모든 필드가 앱 지원 계약은 아니다.
+- 아래의 fixture는 대부분 해당 `_test.go`에 포함된 sanitized JSON/HTML과 fake HTTP 응답이다. `fixtures/*.md`는 실행되는 payload 파일이 아니라 수집·연구 메모다.
+
+## Endpoint → adapter → fixture/test → use case → presenter
+
+KLAS endpoint는 공통 host `https://klas.kw.ac.kr` 기준이다. 긴 endpoint 그룹은 구현 링크에서 정확한 경로·payload를 확인한다. 하나의 행이 전체 기능의 live E2E 검증을 뜻하지 않는다.
+
+| Endpoint 또는 외부 경계 | Adapter | 실행되는 fixture/test | App use case | Presenter |
+| --- | --- | --- | --- | --- |
+| `LoginSecurity.do`, `LoginConfirm.do` | [auth](../internal/klas/auth.go) | [auth schema](../internal/klas/auth_error_test.go), [로그인 HTML](../internal/klas/auth_test.go) | [account](../internal/app/account.go), [session](../internal/app/session.go) | [CLI auth](../internal/cli/auth.go), [TUI Auth](../internal/tui/screen_auth.go) |
+| `YearhakgiAtnlcSbjectList.do`, `LctrumHomeStdInfo.do` | [course](../internal/klas/course.go) | [course mapping](../internal/klas/course_model_test.go), [schema](../internal/klas/course_error_test.go) | [course](../internal/app/course.go), [term](../internal/app/term.go) | [CLI course](../internal/cli/course.go), [term](../internal/cli/term.go), [TUI Dashboard](../internal/tui/screen_dashboard.go) |
+| `TaskStdList.do`, `TaskStdView.do` | [assignment](../internal/klas/assignment.go) | [numeric IDs](../internal/klas/assignment_test.go), [schema](../internal/klas/assignment_error_test.go), [app mapping](../internal/app/assignment_models_test.go) | [assignment](../internal/app/assignment.go) | [CLI](../internal/cli/assignment.go), [TUI](../internal/tui/screen_assignments.go) |
+| 공지 board의 `BoardStdList.do`, `BoardStdView.do` | [notice](../internal/klas/notice.go) | [pagination/pinned](../internal/klas/notice_test.go), [schema](../internal/klas/notice_error_test.go), [app mapping](../internal/app/notice_models_test.go) | [notice](../internal/app/notice.go) | [CLI](../internal/cli/notice.go), [TUI](../internal/tui/screen_notices.go) |
+| `TimetableStdList.do` | [timetable](../internal/klas/timetable.go) | [timetable parsing](../internal/klas/timetable_test.go), [schema](../internal/klas/timetable_error_test.go) | [timetable](../internal/app/timetable.go) | [CLI](../internal/cli/timetable.go), [TUI Dashboard](../internal/tui/screen_dashboard.go) |
+| `KwAttendStdGwakmokList.do`, `KwAttendStdAttendList.do`, `CdpAtendInfo.do` | [attendance](../internal/klas/attendance.go) | [attendance mapping](../internal/klas/attendance_test.go), [schema](../internal/klas/attendance_error_test.go) | [attendance](../internal/app/attendance.go) | [CLI attendance](../internal/cli/attendance.go) |
+| `AtnlcScreSungjukTot.do`, `AtnlcScreSungjukInfo.do`, `StandStdList.do` | [grade](../internal/klas/grade.go) | [raw exclusion](../internal/klas/grade_test.go), [schema](../internal/klas/grade_error_test.go), [app mapping](../internal/app/grade_models_test.go) | [grade/rank](../internal/app/grade.go) | [CLI grade](../internal/cli/grade.go), [rank](../internal/cli/rank.go) |
+| `LctreEvl*` 조회, `insertEvl.do`, `insertEng.do` | [evaluation](../internal/klas/evaluation.go) | [payload/defaults](../internal/klas/evaluation_test.go), [schema](../internal/klas/evaluation_error_test.go) | [evaluation](../internal/app/evaluation.go) | [CLI evaluation](../internal/cli/evaluation.go); 실제 제출은 `--yes` 필요 |
+| `LectrePlanStdList.do`, `LectreTimeInfo.do`, `LectrePlanData.do` | [syllabus](../internal/klas/syllabus.go) | [list mapping](../internal/klas/syllabus_list_model_test.go), [schema](../internal/klas/syllabus_error_test.go), [subject ID](../internal/klas/syllabus_test.go) | [syllabus](../internal/app/syllabus.go), [room workflow](../internal/app/room_workflow.go) | [CLI syllabus](../internal/cli/syllabus.go), [subject](../internal/cli/subject.go), [room](../internal/cli/room.go), [TUI Syllabus](../internal/tui/screen_syllabus.go), [Room](../internal/tui/screen_room.go) |
+| `SelectOnlineCntntsStdList.do`, viewer `LctreCntntsViewSpvPage.do`/`ChkLctreCntntsView.do`/`UpdateProgress.do`, `SaveLrnStatus.do` | [lecture](../internal/klas/lecture.go) | [forms/progress](../internal/klas/lecture_test.go), [schema](../internal/klas/lecture_error_test.go), [action re-fetch](../internal/app/lecture_models_test.go) | [lecture/attend](../internal/app/lecture.go) | [CLI lecture/attend](../internal/cli/lecture_attend_download.go), [TUI Lectures](../internal/tui/screen_lectures.go), [Attend](../internal/tui/screen_attend.go) |
+| KWCommons `viewer/ssplayer/uniplayer_support/content.php` | [kwcommons](../internal/kwcommons/client.go) | [HTTP](../internal/kwcommons/transport_test.go), [parser](../internal/kwcommons/client_test.go), [injected media](../internal/app/media_test.go) | [download](../internal/app/download.go) | [CLI download](../internal/cli/lecture_attend_download.go), [TUI Download](../internal/tui/screen_download.go) |
+| `https://biz.kw.ac.kr/undergraduate/schedule.php` | [academic](../internal/academic/client.go) | [HTTP](../internal/academic/transport_test.go), [HTML](../internal/academic/parser_test.go), [cache policy](../internal/app/academic_test.go) | [academic](../internal/app/academic.go), [search](../internal/app/search.go), [due](../internal/app/due.go) | [CLI academic](../internal/cli/academic.go), [search](../internal/cli/search.go), [due](../internal/cli/due.go), [TUI Academic](../internal/tui/screen_academic.go), [Due](../internal/tui/screen_due.go) |
+| Media HTTP GET/Range 및 filesystem transfer | [download](../internal/download) | [HTTP/Range](../internal/download/transfer_test.go), [copy/partial helper](../internal/download/client_test.go), [naming](../internal/download/naming_test.go), [app lifecycle](../internal/app/download_run_test.go) | [download pipeline](../internal/app/download_pipeline.go) | [CLI](../internal/cli/lecture_attend_download.go), [TUI](../internal/tui/screen_download.go) |
+| EventKit JSON protocol | [macOS adapter](../internal/platform/macos), [EventKitCore](../bridges/macos/Sources/EventKitCore) | [bridge contract](../internal/platform/macos/reminder_test.go), [core tests](../bridges/macos/Tests/EventKitCoreTests) | [sync](../internal/app/sync.go), [Dashboard sync](../internal/app/dashboard_sync.go) | [CLI reminder](../internal/cli/assignment.go), [TUI conflict](../internal/tui/screen_sync.go) |
+| Speech JSON/NDJSON protocol | [Transcript adapter](../internal/platform/macos/transcript.go), [SpeechCore](../bridges/macos/Sources/SpeechCore) | [shared fixtures](../bridges/macos/testdata), [Go contract](../internal/platform/macos/transcript_test.go), [Swift tests](../bridges/macos/Tests/SpeechCoreTests) | [transcript workflow](../internal/app/download_pipeline.go) | [TUI Download](../internal/tui/screen_download.go) |
+
+## 검증 갱신 규칙
+
+1. endpoint나 wire schema를 바꾸면 해당 adapter의 sanitized fixture/error test를 같은 변경에 포함한다.
+2. app 결과가 달라지면 mapping/cache round-trip 및 CLI writer/TUI child 테스트를 갱신한다.
+3. 실행되지 않은 live 시나리오는 테스트 통과로 표현하지 않는다. 특히 실제 수강·평가 제출·EventKit 쓰기·Speech asset 설치는 별도 승인된 검증이다.
+4. 연구 기록의 endpoint를 구현으로 승격할 때는 이 matrix에 adapter·실행 테스트·use case·presenter 근거를 연결한다.
