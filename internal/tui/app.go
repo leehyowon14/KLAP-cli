@@ -338,6 +338,35 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if cleaned, ok := msg.(lectureDownloadCleanupMsg); ok {
+		if m.downloadProgress == nil || m.downloadProgress.updates != cleaned.updates {
+			if cleaned.err != nil {
+				m.err = cleaned.err
+			}
+			return m, nil
+		}
+		if cleaned.err != nil {
+			m.downloadProgress.err = cleaned.err
+			m.downloadProgress.done = true
+			m.downloadProgress.canceling = false
+			return m, nil
+		}
+		m.active = screenLectures
+		m.loading = true
+		m.downloadProgress = nil
+		return m, m.load(screenLectures, true)
+	}
+	if stopped, ok := msg.(lectureDownloadStoppedMsg); ok {
+		if m.downloadProgress != nil && m.downloadProgress.updates == stopped.updates {
+			m.active = screenHome
+			m.loading = false
+			m.err = nil
+			m.content = ""
+			m.downloadProgress = nil
+		}
+		return m, nil
+	}
+
 	if m.active == screenDownloadProgress {
 		return m.updateDownloadProgress(msg)
 	}
@@ -1557,9 +1586,8 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 	selectedRows := m.selectedDownloadRows()
 	runCtx, cancel := context.WithCancel(m.ctx)
 	progress := lectureDownloadModel{
-		ctx:     runCtx,
-		cancel:  cancel,
-		service: m.service,
+		ctx:    runCtx,
+		cancel: cancel,
 		request: LectureDownloadRequest{
 			LectureIDs:            m.selectedDownloadIDs(),
 			Concurrency:           settings.Concurrency,
@@ -1571,6 +1599,7 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 		items:     initialDownloadStatusLines(selectedRows),
 		startedAt: time.Now(),
 	}
+	progress.pipeline = m.service.NewLectureDownloadRun(runCtx, progress.pipelineOptions())
 	m.active = screenDownloadProgress
 	m.err = nil
 	m.downloadProgress = &progress
@@ -1583,20 +1612,14 @@ func (m model) updateDownloadProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if key, ok := msg.(tea.KeyMsg); ok {
+		if m.downloadProgress.canceling {
+			return m, nil
+		}
 		if key.String() == "ctrl+c" || keyMatches(key.String(), "q", "ㅂ") {
-			m.downloadProgress.cancel()
-			return m, tea.Quit
+			return m, m.downloadProgress.cancelAndWait(true)
 		}
 		if keyMatches(key.String(), "h", "ㅗ") {
-			if !m.downloadProgress.done {
-				m.downloadProgress.cancel()
-			}
-			m.active = screenHome
-			m.loading = false
-			m.err = nil
-			m.content = ""
-			m.downloadProgress = nil
-			return m, nil
+			return m, m.downloadProgress.cancelAndWait(false)
 		}
 		if m.downloadProgress.done && (key.String() == "esc" || keyMatches(key.String(), "b", "ㅠ")) {
 			m.active = screenLectures
@@ -1605,11 +1628,7 @@ func (m model) updateDownloadProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.load(screenLectures, true)
 		}
 		if key.String() == "esc" && !m.downloadProgress.done {
-			m.downloadProgress.cancelAndCleanup()
-			m.active = screenLectures
-			m.loading = true
-			m.downloadProgress = nil
-			return m, m.load(screenLectures, true)
+			return m, m.downloadProgress.cancelAndCleanup()
 		}
 	}
 	updated, cmd := m.downloadProgress.Update(msg)

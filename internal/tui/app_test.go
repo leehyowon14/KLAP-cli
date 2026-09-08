@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -1121,41 +1119,6 @@ func TestLectureDownloadTranscribedTextOmitsPath(t *testing.T) {
 	got := m.itemProgressText(downloadStatusLine{status: "transcribed", path: "/tmp/lecture.txt"})
 	if !strings.Contains(got, "전사완료") || strings.Contains(got, "lecture.txt") {
 		t.Fatalf("itemProgressText(transcribed) = %q", got)
-	}
-}
-
-func TestLectureDownloadCancelCleanupRemovesArtifacts(t *testing.T) {
-	root := t.TempDir()
-	videoPath := filepath.Join(root, "컴퓨터그래픽스", "video", "lecture.mp4")
-	transcriptPath := filepath.Join(root, "컴퓨터그래픽스", "transcription", "lecture.txt")
-	for _, path := range []string{videoPath, videoPath + ".part", transcriptPath, transcriptPath + ".part"} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%s) error = %v", path, err)
-		}
-		if err := os.WriteFile(path, []byte("data"), 0o644); err != nil {
-			t.Fatalf("WriteFile(%s) error = %v", path, err)
-		}
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	m := lectureDownloadModel{
-		ctx:    ctx,
-		cancel: cancel,
-		items: []downloadStatusLine{{
-			status:         "transcribe",
-			path:           transcriptPath,
-			downloadPath:   videoPath,
-			transcriptPath: transcriptPath,
-		}},
-	}
-	m.cancelAndCleanup()
-	if !m.canceling {
-		t.Fatal("cancelAndCleanup() did not mark canceling")
-	}
-	for _, path := range []string{videoPath, videoPath + ".part", transcriptPath, transcriptPath + ".part"} {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("artifact %s still exists or stat failed: %v", path, err)
-		}
 	}
 }
 

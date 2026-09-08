@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,7 +23,7 @@ type LectureDownloadRequest struct {
 type lectureDownloadModel struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
-	service   *app.Service
+	pipeline  lectureDownloadRun
 	request   LectureDownloadRequest
 	updates   chan tea.Msg
 	width     int
@@ -36,6 +35,17 @@ type lectureDownloadModel struct {
 	canceling bool
 	err       error
 }
+
+type lectureDownloadRun interface {
+	Run() (app.LectureDownloadPipelineResult, error)
+	CancelAndCleanup() error
+}
+
+type lectureDownloadCleanupMsg struct {
+	updates chan tea.Msg
+	err     error
+}
+type lectureDownloadStoppedMsg struct{ updates chan tea.Msg }
 
 type downloadStatusLine struct {
 	id             string
@@ -70,6 +80,12 @@ func (m lectureDownloadModel) Init() tea.Cmd {
 }
 
 func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.done {
+		switch msg.(type) {
+		case lectureDownloadProgressMsg, lectureTranscriptProgressMsg, lectureDownloadDoneMsg:
+			return m, nil
+		}
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -113,7 +129,9 @@ func (m lectureDownloadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.applyFinalResult(msg)
 		m.applyTranscriptResult(msg.transcript)
-		m.done = true
+		if !m.canceling {
+			m.done = true
+		}
 		return m, nil
 	}
 	return m, nil
@@ -135,6 +153,10 @@ func (m lectureDownloadModel) View() string {
 	b.WriteString("\n")
 	if m.done {
 		b.WriteString(m.renderSummary())
+		if m.err != nil {
+			b.WriteString(errorStyle.Render(truncateText(m.err.Error(), contentWidth)))
+			b.WriteString("\n")
+		}
 		b.WriteString(renderHelpText("↑↓ 이동  |  esc 뒤로  |  h 홈  |  q 종료", contentWidth))
 		b.WriteString("\n")
 	} else if m.canceling {
@@ -149,26 +171,30 @@ func (m lectureDownloadModel) View() string {
 	return appStyle.Render(b.String())
 }
 
+func (m lectureDownloadModel) pipelineOptions() app.LectureDownloadPipelineOptions {
+	return app.LectureDownloadPipelineOptions{
+		Download:   app.LectureDownloadAllOptions{Concurrency: m.request.Concurrency, LectureIDs: m.request.LectureIDs},
+		Transcribe: m.request.Transcribe, TranscriptLocale: m.request.TranscriptLocale, TranscriptConcurrency: m.request.TranscriptConcurrency,
+		OnEvent: func(event app.LecturePipelineEvent) {
+			var message tea.Msg
+			if event.Download != nil {
+				message = lectureDownloadProgressMsg{progress: *event.Download}
+			} else if event.Transcript != nil {
+				message = lectureTranscriptProgressMsg{progress: *event.Transcript}
+			} else {
+				return
+			}
+			select {
+			case m.updates <- message:
+			default:
+			}
+		},
+	}
+}
+
 func (m lectureDownloadModel) runDownload() tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.RunLectureDownloadPipeline(m.ctx, app.LectureDownloadPipelineOptions{
-			Download:   app.LectureDownloadAllOptions{Concurrency: m.request.Concurrency, LectureIDs: m.request.LectureIDs},
-			Transcribe: m.request.Transcribe, TranscriptLocale: m.request.TranscriptLocale, TranscriptConcurrency: m.request.TranscriptConcurrency,
-			OnEvent: func(event app.LecturePipelineEvent) {
-				var message tea.Msg
-				if event.Download != nil {
-					message = lectureDownloadProgressMsg{progress: *event.Download}
-				} else if event.Transcript != nil {
-					message = lectureTranscriptProgressMsg{progress: *event.Transcript}
-				} else {
-					return
-				}
-				select {
-				case m.updates <- message:
-				default:
-				}
-			},
-		})
+		result, err := m.pipeline.Run()
 		// The terminal result follows all accepted progress in the same FIFO stream.
 		select {
 		case m.updates <- lectureDownloadDoneMsg{all: result.Download, transcript: result.Transcript, err: err}:
@@ -301,51 +327,6 @@ func (m *lectureDownloadModel) applyTranscriptItem(item app.LectureTranscriptIte
 		Stage:      stage,
 		Err:        item.Err,
 	})
-}
-
-func (m *lectureDownloadModel) cancelAndCleanup() {
-	if m.cancel != nil {
-		m.cancel()
-	}
-	m.canceling = true
-	m.cleanupArtifacts()
-}
-
-func (m lectureDownloadModel) cleanupArtifacts() {
-	seen := make(map[string]struct{})
-	for _, item := range m.items {
-		for _, path := range item.cleanupPaths() {
-			path = strings.TrimSpace(path)
-			if path == "" {
-				continue
-			}
-			if _, ok := seen[path]; ok {
-				continue
-			}
-			seen[path] = struct{}{}
-			_ = os.Remove(path)
-		}
-	}
-}
-
-func (line downloadStatusLine) cleanupPaths() []string {
-	paths := []string{}
-	addPath := func(path string) {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			return
-		}
-		paths = append(paths, path, path+".part")
-	}
-	addPath(line.downloadPath)
-	addPath(line.transcriptPath)
-	if strings.TrimSpace(line.path) != "" {
-		addPath(line.path)
-		if strings.Contains(line.path, string(filepath.Separator)+"video"+string(filepath.Separator)) {
-			addPath(app.TranscriptPathForDownload(line.path))
-		}
-	}
-	return paths
 }
 
 func (m lectureDownloadModel) renderProgressList(width int) string {
@@ -641,4 +622,28 @@ func formatDownloadBytes(bytes int64) string {
 		}
 	}
 	return fmt.Sprintf("%.1f PB", value/unit)
+}
+
+func (m *lectureDownloadModel) cancelAndCleanup() tea.Cmd {
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.canceling = true
+	pipeline, updates := m.pipeline, m.updates
+	return func() tea.Msg { return lectureDownloadCleanupMsg{updates: updates, err: pipeline.CancelAndCleanup()} }
+}
+
+func (m *lectureDownloadModel) cancelAndWait(quit bool) tea.Cmd {
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.canceling = true
+	pipeline, updates := m.pipeline, m.updates
+	return func() tea.Msg {
+		_, _ = pipeline.Run()
+		if quit {
+			return tea.Quit()
+		}
+		return lectureDownloadStoppedMsg{updates: updates}
+	}
 }
