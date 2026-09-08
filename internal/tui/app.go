@@ -16,7 +16,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
-	settingspkg "github.com/leehyowon14/KLAP-cli/internal/settings"
 )
 
 const menuNumberWidth = 3
@@ -2138,7 +2137,13 @@ func (m model) updateConfigInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "timetable-calendar.name":
 			_, err = m.service.SetTimetableCalendarConfig(value, false)
 		case "reminder.alarm-before-min":
-			_, err = m.service.SetConfigValue("reminder.alarm-before-min", value)
+			var minutes int
+			minutes, err = strconv.Atoi(value)
+			if err != nil {
+				err = errors.New("알림 시간에는 1 이상의 정수가 필요합니다")
+			} else {
+				_, err = m.service.UpdateConfig(app.ConfigUpdate{ReminderAlarmBeforeMin: &minutes})
+			}
 		}
 		if err != nil {
 			m.err = err
@@ -2209,7 +2214,7 @@ func (m model) adjustConfigCurrent(delta int) (tea.Model, tea.Cmd) {
 		if next < 1 {
 			next = 1
 		}
-		if _, err := m.service.SetConfigValue("reminder.alarm-before-min", strconv.Itoa(next)); err != nil {
+		if _, err := m.service.UpdateConfig(app.ConfigUpdate{ReminderAlarmBeforeMin: &next}); err != nil {
 			m.err = err
 			return m, nil
 		}
@@ -2302,8 +2307,8 @@ func (m model) adjustTranscriptConcurrency(delta int) (tea.Model, tea.Cmd) {
 	if next < 1 {
 		next = 1
 	}
-	if next > settingspkg.MaxTranscriptConcurrency {
-		next = settingspkg.MaxTranscriptConcurrency
+	if next > app.MaxTranscriptConcurrency {
+		next = app.MaxTranscriptConcurrency
 	}
 	if _, err := m.service.SetTranscriptConfig(next); err != nil {
 		m.err = err
@@ -4702,7 +4707,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			page:     configPageGeneral,
 			section:  "Reminder",
 			label:    "미리알림 목록",
-			value:    emptyFallback(settings.Reminder.ListName, settingspkg.DefaultReminderListName),
+			value:    emptyFallback(settings.Reminder.ListName, app.DefaultReminderListName),
 			editable: true,
 			cycle:    true,
 		},
@@ -4720,7 +4725,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			page:     configPageSchedule,
 			section:  "Calendar",
 			label:    "학사일정 캘린더",
-			value:    emptyFallback(settings.Calendar.Name, settingspkg.DefaultAcademicCalendarName),
+			value:    emptyFallback(settings.Calendar.Name, app.DefaultAcademicCalendarName),
 			editable: true,
 			cycle:    true,
 		},
@@ -4729,7 +4734,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			page:     configPageSchedule,
 			section:  "Calendar",
 			label:    "시간표 캘린더",
-			value:    emptyFallback(settings.Calendar.TimetableName, settingspkg.DefaultTimetableCalendarName),
+			value:    emptyFallback(settings.Calendar.TimetableName, app.DefaultTimetableCalendarName),
 			editable: true,
 			cycle:    true,
 		},
@@ -4772,7 +4777,7 @@ func configRows(settings app.ConfigSettings, options app.CategoryOptions) []conf
 			section: "Transcript",
 			label:   "전사 worker",
 			value:   fmt.Sprintf("%d workers", settings.Transcript.Concurrency),
-			hint:    fmt.Sprintf("[] 1-%d", settingspkg.MaxTranscriptConcurrency),
+			hint:    fmt.Sprintf("[] 1-%d", app.MaxTranscriptConcurrency),
 		},
 		{
 			key:     "reset",

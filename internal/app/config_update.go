@@ -8,6 +8,12 @@ import (
 
 const MaxTranscriptConcurrency = settings.MaxTranscriptConcurrency
 
+const (
+	DefaultReminderListName      = settings.DefaultReminderListName
+	DefaultAcademicCalendarName  = settings.DefaultAcademicCalendarName
+	DefaultTimetableCalendarName = settings.DefaultTimetableCalendarName
+)
+
 // ConfigUpdate changes only explicitly supplied fields. Validation completes
 // before persistence, so an invalid multi-field update never partially saves.
 type ConfigUpdate struct {
