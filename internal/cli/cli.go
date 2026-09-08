@@ -202,7 +202,7 @@ func (r Runner) runAuth(ctx context.Context, service *app.Service) error {
 	return nil
 }
 
-func runUser(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runUser(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap user <list|select|rm>")
 	}
@@ -214,7 +214,7 @@ func runUser(ctx context.Context, service *app.Service, args []string) error {
 			return err
 		}
 		if len(users) == 0 {
-			fmt.Println("저장된 유저가 없습니다")
+			_, _ = fmt.Fprintln(r.Out, "저장된 유저가 없습니다")
 			return nil
 		}
 		for _, user := range users {
@@ -222,7 +222,7 @@ func runUser(ctx context.Context, service *app.Service, args []string) error {
 			if user.Current {
 				prefix = "*"
 			}
-			fmt.Printf("%s %s\n", prefix, user.User.StudentID)
+			_, _ = fmt.Fprintf(r.Out, "%s %s\n", prefix, user.User.StudentID)
 		}
 		return nil
 	case "select":
@@ -232,7 +232,7 @@ func runUser(ctx context.Context, service *app.Service, args []string) error {
 		if err := service.SelectUser(ctx, args[1]); err != nil {
 			return err
 		}
-		fmt.Printf("현재 유저: %s\n", args[1])
+		_, _ = fmt.Fprintf(r.Out, "현재 유저: %s\n", args[1])
 		return nil
 	case "rm":
 		if len(args) != 2 {
@@ -241,7 +241,7 @@ func runUser(ctx context.Context, service *app.Service, args []string) error {
 		if err := service.RemoveUser(ctx, args[1]); err != nil {
 			return err
 		}
-		fmt.Printf("삭제 완료: %s\n", args[1])
+		_, _ = fmt.Fprintf(r.Out, "삭제 완료: %s\n", args[1])
 		return nil
 	default:
 		return fmt.Errorf("unknown user command: %s", args[0])
