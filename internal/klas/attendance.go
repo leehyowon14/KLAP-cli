@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -95,7 +94,7 @@ func (c *Client) AttendanceCourses(ctx context.Context, yearHakgi string) ([]Att
 	}
 
 	var response []attendanceCourseItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("출석 현황 응답 파싱 실패: %w", err)
 	}
 
@@ -134,7 +133,7 @@ func (c *Client) AttendanceSessions(ctx context.Context, yearHakgi string, cours
 	}
 
 	var response []attendanceSessionItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("출석 상세 응답 파싱 실패: %w", err)
 	}
 
@@ -156,7 +155,7 @@ func (c *Client) CdpAttendance(ctx context.Context) (CdpAttendanceReport, error)
 	}
 
 	var response []cdpAttendanceItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return CdpAttendanceReport{}, fmt.Errorf("CDP 출석내역 응답 파싱 실패: %w", err)
 	}
 
