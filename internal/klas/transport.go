@@ -79,7 +79,7 @@ func (c *Client) do(ctx context.Context, method string, path string, payload any
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("KLAS 요청 실패: %w", err)
+		return nil, &Error{Kind: ErrorNetwork, Err: fmt.Errorf("KLAS 요청 실패: %w", err)}
 	}
 	defer func() {
 		_ = response.Body.Close()
@@ -87,10 +87,10 @@ func (c *Client) do(ctx context.Context, method string, path string, payload any
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, fmt.Errorf("응답 읽기 실패: %w", err)
+		return nil, &Error{Kind: ErrorNetwork, Err: fmt.Errorf("응답 읽기 실패: %w", err)}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("KLAS HTTP 오류: %s", response.Status)
+		return nil, &Error{Kind: ErrorHTTP, StatusCode: response.StatusCode, Err: fmt.Errorf("KLAS HTTP 오류: %s", response.Status)}
 	}
 	if looksLikeLoginHTML(body) {
 		return nil, ErrSessionExpired
@@ -115,7 +115,7 @@ func (c *Client) doForm(ctx context.Context, path string, values url.Values, all
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("KLAS 요청 실패: %w", err)
+		return nil, &Error{Kind: ErrorNetwork, Err: fmt.Errorf("KLAS 요청 실패: %w", err)}
 	}
 	defer func() {
 		_ = response.Body.Close()
@@ -123,10 +123,10 @@ func (c *Client) doForm(ctx context.Context, path string, values url.Values, all
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, fmt.Errorf("응답 읽기 실패: %w", err)
+		return nil, &Error{Kind: ErrorNetwork, Err: fmt.Errorf("응답 읽기 실패: %w", err)}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("KLAS HTTP 오류: %s", response.Status)
+		return nil, &Error{Kind: ErrorHTTP, StatusCode: response.StatusCode, Err: fmt.Errorf("KLAS HTTP 오류: %s", response.Status)}
 	}
 	if (!allowHTML && looksLikeLoginHTML(body)) || (allowHTML && looksLikeLoginPageHTML(body)) {
 		return nil, ErrSessionExpired
@@ -148,7 +148,7 @@ func checkCommonAPIError(body []byte) error {
 		return ErrSessionExpired
 	}
 	if response.ErrorCount > 0 {
-		return errors.New(firstFieldError(response.FieldErrors, "KLAS API 오류가 발생했습니다"))
+		return &Error{Kind: ErrorRemoteBusiness, Err: errors.New(firstFieldError(response.FieldErrors, "KLAS API 오류가 발생했습니다"))}
 	}
 	return nil
 }

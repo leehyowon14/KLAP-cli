@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-var ErrSessionExpired = errors.New("KLAS 세션이 만료되었습니다")
+var ErrSessionExpired = &Error{Kind: ErrorSessionExpired, Err: errors.New("KLAS 세션이 만료되었습니다")}
 
 type Session struct {
 	UserID    string            `json:"userId"`
