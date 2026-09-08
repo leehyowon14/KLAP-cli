@@ -106,6 +106,11 @@ func TestLectureCacheHitAttendRefetchesActionPayload(t *testing.T) {
 		t.Fatalf("LectureList() rows = %+v, lecture fetches = %d", rows, lectureFetches)
 	}
 
+	_, eligibilityErr := service.AttendLecture(context.Background(), lectureID, LectureAttendOptions{User: UserOption{StudentID: studentID}, RequireEligible: true})
+	if eligibilityErr == nil || savedPayload != "" || lectureFetches != 1 {
+		t.Fatalf("unknown fresh window must prevent attendance: err=%v payload=%q fetches=%d", eligibilityErr, savedPayload, lectureFetches)
+	}
+	lectureFetches = 0
 	result, err := service.AttendLecture(context.Background(), lectureID, LectureAttendOptions{User: UserOption{StudentID: studentID}})
 	if err != nil {
 		t.Fatalf("AttendLecture() error = %v", err)

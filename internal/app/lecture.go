@@ -18,9 +18,10 @@ type LectureListOptions struct {
 }
 
 type LectureAttendOptions struct {
-	User       UserOption
-	Interval   time.Duration
-	OnProgress func(LectureRow, LectureProgress)
+	RequireEligible bool
+	User            UserOption
+	Interval        time.Duration
+	OnProgress      func(LectureRow, LectureProgress)
 }
 
 type LectureAttendAllOptions struct {
@@ -182,6 +183,11 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 		TermValue:  resource.Term.Value,
 		CourseName: resource.Course.Name,
 		Lecture:    lectureModel(*matched),
+	}
+	if opts.RequireEligible {
+		if err := ValidateLectureAttendance(row, time.Now()); err != nil {
+			return LectureAttendResult{}, err
+		}
 	}
 	progress, err := attendLecture(ctx, resource.Client, *matched, row, opts.Interval, opts.OnProgress)
 	if err != nil {
