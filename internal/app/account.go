@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/leehyowon14/KLAP-cli/internal/account"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"strings"
 )
 
@@ -23,12 +22,12 @@ func (s *Service) Authenticate(ctx context.Context, studentID string, password s
 		return errors.New("학번과 비밀번호를 모두 입력해야 합니다")
 	}
 
-	client, err := klas.NewClient()
+	client, err := s.newKlasClient()
 	if err != nil {
 		return err
 	}
 
-	session, err := client.Login(ctx, studentID, password)
+	session, err := s.login(ctx, client, studentID, password)
 	if err != nil {
 		return fmt.Errorf("로그인 검증 실패: %w", err)
 	}
