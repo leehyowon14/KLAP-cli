@@ -168,17 +168,9 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 	if err != nil {
 		return LectureDownloadResult{}, err
 	}
-	lectures, err := resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return LectureDownloadResult{}, refreshErr
-		}
-		if refreshed {
-			resource.Client = refreshedClient
-			lectures, err = resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
-		}
-	}
+	lectures, err := executeSessionRequest(ctx, s, studentID, &resource.Client, func(client *klas.Client) ([]klas.Lecture, error) {
+		return client.Lectures(ctx, resource.Term.Value, resource.Course)
+	})
 	if err != nil {
 		return LectureDownloadResult{}, err
 	}
@@ -341,17 +333,9 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	}
 	tasks := make([]downloadTask, 0)
 	for _, selectedCourse := range courses {
-		lectures, err := client.Lectures(ctx, term.Value, selectedCourse.Course)
-		if err != nil {
-			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-			if refreshErr != nil {
-				return LectureDownloadAllResult{}, refreshErr
-			}
-			if refreshed {
-				client = refreshedClient
-				lectures, err = client.Lectures(ctx, term.Value, selectedCourse.Course)
-			}
-		}
+		lectures, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.Lecture, error) {
+			return client.Lectures(ctx, term.Value, selectedCourse.Course)
+		})
 		if err != nil {
 			return LectureDownloadAllResult{}, err
 		}
