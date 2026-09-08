@@ -361,7 +361,7 @@ func (r Runner) runSubject(ctx context.Context, service *app.Service, args []str
 	}
 }
 
-func runTerm(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runTerm(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap term <list|select>")
 	}
@@ -374,7 +374,7 @@ func runTerm(ctx context.Context, service *app.Service, args []string) error {
 		if err != nil {
 			return err
 		}
-		printTermRows(rows)
+		r.printTermRows(rows)
 		return nil
 	case "select":
 		if len(args) < 2 {
@@ -384,7 +384,7 @@ func runTerm(ctx context.Context, service *app.Service, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("현재 학기: %s (%s)\n", settings.Label, settings.Value)
+		_, _ = fmt.Fprintf(r.Out, "현재 학기: %s (%s)\n", settings.Label, settings.Value)
 		return nil
 	default:
 		return fmt.Errorf("unknown term command: %s", args[0])
@@ -1899,9 +1899,9 @@ func (r Runner) printSubjectSearch(result app.SubjectSearchResult) {
 	}
 }
 
-func printTermRows(rows []app.TermRow) {
+func (r Runner) printTermRows(rows []app.TermRow) {
 	if len(rows) == 0 {
-		fmt.Println("수강 학기가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "수강 학기가 없습니다")
 		return
 	}
 
@@ -1910,7 +1910,7 @@ func printTermRows(rows []app.TermRow) {
 		if row.Current {
 			prefix = "*"
 		}
-		fmt.Printf("%s %d. %s (%s)\n", prefix, row.Index, row.Term.Label, row.Term.Value)
+		_, _ = fmt.Fprintf(r.Out, "%s %d. %s (%s)\n", prefix, row.Index, row.Term.Label, row.Term.Value)
 	}
 }
 
