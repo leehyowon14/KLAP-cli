@@ -1567,11 +1567,9 @@ func (m model) startDownloadProgress() (tea.Model, tea.Cmd) {
 			TranscriptLocale:      m.selectedTranscriptLocale(),
 			TranscriptConcurrency: transcriptSettings.Concurrency,
 		},
-		updates:           make(chan tea.Msg, 64),
-		items:             initialDownloadStatusLines(selectedRows),
-		startedAt:         time.Now(),
-		transcriptStarted: make(map[string]bool),
-		transcriptRunning: make(map[string]bool),
+		updates:   make(chan tea.Msg, 64),
+		items:     initialDownloadStatusLines(selectedRows),
+		startedAt: time.Now(),
 	}
 	m.active = screenDownloadProgress
 	m.err = nil
