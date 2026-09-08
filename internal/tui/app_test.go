@@ -305,16 +305,6 @@ func testChromeModel(active screen) model {
 				RequiredTime: "10",
 			},
 		}},
-		academicResult: app.AcademicListResult{
-			Year: "2026",
-			Events: []app.AcademicEvent{{
-				Year:  "2026",
-				Month: "6월",
-				Date:  "6.17(수)",
-				Title: "종강",
-			}},
-		},
-		academicMonth: 6,
 
 		configSettings: app.ConfigSettings{
 			Reminder: app.ReminderSettings{ListName: "Kwangwoon Univ.", AlarmBeforeMin: 1440},
@@ -377,7 +367,16 @@ func testChromeModel(active screen) model {
 		}}, due: dueScreenModel{dueResult: app.DueResult{
 			From:  time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local),
 			Until: time.Date(2026, 6, 24, 0, 0, 0, 0, time.Local),
-		}},
+		}}, academic: academicScreenModel{academicResult: app.AcademicListResult{
+			Year: "2026",
+			Events: []app.AcademicEvent{{
+				Year:  "2026",
+				Month: "6월",
+				Date:  "6.17(수)",
+				Title: "종강",
+			}},
+		},
+			academicMonth: 6},
 	}
 	m.configInput.SetValue("입력값")
 	return m

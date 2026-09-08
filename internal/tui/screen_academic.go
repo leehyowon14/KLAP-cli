@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"regexp"
 	"sort"
@@ -10,7 +12,7 @@ import (
 	"time"
 )
 
-func (m *model) moveAcademicMonth(delta int) {
+func (m *academicScreenModel) moveAcademicMonth(delta int) {
 	m.academicMonth += delta
 	if m.academicMonth < 1 {
 		m.academicMonth = 12
@@ -21,7 +23,7 @@ func (m *model) moveAcademicMonth(delta int) {
 	m.academicCursor = 0
 }
 
-func (m *model) moveAcademicCursor(delta int) {
+func (m *academicScreenModel) moveAcademicCursor(delta int) {
 	events := academicMonthEvents(m.academicResult, m.academicMonth)
 	if len(events) == 0 {
 		m.academicCursor = 0
@@ -36,10 +38,10 @@ func (m *model) moveAcademicCursor(delta int) {
 	}
 }
 
-func (m model) renderAcademicCalendarPanel(width int) string {
+func (m academicScreenModel) View(width, height int, status string, now time.Time) string {
 	month := m.academicMonth
 	if month < 1 || month > 12 {
-		month = defaultAcademicMonth(m.academicResult.Events, time.Now())
+		month = defaultAcademicMonth(m.academicResult.Events, now)
 	}
 	events := academicMonthEvents(m.academicResult, month)
 	selected := app.AcademicEvent{}
@@ -57,10 +59,10 @@ func (m model) renderAcademicCalendarPanel(width int) string {
 	b.WriteString("\n\n")
 	b.WriteString(renderAcademicMonthCalendar(m.academicResult, month, width, selected))
 	b.WriteString("\n")
-	b.WriteString(renderAcademicEventList(events, m.academicCursor, width, m.visibleBodyRows(10)))
-	if m.syncStatus != "" {
+	b.WriteString(renderAcademicEventList(events, m.academicCursor, width, visibleBodyRows(height, 10)))
+	if status != "" {
 		b.WriteString("\n")
-		b.WriteString(footerStyle.Render(m.syncStatus))
+		b.WriteString(footerStyle.Render(status))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -237,4 +239,54 @@ func academicEventDate(event app.AcademicEvent) (time.Time, bool) {
 
 func daysInMonth(year int, month int) int {
 	return time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.Local).Day()
+}
+
+type academicScreenModel struct {
+	academicResult app.AcademicListResult
+	academicMonth  int
+	academicCursor int
+}
+
+func (m *academicScreenModel) Loaded(result app.AcademicListResult, active bool, now time.Time) {
+	m.academicResult = result
+	if active {
+		m.academicMonth = defaultAcademicMonth(result.Events, now)
+		m.academicCursor = 0
+	} else if m.academicMonth == 0 {
+		m.academicMonth = defaultAcademicMonth(result.Events, now)
+	}
+}
+func (m *academicScreenModel) Reset() { *m = academicScreenModel{} }
+func (m *academicScreenModel) Update(msg tea.Msg) (childAction, bool) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	switch {
+	case key.String() == "up" || keyMatches(key.String(), "k", "ㅏ"):
+		m.moveAcademicCursor(-1)
+	case key.String() == "down" || keyMatches(key.String(), "j", "ㅓ"):
+		m.moveAcademicCursor(1)
+	case key.String() == "left":
+		m.moveAcademicMonth(-1)
+	case key.String() == "right":
+		m.moveAcademicMonth(1)
+	default:
+		return childAction{}, false
+	}
+	return childAction{}, true
+}
+
+type academicScreenService interface {
+	AcademicList(context.Context, app.AcademicListOptions) (app.AcademicListResult, error)
+}
+
+func loadAcademic(ctx context.Context, service academicScreenService, refresh, prefetch bool) tea.Cmd {
+	return func() tea.Msg {
+		result, err := service.AcademicList(ctx, app.AcademicListOptions{Refresh: refresh})
+		return loadMsg{screen: screenAcademic, prefetch: prefetch, academic: result, err: err}
+	}
+}
+func (m model) renderAcademicCalendarPanel(width int) string {
+	return m.academic.View(width, m.height, m.syncStatus, time.Now())
 }

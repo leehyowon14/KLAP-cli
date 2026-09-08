@@ -64,9 +64,7 @@ type model struct {
 	notices             noticeScreenModel
 	lectureRows         []app.LectureRow
 	due                 dueScreenModel
-	academicResult      app.AcademicListResult
-	academicMonth       int
-	academicCursor      int
+	academic            academicScreenModel
 	syllabus            syllabusScreenModel
 	detailBack          screen
 	pager               coursePager
@@ -326,6 +324,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applyChildAction(action)
 			}
 		}
+		if m.active == screenAcademic && !m.loading {
+			if action, handled := m.academic.Update(msg); handled {
+				return m.applyChildAction(action)
+			}
+		}
 		if m.active == screenDue && !m.loading {
 			if action, handled := m.due.Update(msg, m.width); handled {
 				return m.applyChildAction(action)
@@ -376,8 +379,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveRoomResultCursor(-1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
-			} else if m.active == screenAcademic && !m.loading {
-				m.moveAcademicCursor(-1)
 			}
 		case key == "down" || keyMatches(key, "j", "ㅓ"):
 			if m.active == screenConfig && !m.loading {
@@ -386,24 +387,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveRoomResultCursor(1)
 			} else if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
-			} else if m.active == screenAcademic && !m.loading {
-				m.moveAcademicCursor(1)
 			}
 		case key == "left":
 			if m.active == screenConfig && !m.loading {
 				m.moveConfigPage(-1)
 			} else if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultPage(-1)
-			} else if m.active == screenAcademic && !m.loading {
-				m.moveAcademicMonth(-1)
 			}
 		case key == "right":
 			if m.active == screenConfig && !m.loading {
 				m.moveConfigPage(1)
 			} else if m.active == screenRoomResult && !m.loading {
 				m.moveRoomResultPage(1)
-			} else if m.active == screenAcademic && !m.loading {
-				m.moveAcademicMonth(1)
 			}
 		case key == "tab" || key == "]":
 			if m.active == screenConfig && !m.loading {
@@ -665,7 +660,7 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 	case screenLectures:
 		m.lectureRows = msg.lectures
 	case screenAcademic:
-		m.academicResult = msg.academic
+		m.academic.Loaded(msg.academic, msg.screen == m.active, time.Now())
 	case screenConfig:
 		m.configSettings = msg.config
 		m.configOptions = msg.categories
@@ -678,10 +673,6 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 		m.loading = false
 		m.err = msg.err
 		m.content = msg.content
-		if msg.screen == screenAcademic {
-			m.academicMonth = defaultAcademicMonth(msg.academic.Events, time.Now())
-			m.academicCursor = 0
-		}
 		if msg.screen == screenConfig {
 			m.clampConfigCursor()
 		}
@@ -694,9 +685,6 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 		return
 	}
 
-	if msg.screen == screenAcademic && m.academicMonth == 0 {
-		m.academicMonth = defaultAcademicMonth(msg.academic.Events, time.Now())
-	}
 	if msg.screen == screenConfig {
 		m.clampConfigCursor()
 	}
@@ -2012,7 +2000,7 @@ func (m *model) resetLoadedMainScreens() {
 	m.assignments.Reset()
 	m.notices.Reset()
 	m.lectureRows = nil
-	m.academicResult = app.AcademicListResult{}
+	m.academic.Reset()
 	m.activePager().contentCourse = 0
 	m.activePager().contentCursor = 0
 }
@@ -2832,6 +2820,9 @@ func (m model) loadPrefetch(target screen, refresh bool) tea.Cmd {
 }
 
 func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.Cmd {
+	if target == screenAcademic {
+		return loadAcademic(m.ctx, m.service, refresh, prefetch)
+	}
 	if target == screenDue {
 		return loadDue(m.ctx, m.service, refresh, prefetch)
 	}
@@ -2849,9 +2840,6 @@ func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.
 		case screenLectures:
 			rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: refresh})
 			return loadMsg{screen: target, prefetch: prefetch, lectures: rows, err: err}
-		case screenAcademic:
-			result, err := m.service.AcademicList(m.ctx, app.AcademicListOptions{Refresh: refresh})
-			return loadMsg{screen: target, prefetch: prefetch, academic: result, err: err}
 		case screenConfig:
 			msg := m.loadConfigMsg()
 			msg.screen = target
