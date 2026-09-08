@@ -187,3 +187,5 @@ func loadAssignments(ctx context.Context, service assignmentScreenService, refre
 		return loadMsg{screen: screenAssignments, prefetch: prefetch, assignments: rows, err: err}
 	}
 }
+
+func (m *assignmentScreenModel) ResetListPosition() { m.pager = coursePager{} }

@@ -170,3 +170,5 @@ func loadNotices(ctx context.Context, service noticeScreenService, refresh, pref
 		return loadMsg{screen: screenNotices, prefetch: prefetch, notices: rows, err: err}
 	}
 }
+
+func (m *noticeScreenModel) ResetListPosition() { m.pager = coursePager{} }

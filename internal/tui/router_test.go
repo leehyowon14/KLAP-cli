@@ -48,3 +48,16 @@ func TestRootGlobalQuitAndChildKeyPrecedence(t *testing.T) {
 		t.Fatal("global back lost")
 	}
 }
+
+func TestRootLoadsResetOnlyTheOwningChildCursor(t *testing.T) {
+	m := model{active: screenDue, lectures: lectureScreenModel{pager: coursePager{contentCourse: 2, contentCursor: 3}}}
+	m.applyLoadMsg(loadMsg{screen: screenDue})
+	if m.lectures.pager.contentCourse != 2 || m.lectures.pager.contentCursor != 3 {
+		t.Fatal("Due load reset Lecture cursor")
+	}
+	m.active = screenLectures
+	m.applyLoadMsg(loadMsg{screen: screenLectures})
+	if m.lectures.pager.contentCourse != 0 || m.lectures.pager.contentCursor != 0 {
+		t.Fatal("Lecture foreground load did not reset")
+	}
+}

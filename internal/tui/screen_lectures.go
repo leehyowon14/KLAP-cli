@@ -135,3 +135,5 @@ func loadLectures(ctx context.Context, service lectureScreenService, refresh, pr
 	}
 }
 func (m model) selectedLectureRow() (app.LectureRow, bool) { return m.lectures.selectedRow(m.width) }
+
+func (m *lectureScreenModel) ResetListPosition() { m.pager = coursePager{} }

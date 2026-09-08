@@ -430,8 +430,14 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 		if msg.screen == screenConfig {
 			m.config.clampConfigCursor()
 		}
-		m.activePager().contentCourse = 0
-		m.activePager().contentCursor = 0
+		switch msg.screen {
+		case screenAssignments:
+			m.assignments.ResetListPosition()
+		case screenNotices:
+			m.notices.ResetListPosition()
+		case screenLectures:
+			m.lectures.ResetListPosition()
+		}
 		if m.sync.syncPhase == "" {
 			m.syncStatus = ""
 		}
@@ -590,8 +596,6 @@ func (m *model) resetLoadedMainScreens() {
 	m.notices.Reset()
 	m.lectures.Reset()
 	m.academic.Reset()
-	m.activePager().contentCourse = 0
-	m.activePager().contentCursor = 0
 }
 
 func (m model) View() string {
