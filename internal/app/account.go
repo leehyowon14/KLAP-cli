@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"strings"
 )
 
@@ -13,7 +12,7 @@ type UserOption struct {
 }
 
 type UserRow struct {
-	User    account.User
+	User    User
 	Current bool
 }
 
@@ -51,7 +50,7 @@ func (s *Service) Users(ctx context.Context) ([]UserRow, error) {
 	rows := make([]UserRow, 0, len(users))
 	for _, user := range users {
 		rows = append(rows, UserRow{
-			User:    user,
+			User:    userModel(user),
 			Current: user.StudentID == currentStudentID,
 		})
 	}

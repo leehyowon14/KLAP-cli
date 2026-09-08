@@ -1877,8 +1877,8 @@ func TestConfigRowsShowCurrentUserAndTerm(t *testing.T) {
 			Term: app.TermSettings{Value: "2026-1", Label: "2026년도 1학기"},
 		},
 		configUsers: []app.UserRow{
-			{User: account.User{StudentID: "20250001"}},
-			{User: account.User{StudentID: "20250002"}, Current: true},
+			{User: app.User{StudentID: "20250001"}},
+			{User: app.User{StudentID: "20250002"}, Current: true},
 		},
 		configTerms: []app.TermRow{
 			{Term: app.Term{Value: "2025-2", Label: "2025년도 2학기"}},
@@ -1902,8 +1902,8 @@ func TestConfigRowsShowCurrentUserAndTerm(t *testing.T) {
 func TestConfigChoicesUseRegisteredUsersAndTerms(t *testing.T) {
 	m := model{
 		configUsers: []app.UserRow{
-			{User: account.User{StudentID: "20250001"}},
-			{User: account.User{StudentID: "20250002"}, Current: true},
+			{User: app.User{StudentID: "20250001"}},
+			{User: app.User{StudentID: "20250002"}, Current: true},
 		},
 		configTerms: []app.TermRow{
 			{Term: app.Term{Value: "2025-2", Label: "2025년도 2학기"}},
