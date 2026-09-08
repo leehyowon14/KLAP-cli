@@ -365,14 +365,6 @@ func testChromeModel(active screen) model {
 			Until: time.Date(2026, 6, 24, 0, 0, 0, 0, time.Local),
 		},
 
-		noticeRows: []app.NoticeRow{{
-			ID:         "1",
-			CourseName: "강의",
-			Notice: app.Notice{
-				Title:      "공지",
-				Registered: &dueAt,
-			},
-		}},
 		lectureRows: []app.LectureRow{{
 			ID:         "1",
 			CourseName: "강의",
@@ -394,12 +386,6 @@ func testChromeModel(active screen) model {
 		},
 		academicMonth: 6,
 
-		noticeDetail: app.NoticeDetailResult{
-			ID:         "1",
-			CourseName: "강의",
-			DetailURL:  "https://klas.kw.ac.kr",
-			Detail:     app.NoticeDetail{Title: "공지", Registered: &dueAt, ContentText: "본문"},
-		},
 		configSettings: app.ConfigSettings{
 			Reminder: app.ReminderSettings{ListName: "Kwangwoon Univ.", AlarmBeforeMin: 1440},
 			Calendar: app.CalendarSettings{Name: "학사일정", TimetableName: "시간표"},
@@ -436,6 +422,21 @@ func testChromeModel(active screen) model {
 				CourseName: "강의",
 				DetailURL:  "https://klas.kw.ac.kr",
 				Detail:     app.AssignmentDetail{Title: "과제", DueAt: &dueAt, ContentText: "본문"},
+			}},
+		notices: noticeScreenModel{noticeRows: []app.NoticeRow{{
+			ID:         "1",
+			CourseName: "강의",
+			Notice: app.Notice{
+				Title:      "공지",
+				Registered: &dueAt,
+			},
+		}},
+
+			noticeDetail: app.NoticeDetailResult{
+				ID:         "1",
+				CourseName: "강의",
+				DetailURL:  "https://klas.kw.ac.kr",
+				Detail:     app.NoticeDetail{Title: "공지", Registered: &dueAt, ContentText: "본문"},
 			}},
 	}
 	m.configInput.SetValue("입력값")

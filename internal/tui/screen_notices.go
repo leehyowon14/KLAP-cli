@@ -1,38 +1,96 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"strings"
 )
 
-func (m model) openNoticeDetail() (tea.Model, tea.Cmd) {
-	row, ok := m.selectedNoticeRow()
-	if !ok {
-		m.syncStatus = "선택된 공지가 없습니다"
-		return m, nil
-	}
-	m.active = screenNoticeDetail
-	m.detailBack = screenNotices
-	m.loading = true
-	m.err = nil
-	m.syncStatus = ""
-	return m, m.loadNoticeDetail(row.ID)
+type noticeScreenModel struct {
+	noticeRows   []app.NoticeRow
+	noticeDetail app.NoticeDetailResult
+	pager        coursePager
+	detailCursor int
 }
 
-func (m model) loadNoticeDetail(id string) tea.Cmd {
+type noticeScreenService interface {
+	NoticeList(context.Context, app.NoticeListOptions) ([]app.NoticeRow, error)
+	NoticeDetail(context.Context, string, app.UserOption) (app.NoticeDetailResult, error)
+}
+
+func (m *noticeScreenModel) Loaded(rows []app.NoticeRow) { m.noticeRows = rows }
+func (m *noticeScreenModel) DetailLoaded(result app.NoticeDetailResult) {
+	m.noticeDetail = result
+	m.detailCursor = 0
+}
+func (m *noticeScreenModel) resetDetailCursor() { m.detailCursor = 0 }
+
+func (m noticeScreenModel) groups(width int) []contentCourseGroup {
+	return noticeContentGroups(m.noticeRows, maxInt(24, minInt(92, width-12)))
+}
+func (m noticeScreenModel) selectedRow(width int) (app.NoticeRow, bool) {
+	group := m.pager.currentGroup(m.groups(width))
+	return selectedRowByCourse(m.noticeRows, group.name, m.pager.contentCursor, func(row app.NoticeRow) string { return row.CourseName })
+}
+func (m model) selectedNoticeRow() (app.NoticeRow, bool) {
+	return m.notices.selectedRow(m.width)
+}
+
+func (m *noticeScreenModel) Update(msg tea.Msg, width, height int, detail bool, ctx context.Context, service noticeScreenService) (childAction, bool) {
+	if !detail && m.pager.Update(msg, m.groups(width)) {
+		return childAction{}, true
+	}
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	if detail {
+		switch {
+		case key.String() == "up":
+			m.moveDetailCursor(-1, width, height)
+		case key.String() == "down" || keyMatches(key.String(), "j", "ㅓ"):
+			m.moveDetailCursor(1, width, height)
+		default:
+			return childAction{}, false
+		}
+		return childAction{}, true
+	}
+	if key.String() != "enter" {
+		return childAction{}, false
+	}
+	row, ok := m.selectedRow(width)
+	if !ok {
+		return childAction{setStatus: true, status: "선택된 공지가 없습니다"}, true
+	}
+	return childAction{navigate: true, target: screenNoticeDetail, cmd: loadNoticeDetail(ctx, service, row.ID)}, true
+}
+
+func loadNoticeDetail(ctx context.Context, service noticeScreenService, id string) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.NoticeDetail(m.ctx, id, app.UserOption{})
+		result, err := service.NoticeDetail(ctx, id, app.UserOption{})
 		return detailMsg{screen: screenNoticeDetail, notice: result, err: err}
 	}
 }
-
-func (m model) selectedNoticeRow() (app.NoticeRow, bool) {
-	group := m.currentContentGroup(m.width)
-	return selectedRowByCourse(m.noticeRows, group.name, m.activePager().contentCursor, func(row app.NoticeRow) string {
-		return row.CourseName
-	})
+func (m *noticeScreenModel) moveDetailCursor(delta, width, height int) {
+	lines := noticeDetailLines(m.noticeDetail, width)
+	maxCursor := maxInt(0, len(lines)-visibleBodyRows(height, 0))
+	m.detailCursor = clampInt(m.detailCursor+delta, 0, maxCursor)
+}
+func (m noticeScreenModel) View(width, height int, detail bool, status string) string {
+	if !detail {
+		return m.pager.View(m.groups(width), height, screenNotices)
+	}
+	lines := noticeDetailLines(m.noticeDetail, width)
+	if len(lines) == 0 {
+		return emptyStyle.Render("상세 정보가 없습니다") + "\n"
+	}
+	rendered := renderWindowedLines(lines, m.detailCursor, visibleBodyRows(height, 0))
+	if status != "" {
+		rendered += "\n" + footerStyle.Render(status) + "\n"
+	}
+	return rendered
 }
 
 func noticeContentGroups(rows []app.NoticeRow, width int) []contentCourseGroup {
@@ -102,4 +160,13 @@ func formatNotices(rows []app.NoticeRow) string {
 		))
 	}
 	return b.String()
+}
+
+func (m *noticeScreenModel) Reset() { *m = noticeScreenModel{} }
+
+func loadNotices(ctx context.Context, service noticeScreenService, refresh, prefetch bool) tea.Cmd {
+	return func() tea.Msg {
+		rows, err := service.NoticeList(ctx, app.NoticeListOptions{Refresh: refresh})
+		return loadMsg{screen: screenNotices, prefetch: prefetch, notices: rows, err: err}
+	}
 }

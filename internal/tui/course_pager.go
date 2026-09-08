@@ -48,7 +48,7 @@ func (m model) contentGroups(width int) []contentCourseGroup {
 	case screenAssignments:
 		return assignmentContentGroups(m.assignments.assignmentRows, lineWidth)
 	case screenNotices:
-		return noticeContentGroups(m.noticeRows, lineWidth)
+		return noticeContentGroups(m.notices.noticeRows, lineWidth)
 	case screenLectures:
 		return lectureContentGroups(m.lectureRows, lineWidth)
 	default:
@@ -128,6 +128,9 @@ func contentGroupIndex(groups *[]contentCourseGroup, indexByName map[string]int,
 }
 
 func (m model) renderCoursePagedPanel(width int) string {
+	if m.active == screenNotices {
+		return m.notices.View(width, m.height, false, "")
+	}
 	if m.active == screenAssignments {
 		return m.assignments.View(width, m.height, false, "")
 	}
@@ -233,6 +236,9 @@ func (m *coursePager) Update(msg tea.Msg, groups []contentCourseGroup) bool {
 func (m *model) activePager() *coursePager {
 	if m.active == screenAssignments || m.active == screenAssignmentDetail {
 		return &m.assignments.pager
+	}
+	if m.active == screenNotices || m.active == screenNoticeDetail {
+		return &m.notices.pager
 	}
 	return &m.pager
 }

@@ -32,26 +32,26 @@ func TestNoticeContentGroupsMarksPinnedNotices(t *testing.T) {
 func TestDetailScrollClampsAtEdges(t *testing.T) {
 	content := strings.Repeat("본문 줄\n", 40)
 	m := model{
-		active:       screenNoticeDetail,
-		width:        80,
-		height:       14,
-		noticeDetail: app.NoticeDetailResult{ID: "1", CourseName: "강의", DetailURL: "https://klas.kw.ac.kr", Detail: app.NoticeDetail{Title: "공지", ContentText: content}},
+		active:  screenNoticeDetail,
+		width:   80,
+		height:  14,
+		notices: noticeScreenModel{noticeDetail: app.NoticeDetailResult{ID: "1", CourseName: "강의", DetailURL: "https://klas.kw.ac.kr", Detail: app.NoticeDetail{Title: "공지", ContentText: content}}},
 	}
 	m.moveDetailCursor(1)
-	if m.detailCursor != 1 {
-		t.Fatalf("detailCursor after first down = %d", m.detailCursor)
+	if m.notices.detailCursor != 1 {
+		t.Fatalf("detailCursor after first down = %d", m.notices.detailCursor)
 	}
 	for i := 0; i < 100; i++ {
 		m.moveDetailCursor(1)
 	}
-	bottom := m.detailCursor
+	bottom := m.notices.detailCursor
 	if bottom <= 1 {
 		t.Fatalf("detailCursor bottom = %d", bottom)
 	}
 	for i := 0; i < 100; i++ {
 		m.moveDetailCursor(-1)
 	}
-	if m.detailCursor != 0 {
-		t.Fatalf("detailCursor after up clamp = %d", m.detailCursor)
+	if m.notices.detailCursor != 0 {
+		t.Fatalf("detailCursor after up clamp = %d", m.notices.detailCursor)
 	}
 }

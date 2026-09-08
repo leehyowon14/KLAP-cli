@@ -64,7 +64,7 @@ type model struct {
 	dashboardPage       int
 	dashboardCursor     int
 	assignments         assignmentScreenModel
-	noticeRows          []app.NoticeRow
+	notices             noticeScreenModel
 	lectureRows         []app.LectureRow
 	dueResult           app.DueResult
 	duePage             int
@@ -72,12 +72,10 @@ type model struct {
 	academicResult      app.AcademicListResult
 	academicMonth       int
 	academicCursor      int
-	noticeDetail        app.NoticeDetailResult
 	syllabusResult      app.SyllabusResult
 	syllabusCourseIndex int
 	syllabusCursor      int
 	detailBack          screen
-	detailCursor        int
 	pager               coursePager
 	syncStatus          string
 	width               int
@@ -330,6 +328,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applyChildAction(action)
 			}
 		}
+		if (m.active == screenNotices || m.active == screenNoticeDetail) && !m.loading {
+			if action, handled := m.notices.Update(msg, m.width, m.height, m.active == screenNoticeDetail, m.ctx, m.service); handled {
+				return m.applyChildAction(action)
+			}
+		}
 		if m.isCoursePagedScreen() && !m.loading && m.activePager().Update(msg, m.contentGroups(m.width)) {
 			return m, nil
 		}
@@ -351,11 +354,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.isDetailScreen() {
 				if m.active == screenAssignmentDetail {
 					m.assignments.resetDetailCursor()
+				} else {
+					m.notices.resetDetailCursor()
 				}
 				m.active = m.detailBack
 				m.err = nil
 				m.loading = false
-				m.detailCursor = 0
 			} else if m.active != screenHome {
 				m.active = screenHome
 				m.err = nil
@@ -427,9 +431,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.adjustConfigCurrent(-1)
 			}
 		case key == "enter":
-			if m.active == screenNotices && !m.loading {
-				return m.openNoticeDetail()
-			}
 			if m.active == screenConfig && !m.loading {
 				return m.activateConfigCurrent()
 			}
@@ -580,8 +581,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.screen == screenAssignmentDetail {
 			m.assignments.DetailLoaded(msg.assignment)
 		}
-		m.noticeDetail = msg.notice
-		m.detailCursor = 0
+		if msg.screen == screenNoticeDetail {
+			m.notices.DetailLoaded(msg.notice)
+		}
 		m.syncStatus = ""
 		m.loadedAt = time.Now()
 	case syllabusMsg:
@@ -685,7 +687,7 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 	case screenAssignments:
 		m.assignments.Loaded(msg.assignments)
 	case screenNotices:
-		m.noticeRows = msg.notices
+		m.notices.Loaded(msg.notices)
 	case screenLectures:
 		m.lectureRows = msg.lectures
 	case screenAcademic:
@@ -855,7 +857,7 @@ func (m model) openCurrentKlasURL() tea.Cmd {
 	case screenAssignmentDetail:
 		url = m.assignments.assignmentDetail.DetailURL
 	case screenNoticeDetail:
-		url = m.noticeDetail.DetailURL
+		url = m.notices.noticeDetail.DetailURL
 	}
 	if strings.TrimSpace(url) == "" {
 		return nil
@@ -1600,21 +1602,8 @@ func (m model) currentDownloadCourseSelected() bool {
 func (m *model) moveDetailCursor(delta int) {
 	if m.active == screenAssignmentDetail {
 		m.assignments.moveDetailCursor(delta, m.width, m.height)
-		return
-	}
-	lines := m.detailLines(m.width)
-	if len(lines) == 0 {
-		m.detailCursor = 0
-		return
-	}
-	visibleRows := m.visibleBodyRows(0)
-	maxCursor := maxInt(0, len(lines)-visibleRows)
-	m.detailCursor += delta
-	if m.detailCursor < 0 {
-		m.detailCursor = 0
-	}
-	if m.detailCursor > maxCursor {
-		m.detailCursor = maxCursor
+	} else {
+		m.notices.moveDetailCursor(delta, m.width, m.height)
 	}
 }
 
@@ -2195,7 +2184,7 @@ func (m *model) resetLoadedMainScreens() {
 	m.dashboardResult = app.DashboardResult{}
 	m.dueResult = app.DueResult{}
 	m.assignments.Reset()
-	m.noticeRows = nil
+	m.notices.Reset()
 	m.lectureRows = nil
 	m.academicResult = app.AcademicListResult{}
 	m.activePager().contentCourse = 0
@@ -2983,18 +2972,7 @@ func (m model) renderDetailPanel(width int) string {
 	if m.active == screenAssignmentDetail {
 		return m.assignments.View(width, m.height, true, m.syncStatus)
 	}
-	lines := m.detailLines(width)
-	if len(lines) == 0 {
-		return emptyStyle.Render("상세 정보가 없습니다") + "\n"
-	}
-	var b strings.Builder
-	b.WriteString(renderWindowedLines(lines, m.detailCursor, m.visibleBodyRows(0)))
-	if m.syncStatus != "" {
-		b.WriteString("\n")
-		b.WriteString(footerStyle.Render(m.syncStatus))
-		b.WriteString("\n")
-	}
-	return b.String()
+	return m.notices.View(width, m.height, true, m.syncStatus)
 }
 
 func (m model) renderSyllabusPanel(width int) string {
@@ -3019,7 +2997,7 @@ func (m model) detailLines(width int) []string {
 	case screenAssignmentDetail:
 		return assignmentDetailLines(m.assignments.assignmentDetail, width)
 	case screenNoticeDetail:
-		return noticeDetailLines(m.noticeDetail, width)
+		return noticeDetailLines(m.notices.noticeDetail, width)
 	default:
 		return nil
 	}
@@ -3534,6 +3512,9 @@ func (m model) loadPrefetch(target screen, refresh bool) tea.Cmd {
 }
 
 func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.Cmd {
+	if target == screenNotices {
+		return loadNotices(m.ctx, m.service, refresh, prefetch)
+	}
 	if target == screenAssignments {
 		return loadAssignments(m.ctx, m.service, refresh, prefetch)
 	}
@@ -3545,9 +3526,6 @@ func (m model) loadWithPrefetch(target screen, refresh bool, prefetch bool) tea.
 		case screenDue:
 			result, err := m.service.Due(m.ctx, app.DueOptions{Days: 14, Refresh: refresh})
 			return loadMsg{screen: target, prefetch: prefetch, due: result, err: err}
-		case screenNotices:
-			rows, err := m.service.NoticeList(m.ctx, app.NoticeListOptions{Refresh: refresh})
-			return loadMsg{screen: target, prefetch: prefetch, notices: rows, err: err}
 		case screenLectures:
 			rows, err := m.service.LectureList(m.ctx, app.LectureListOptions{Refresh: refresh})
 			return loadMsg{screen: target, prefetch: prefetch, lectures: rows, err: err}
