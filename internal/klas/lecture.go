@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -84,7 +83,7 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 	}
 
 	var response []lectureListItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("강의 목록 응답 파싱 실패: %w", err)
 	}
 
@@ -141,7 +140,7 @@ func (c *Client) LectureKey(ctx context.Context, lecture Lecture) (string, error
 
 	match := lectureKeyPattern.FindSubmatch(body)
 	if len(match) < 2 {
-		return "", errors.New("강의 뷰어 응답에서 lecKey를 찾지 못했습니다")
+		return "", schemaError(errors.New("강의 뷰어 응답에서 lecKey를 찾지 못했습니다"))
 	}
 	return string(match[1]), nil
 }
@@ -179,7 +178,7 @@ func (c *Client) SaveLectureLearningStatus(ctx context.Context, lecture Lecture,
 		return LectureProgress{}, err
 	}
 	if strings.Trim(strings.TrimSpace(string(body)), `"`) != "Y" {
-		return LectureProgress{}, errors.New("학습활동 수강 상태 저장에 실패했습니다")
+		return LectureProgress{}, &Error{Kind: ErrorRemoteBusiness, Err: errors.New("학습활동 수강 상태 저장에 실패했습니다")}
 	}
 
 	requiredTime := strings.TrimSpace(lecture.RequiredTime)
@@ -281,7 +280,7 @@ func lectureLearningStatusPayload(lecture Lecture, lrnStatus string) (map[string
 
 func parseLectureProgress(body []byte) (LectureProgress, error) {
 	var root map[string]any
-	if err := json.Unmarshal(body, &root); err != nil {
+	if err := decodeResponseJSON(body, &root); err != nil {
 		return LectureProgress{}, fmt.Errorf("수강 진도 응답 파싱 실패: %w", err)
 	}
 
@@ -291,11 +290,11 @@ func parseLectureProgress(body []byte) (LectureProgress, error) {
 	}
 	progressText := rowString(source, "prog")
 	if progressText == "" {
-		return LectureProgress{}, errors.New("수강 진도 응답에 prog가 없습니다")
+		return LectureProgress{}, schemaError(errors.New("수강 진도 응답에 prog가 없습니다"))
 	}
 	progress, err := strconv.ParseFloat(progressText, 64)
 	if err != nil {
-		return LectureProgress{}, fmt.Errorf("수강 진도 prog 파싱 실패: %w", err)
+		return LectureProgress{}, schemaError(fmt.Errorf("수강 진도 prog 파싱 실패: %w", err))
 	}
 	return LectureProgress{
 		TotalTime: rowString(source, "totalTime"),
