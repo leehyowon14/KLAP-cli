@@ -487,7 +487,7 @@ func (r Runner) runTimetable(ctx context.Context, service *app.Service, args []s
 	return nil
 }
 
-func runAttendance(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runAttendance(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) > 0 && args[0] == "cdp" {
 		result, err := service.CdpAttendance(ctx, app.CdpAttendanceOptions{
 			User: app.UserOption{StudentID: userFlag(args[1:])},
@@ -495,7 +495,7 @@ func runAttendance(ctx context.Context, service *app.Service, args []string) err
 		if err != nil {
 			return err
 		}
-		printCdpAttendance(result)
+		r.printCdpAttendance(result)
 		return nil
 	}
 	if len(args) > 0 && args[0] == "detail" {
@@ -509,7 +509,7 @@ func runAttendance(ctx context.Context, service *app.Service, args []string) err
 		if err != nil {
 			return err
 		}
-		printAttendanceDetail(result)
+		r.printAttendanceDetail(result)
 		return nil
 	}
 	if len(args) > 0 && args[0] == "list" {
@@ -525,7 +525,7 @@ func runAttendance(ctx context.Context, service *app.Service, args []string) err
 	if err != nil {
 		return err
 	}
-	printAttendanceList(result)
+	r.printAttendanceList(result)
 	return nil
 }
 
@@ -2066,18 +2066,18 @@ func (r Runner) printTimetable(result app.TimetableResult) {
 	}
 }
 
-func printAttendanceList(result app.AttendanceListResult) {
-	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
+func (r Runner) printAttendanceList(result app.AttendanceListResult) {
+	_, _ = fmt.Fprintf(r.Out, "%s (%s)\n", result.Term.Label, result.Term.Value)
 	if len(result.Rows) == 0 {
-		fmt.Println("출석 현황이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "출석 현황이 없습니다")
 		return
 	}
 
-	fmt.Println("번호 | 학정번호 | 과목 | 교수 | 강의시간 | 출석 요약")
+	_, _ = fmt.Fprintln(r.Out, "번호 | 학정번호 | 과목 | 교수 | 강의시간 | 출석 요약")
 	for _, row := range result.Rows {
 		course := row.Course
 		summary := attendanceSummary(row)
-		fmt.Printf("%d. %s | %s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%d. %s | %s | %s | %s | %s\n",
 			row.Index,
 			emptyFallback(course.CourseCode, "-"),
 			emptyFallback(course.Name, "-"),
@@ -2088,54 +2088,54 @@ func printAttendanceList(result app.AttendanceListResult) {
 	}
 }
 
-func printAttendanceDetail(result app.AttendanceDetailResult) {
+func (r Runner) printAttendanceDetail(result app.AttendanceDetailResult) {
 	row := result.Row
 	course := row.Course
-	fmt.Printf("%s (%s)\n", result.Term.Label, result.Term.Value)
-	fmt.Printf("과목: %s\n", course.Name)
-	fmt.Printf("학정번호: %s\n", emptyFallback(course.CourseCode, "-"))
-	fmt.Printf("교수: %s\n", emptyFallback(course.Professor, "-"))
-	fmt.Printf("강의시간: %s\n", emptyFallback(course.Weekday, "확인 필요"))
-	fmt.Printf("출석 요약: %s\n", attendanceSummary(row))
+	_, _ = fmt.Fprintf(r.Out, "%s (%s)\n", result.Term.Label, result.Term.Value)
+	_, _ = fmt.Fprintf(r.Out, "과목: %s\n", course.Name)
+	_, _ = fmt.Fprintf(r.Out, "학정번호: %s\n", emptyFallback(course.CourseCode, "-"))
+	_, _ = fmt.Fprintf(r.Out, "교수: %s\n", emptyFallback(course.Professor, "-"))
+	_, _ = fmt.Fprintf(r.Out, "강의시간: %s\n", emptyFallback(course.Weekday, "확인 필요"))
+	_, _ = fmt.Fprintf(r.Out, "출석 요약: %s\n", attendanceSummary(row))
 	if row.Err != nil {
-		fmt.Printf("상세 오류: %v\n", row.Err)
+		_, _ = fmt.Fprintf(r.Out, "상세 오류: %v\n", row.Err)
 		return
 	}
 	if len(row.Sessions) == 0 {
-		fmt.Println("상세 출석 내역이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "상세 출석 내역이 없습니다")
 		return
 	}
 
-	fmt.Println("\n주차별 출석")
+	_, _ = fmt.Fprintln(r.Out, "\n주차별 출석")
 	for _, session := range row.Sessions {
 		parts := make([]string, 0, len(session.Slots))
 		for _, slot := range session.Slots {
 			parts = append(parts, fmt.Sprintf("%d차시 %s %s", slot.Index, attendanceMarkLabel(slot.Mark), formatAttendanceDate(slot.Date)))
 		}
-		fmt.Printf("%s주차 | %s\n", emptyFallback(session.Week, "-"), strings.Join(parts, " / "))
+		_, _ = fmt.Fprintf(r.Out, "%s주차 | %s\n", emptyFallback(session.Week, "-"), strings.Join(parts, " / "))
 	}
 }
 
-func printCdpAttendance(result app.CdpAttendanceResult) {
+func (r Runner) printCdpAttendance(result app.CdpAttendanceResult) {
 	report := result.Report
-	fmt.Println("CDP 출석내역")
-	fmt.Printf("총 출석: %s회\n", emptyFallback(report.TotalCount, "0"))
+	_, _ = fmt.Fprintln(r.Out, "CDP 출석내역")
+	_, _ = fmt.Fprintf(r.Out, "총 출석: %s회\n", emptyFallback(report.TotalCount, "0"))
 	if len(report.Rows) == 0 {
-		fmt.Println("CDP 출석내역이 없습니다")
-		fmt.Println("* 출석내역은 출석 후 약 일주일 후에 반영됩니다.")
+		_, _ = fmt.Fprintln(r.Out, "CDP 출석내역이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "* 출석내역은 출석 후 약 일주일 후에 반영됩니다.")
 		return
 	}
 
-	fmt.Println("날짜 | 회차 | 강의주제 | 강사명")
+	_, _ = fmt.Fprintln(r.Out, "날짜 | 회차 | 강의주제 | 강사명")
 	for _, row := range report.Rows {
-		fmt.Printf("%s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%s | %s | %s | %s\n",
 			emptyFallback(formatCdpDate(row.Date), "-"),
 			emptyFallback(row.Seq, "-"),
 			emptyFallback(row.Title, "-"),
 			emptyFallback(row.Speaker, "-"),
 		)
 	}
-	fmt.Println("* 출석내역은 출석 후 약 일주일 후에 반영됩니다.")
+	_, _ = fmt.Fprintln(r.Out, "* 출석내역은 출석 후 약 일주일 후에 반영됩니다.")
 }
 
 func printGrade(result app.GradeResult) {
