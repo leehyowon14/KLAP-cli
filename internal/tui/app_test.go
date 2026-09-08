@@ -353,13 +353,7 @@ func testChromeModel(active screen) model {
 		active: active,
 		width:  80,
 		height: 24,
-		dashboardResult: app.DashboardResult{
-			Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
-			Courses: []app.DashboardCourse{{
-				Index: 1,
-				Name:  "강의",
-			}},
-		},
+
 		dueResult: app.DueResult{
 			From:  time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local),
 			Until: time.Date(2026, 6, 24, 0, 0, 0, 0, time.Local),
@@ -438,6 +432,13 @@ func testChromeModel(active screen) model {
 				DetailURL:  "https://klas.kw.ac.kr",
 				Detail:     app.NoticeDetail{Title: "공지", Registered: &dueAt, ContentText: "본문"},
 			}},
+		dashboard: dashboardScreenModel{dashboardResult: app.DashboardResult{
+			Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
+			Courses: []app.DashboardCourse{{
+				Index: 1,
+				Name:  "강의",
+			}},
+		}},
 	}
 	m.configInput.SetValue("입력값")
 	return m
@@ -477,9 +478,9 @@ func TestSyncPanelHidesDashboardStatus(t *testing.T) {
 		active:     screenDashboard,
 		syncPhase:  "done",
 		syncStatus: "동기화 완료: 과제 생성 1",
-		dashboardResult: app.DashboardResult{
+		dashboard: dashboardScreenModel{dashboardResult: app.DashboardResult{
 			Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
-		},
+		}},
 	}
 	view := m.renderPanel(96)
 	if !strings.Contains(view, "DONE") || !strings.Contains(view, "과제 생성 1") {
@@ -499,14 +500,16 @@ func TestDashboardSyllabusShortcutOnlyWorksOnCoursePage(t *testing.T) {
 		}},
 	}
 
-	summary := model{active: screenDashboard, dashboardResult: result}
+	summary := model{active: screenDashboard,
+		dashboard: dashboardScreenModel{dashboardResult: result}}
 	updated, cmd := summary.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
 	got := updated.(model)
 	if got.active != screenDashboard || cmd != nil {
 		t.Fatalf("summary shortcut active=%v cmd nil=%t", got.active, cmd == nil)
 	}
 
-	course := model{active: screenDashboard, dashboardResult: result, dashboardPage: 1}
+	course := model{active: screenDashboard,
+		dashboard: dashboardScreenModel{dashboardResult: result, dashboardPage: 1}}
 	updated, cmd = course.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
 	got = updated.(model)
 	if got.active != screenSyllabus || !got.loading || got.syllabusCourseIndex != 1 || cmd == nil {
@@ -516,12 +519,12 @@ func TestDashboardSyllabusShortcutOnlyWorksOnCoursePage(t *testing.T) {
 
 func TestDashboardSyllabusShortcutAcceptsKoreanKeyboardKey(t *testing.T) {
 	m := model{
-		active:        screenDashboard,
-		dashboardPage: 1,
-		dashboardResult: app.DashboardResult{
-			Term:    app.Term{Value: "2026,1"},
-			Courses: []app.DashboardCourse{{Index: 1, Name: "컴퓨터그래픽스"}},
-		},
+		active: screenDashboard,
+		dashboard: dashboardScreenModel{dashboardPage: 1,
+			dashboardResult: app.DashboardResult{
+				Term:    app.Term{Value: "2026,1"},
+				Courses: []app.DashboardCourse{{Index: 1, Name: "컴퓨터그래픽스"}},
+			}},
 	}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("ㅔ")})
 	got := updated.(model)
@@ -531,11 +534,12 @@ func TestDashboardSyllabusShortcutAcceptsKoreanKeyboardKey(t *testing.T) {
 }
 
 func TestSyllabusBackReturnsToSelectedDashboardCourse(t *testing.T) {
-	m := model{active: screenSyllabus, dashboardPage: 2, syllabusCursor: 3}
+	m := model{active: screenSyllabus, syllabusCursor: 3,
+		dashboard: dashboardScreenModel{dashboardPage: 2}}
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	got := updated.(model)
-	if got.active != screenDashboard || got.dashboardPage != 2 || got.syllabusCursor != 0 {
-		t.Fatalf("back active=%v dashboardPage=%d syllabusCursor=%d", got.active, got.dashboardPage, got.syllabusCursor)
+	if got.active != screenDashboard || got.dashboard.dashboardPage != 2 || got.syllabusCursor != 0 {
+		t.Fatalf("back active=%v dashboardPage=%d syllabusCursor=%d", got.active, got.dashboard.dashboardPage, got.syllabusCursor)
 	}
 }
 

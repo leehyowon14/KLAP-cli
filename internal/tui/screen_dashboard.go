@@ -1,13 +1,16 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"strings"
+	"time"
 )
 
-func (m model) currentDashboardCourse() (app.DashboardCourse, bool) {
+func (m dashboardScreenModel) currentDashboardCourse() (app.DashboardCourse, bool) {
 	index := m.dashboardPage - 1
 	if index < 0 || index >= len(m.dashboardResult.Courses) {
 		return app.DashboardCourse{}, false
@@ -15,7 +18,7 @@ func (m model) currentDashboardCourse() (app.DashboardCourse, bool) {
 	return m.dashboardResult.Courses[index], true
 }
 
-func (m *model) moveDashboardPage(delta int) {
+func (m *dashboardScreenModel) moveDashboardPage(delta int) {
 	total := dashboardPageCount(m.dashboardResult)
 	if total <= 0 {
 		m.dashboardPage = 0
@@ -31,13 +34,13 @@ func (m *model) moveDashboardPage(delta int) {
 	m.dashboardCursor = 0
 }
 
-func (m *model) moveDashboardCursor(delta int) {
-	lines := m.dashboardLines(m.width)
+func (m *dashboardScreenModel) moveDashboardCursor(delta, width, height int, lastSyncAt time.Time) {
+	lines := m.dashboardLines(width, lastSyncAt)
 	if len(lines) == 0 {
 		m.dashboardCursor = 0
 		return
 	}
-	visibleRows := m.visibleBodyRows(0)
+	visibleRows := visibleBodyRows(height, 0)
 	maxCursor := maxInt(0, len(lines)-visibleRows)
 	m.dashboardCursor += delta
 	if m.dashboardCursor < 0 {
@@ -48,21 +51,21 @@ func (m *model) moveDashboardCursor(delta int) {
 	}
 }
 
-func (m model) renderDashboardPagedPanel(width int) string {
-	lines := m.dashboardLines(width)
+func (m dashboardScreenModel) View(width, height int, lastSyncAt time.Time) string {
+	lines := m.dashboardLines(width, lastSyncAt)
 	if len(lines) == 0 {
 		return emptyStyle.Render("대시보드 데이터가 없습니다") + "\n"
 	}
-	return renderWindowedLines(lines, m.dashboardCursor, m.visibleBodyRows(0))
+	return renderWindowedLines(lines, m.dashboardCursor, visibleBodyRows(height, 0))
 }
 
-func (m model) dashboardLines(width int) []string {
+func (m dashboardScreenModel) dashboardLines(width int, lastSyncAt time.Time) []string {
 	pages := dashboardPageCount(m.dashboardResult)
 	if pages <= 1 || m.dashboardPage == 0 {
 		lines := splitRenderedLines(formatDashboard(m.dashboardResult))
-		if !m.lastSyncAt.IsZero() {
+		if !lastSyncAt.IsZero() {
 			lines = append(lines, "")
-			lines = append(lines, splitRenderedLines(renderSection("SYNC", []string{dashboardMetric("Last Syncing", m.lastSyncAt.Format("2006-01-02 15:04:05"))}))...)
+			lines = append(lines, splitRenderedLines(renderSection("SYNC", []string{dashboardMetric("Last Syncing", lastSyncAt.Format("2006-01-02 15:04:05"))}))...)
 		}
 		return lines
 	}
@@ -258,3 +261,61 @@ func formatNoticeSummary(rows []app.NoticeRow) []string {
 	}
 	return lines
 }
+
+type dashboardScreenModel struct {
+	dashboardResult app.DashboardResult
+	dashboardPage   int
+	dashboardCursor int
+}
+type dashboardScreenService interface {
+	Dashboard(context.Context, app.DashboardOptions) (app.DashboardResult, error)
+}
+
+func (m *dashboardScreenModel) Loaded(result app.DashboardResult, active bool) {
+	m.dashboardResult = result
+	if active {
+		m.dashboardPage = 0
+		m.dashboardCursor = 0
+	}
+}
+func (m *dashboardScreenModel) Reset()     { *m = dashboardScreenModel{} }
+func (m *dashboardScreenModel) resetPage() { m.dashboardPage = 0 }
+func (m *dashboardScreenModel) Update(msg tea.Msg, width, height int, lastSyncAt time.Time) (childAction, bool) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	switch {
+	case key.String() == "up" || keyMatches(key.String(), "k", "ㅏ"):
+		m.moveDashboardCursor(-1, width, height, lastSyncAt)
+	case key.String() == "down" || keyMatches(key.String(), "j", "ㅓ"):
+		m.moveDashboardCursor(1, width, height, lastSyncAt)
+	case key.String() == "left":
+		m.moveDashboardPage(-1)
+	case key.String() == "right":
+		m.moveDashboardPage(1)
+	case keyMatches(key.String(), "p", "ㅔ"):
+		course, ok := m.currentDashboardCourse()
+		if !ok {
+			return childAction{}, false
+		}
+		index := course.Index
+		if index <= 0 {
+			index = m.dashboardPage
+		}
+		return childAction{navigate: true, target: screenSyllabus, courseIndex: index}, true
+	default:
+		return childAction{}, false
+	}
+	return childAction{}, true
+}
+func loadDashboard(ctx context.Context, service dashboardScreenService, refresh, prefetch bool) tea.Cmd {
+	return func() tea.Msg {
+		result, err := service.Dashboard(ctx, app.DashboardOptions{Refresh: refresh})
+		return loadMsg{screen: screenDashboard, prefetch: prefetch, content: formatDashboard(result), dashboard: result, err: err}
+	}
+}
+func (m model) renderDashboardPagedPanel(width int) string {
+	return m.dashboard.View(width, m.height, m.lastSyncAt)
+}
+func (m *model) moveDashboardPage(delta int) { m.dashboard.moveDashboardPage(delta) }
