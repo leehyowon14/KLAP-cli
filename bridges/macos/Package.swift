@@ -10,7 +10,8 @@ let package = Package(
     products: [
         .executable(name: "TranscriptBridge", targets: ["TranscriptBridge"]),
         .executable(name: "ReminderBridge", targets: ["ReminderBridge"]),
-        .executable(name: "CalendarBridge", targets: ["CalendarBridge"])
+        .executable(name: "CalendarBridge", targets: ["CalendarBridge"]),
+        .executable(name: "CategoryBridge", targets: ["CategoryBridge"])
     ],
     targets: [
         .executableTarget(name: "TranscriptBridge"),
@@ -18,6 +19,7 @@ let package = Package(
         .target(name: "EventKitCore", swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(name: "ReminderBridge", dependencies: ["EventKitCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(name: "CalendarBridge", dependencies: ["EventKitCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(name: "CategoryBridge", dependencies: ["EventKitCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "EventKitCoreTests", dependencies: ["EventKitCore"], swiftSettings: [.swiftLanguageMode(.v5)])
     ]
 )
