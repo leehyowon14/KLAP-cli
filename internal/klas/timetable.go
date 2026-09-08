@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -35,7 +34,7 @@ func (c *Client) Timetable(ctx context.Context, yearHakgi string) ([]TimetableEn
 	}
 
 	var response []timetableRow
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("시간표 목록 응답 파싱 실패: %w", err)
 	}
 
