@@ -609,7 +609,7 @@ func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []Lect
 	default:
 	}
 
-	response, err := transcript.NewMacOSBridge(s.transcriptBridgePath).TranscribeWithProgress(ctx, transcript.Request{Jobs: jobs}, func(progress transcript.Progress) {
+	response, err := s.transcriber.TranscribeWithProgress(ctx, transcript.Request{Jobs: jobs}, func(progress transcript.Progress) {
 		index := transcriptJobIndex(jobs, progress.InputPath, progress.OutputPath)
 		row := LectureRow{}
 		if index >= 0 && index < len(rows) {
@@ -1034,4 +1034,8 @@ func copyWithProgress(dst io.Writer, src io.Reader, offset int64, totalBytes int
 			return written, readErr
 		}
 	}
+}
+
+type Transcriber interface {
+	TranscribeWithProgress(context.Context, transcript.Request, func(transcript.Progress)) (transcript.Response, error)
 }

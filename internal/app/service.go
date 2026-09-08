@@ -7,17 +7,17 @@ import (
 )
 
 type Service struct {
-	store                AccountStore
-	sessions             sessionStore
-	settingsStore        SettingsStore
-	cacheStore           CacheStore
-	syncStateStore       syncStateStore
-	newKlasClient        func() (*klas.Client, error)
-	login                func(context.Context, *klas.Client, string, string) (klas.Session, error)
-	reminderSyncer       ReminderSyncer
-	calendarSyncer       CalendarSyncer
-	categoryLister       CategoryLister
-	transcriptBridgePath string
+	store          AccountStore
+	sessions       sessionStore
+	settingsStore  SettingsStore
+	cacheStore     CacheStore
+	syncStateStore syncStateStore
+	newKlasClient  func() (*klas.Client, error)
+	login          func(context.Context, *klas.Client, string, string) (klas.Session, error)
+	reminderSyncer ReminderSyncer
+	calendarSyncer CalendarSyncer
+	categoryLister CategoryLister
+	transcriber    Transcriber
 }
 
 type OpenURLResult struct {

@@ -12,6 +12,7 @@ import (
 	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
+	transcript "github.com/leehyowon14/KLAP-cli/internal/transcript"
 )
 
 type serviceStoreFactories struct {
@@ -51,9 +52,9 @@ func newService(store *account.Store, factories serviceStoreFactories) (*app.Ser
 		Login: func(ctx context.Context, client *klas.Client, studentID string, password string) (klas.Session, error) {
 			return client.Login(ctx, studentID, password)
 		},
-		Reminder:             reminder.NewMacOSBridge(defaultReminderBridgePath()),
-		Calendar:             klapcalendar.NewMacOSBridge(defaultCalendarBridgePath()),
-		Categories:           category.NewMacOSBridge(defaultCategoryBridgePath()),
-		TranscriptBridgePath: defaultTranscriptBridgePath(),
+		Reminder:    reminder.NewMacOSBridge(defaultReminderBridgePath()),
+		Calendar:    klapcalendar.NewMacOSBridge(defaultCalendarBridgePath()),
+		Categories:  category.NewMacOSBridge(defaultCategoryBridgePath()),
+		Transcriber: transcript.NewMacOSBridge(defaultTranscriptBridgePath()),
 	})
 }

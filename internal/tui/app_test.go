@@ -23,6 +23,7 @@ import (
 	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
+	transcript "github.com/leehyowon14/KLAP-cli/internal/transcript"
 )
 
 func newTUITestService(t *testing.T) *app.Service {
@@ -50,6 +51,7 @@ func newTUITestService(t *testing.T) *app.Service {
 		Reminder:      reminder.NewMacOSBridge("unused"),
 		Calendar:      klapcalendar.NewMacOSBridge("unused"),
 		Categories:    category.NewMacOSBridge("unused"),
+		Transcriber:   transcript.NewMacOSBridge("unused"),
 		NewKlasClient: klas.NewClient,
 		Login: func(ctx context.Context, c *klas.Client, id, password string) (klas.Session, error) {
 			return c.Login(ctx, id, password)
