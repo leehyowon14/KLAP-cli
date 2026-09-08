@@ -13,6 +13,7 @@ import (
 type model struct {
 	ctx             context.Context
 	service         *app.Service
+	opener          func(context.Context, string, string) error
 	home            homeModel
 	active          screen
 	loading         bool
@@ -57,13 +58,19 @@ type detailMsg struct {
 	err        error
 }
 
-func Run(ctx context.Context, service *app.Service) error {
+func Run(ctx context.Context, service *app.Service, opener func(context.Context, string, string) error) error {
 	if service == nil {
 		return errors.New("TUI service가 없습니다")
 	}
+	if opener == nil {
+		return errors.New("TUI opener가 없습니다")
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	initial := model{
 		ctx:            ctx,
 		service:        service,
+		opener:         opener,
 		active:         screenAuth,
 		loading:        true,
 		loadedScreens:  map[screen]bool{},
