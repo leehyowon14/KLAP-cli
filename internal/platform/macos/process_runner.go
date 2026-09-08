@@ -37,6 +37,22 @@ func (e *ProcessError) Unwrap() error { return e.Err }
 
 type ProcessRunner struct{}
 
+// Start launches a detached desktop helper and reaps it asynchronously. The
+// buffered completion channel carries the same errors as Run without requiring
+// a receiver; callers interested only in launch success may discard it.
+func (r ProcessRunner) Start(ctx context.Context, spec ProcessSpec) (<-chan error, error) {
+	process, err := r.startWithStdout(ctx, spec, false)
+	if err != nil {
+		return nil, err
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- process.wait(nil)
+		close(done)
+	}()
+	return done, nil
+}
+
 // Run consumes stdout while the child is alive, then joins it. A decoder error
 // cancels the child before waiting, so malformed output cannot leave it blocked.
 func (r ProcessRunner) Run(ctx context.Context, spec ProcessSpec, consume func(io.Reader) error) error {
@@ -56,7 +72,11 @@ type runningProcess struct {
 	watcherDone chan struct{}
 }
 
-func (ProcessRunner) start(ctx context.Context, spec ProcessSpec) (*runningProcess, error) {
+func (r ProcessRunner) start(ctx context.Context, spec ProcessSpec) (*runningProcess, error) {
+	return r.startWithStdout(ctx, spec, true)
+}
+
+func (ProcessRunner) startWithStdout(ctx context.Context, spec ProcessSpec, capture bool) (*runningProcess, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -70,14 +90,21 @@ func (ProcessRunner) start(ctx context.Context, spec ProcessSpec) (*runningProce
 	command.Stderr = stderr
 	// Bound waiting for inherited stderr descriptors after the direct child exits.
 	command.WaitDelay = time.Second
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		cancel()
-		return nil, &ProcessError{Program: spec.Name, Stage: "start", Err: err}
+	var stdout io.ReadCloser
+	if capture {
+		var err error
+		stdout, err = command.StdoutPipe()
+		if err != nil {
+			cancel()
+			return nil, &ProcessError{Program: spec.Name, Stage: "start", Err: err}
+		}
 	}
+	// A detached launcher inherits no stdout pipe, so a browser cannot delay Wait.
 	if err := command.Start(); err != nil {
 		cancel()
-		_ = stdout.Close()
+		if stdout != nil {
+			_ = stdout.Close()
+		}
 		return nil, &ProcessError{Program: spec.Name, Stage: "start", Err: err}
 	}
 	process := &runningProcess{parent: ctx, cancel: cancel, command: command, stdout: stdout, stderr: stderr, watcherDone: make(chan struct{})}
@@ -85,7 +112,9 @@ func (ProcessRunner) start(ctx context.Context, spec ProcessSpec) (*runningProce
 		defer close(process.watcherDone)
 		<-child.Done()
 		// Closing also interrupts a decoder when a grandchild inherited stdout.
-		_ = stdout.Close()
+		if stdout != nil {
+			_ = stdout.Close()
+		}
 	}()
 	return process, nil
 }
@@ -95,11 +124,14 @@ func (p *runningProcess) wait(consume func(io.Reader) error) error {
 	if consume == nil {
 		consume = func(r io.Reader) error { _, err := io.Copy(io.Discard, r); return err }
 	}
-	decodeErr := consume(p.stdout)
-	if decodeErr != nil {
-		p.cancel()
+	var decodeErr error
+	if p.stdout != nil {
+		decodeErr = consume(p.stdout)
+		if decodeErr != nil {
+			p.cancel()
+		}
+		_ = p.stdout.Close()
 	}
-	_ = p.stdout.Close()
 	waitErr := p.command.Wait()
 	p.cancel()
 	<-p.watcherDone

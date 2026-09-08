@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,6 +29,15 @@ func TestProcessHelper(t *testing.T) {
 		os.Exit(7)
 	case "hang":
 		time.Sleep(time.Minute)
+	case "linger":
+		time.Sleep(5 * time.Second)
+	case "inherited-stdout":
+		child := exec.Command(os.Args[0], "-test.run=^TestProcessHelper$", "--", "--klap-process-helper", "linger")
+		child.Stdout = os.Stdout
+		if err := child.Start(); err != nil {
+			os.Exit(9)
+		}
+		_ = child.Process.Release()
 	case "malformed":
 		_, _ = fmt.Fprintln(os.Stdout, "not-json")
 		for {
