@@ -21,7 +21,7 @@ func TestDashboardCoursesBuildsCourseScopedSummary(t *testing.T) {
 		{CourseName: "오픈소스소프트웨어실습", Lecture: klas.Lecture{Title: "HuggingFace", ContentID: "a", Progress: "0", EndAt: &due}},
 	}
 	notices := []NoticeRow{
-		{CourseName: "컴퓨터그래픽스", Notice: klas.Notice{Title: "공지"}},
+		{CourseName: "컴퓨터그래픽스", Notice: Notice{Title: "공지"}},
 	}
 	attendance := DashboardAttendance{Rows: []DashboardAttendanceRow{{
 		Course:    klas.AttendanceCourse{Name: "컴퓨터그래픽스"},
@@ -129,8 +129,8 @@ func TestDashboardNoticesSortsByRecentDate(t *testing.T) {
 	oldDate := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
 	newDate := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
 	rows := []NoticeRow{
-		{ID: "old", Notice: klas.Notice{Registered: &oldDate, Top: true}},
-		{ID: "new", Notice: klas.Notice{Registered: &newDate}},
+		{ID: "old", Notice: Notice{Registered: &oldDate, Top: true}},
+		{ID: "new", Notice: Notice{Registered: &newDate}},
 	}
 
 	got := dashboardNotices(rows, 2)

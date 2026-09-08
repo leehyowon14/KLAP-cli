@@ -22,7 +22,7 @@ type NoticeRow struct {
 	TermValue  string
 	CourseName string
 	DetailURL  string
-	Notice     klas.Notice
+	Notice     Notice
 }
 
 type NoticeDetailResult struct {
@@ -30,7 +30,7 @@ type NoticeDetailResult struct {
 	TermValue  string
 	CourseName string
 	DetailURL  string
-	Detail     klas.NoticeDetail
+	Detail     NoticeDetail
 }
 
 func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]NoticeRow, error) {
@@ -84,7 +84,7 @@ func (s *Service) NoticeList(ctx context.Context, opts NoticeListOptions) ([]Not
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				DetailURL:  noticeDetailURL(term.Value, selectedCourse.Course, notice.BoardNo, notice.MasterNo),
-				Notice:     notice,
+				Notice:     noticeModel(notice),
 			})
 		}
 	}
@@ -158,7 +158,7 @@ func (s *Service) NoticeDetail(ctx context.Context, id string, user UserOption) 
 		TermValue:  term.Value,
 		CourseName: course.Name,
 		DetailURL:  noticeDetailURL(term.Value, course, boardNo, masterNo),
-		Detail:     detail,
+		Detail:     noticeDetailModel(detail),
 	}, nil
 }
 

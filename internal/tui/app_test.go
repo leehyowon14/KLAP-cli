@@ -320,7 +320,7 @@ func TestListFormatsHideInternalIDs(t *testing.T) {
 	notices := formatNotices([]app.NoticeRow{{
 		ID:         "2:1151742:1",
 		CourseName: "창의설계입문",
-		Notice: klas.Notice{
+		Notice: app.Notice{
 			Title:      "최종 발표 일정 안내",
 			Registered: &due,
 		},
@@ -482,7 +482,7 @@ func TestNoticeContentGroupsMarksPinnedNotices(t *testing.T) {
 	registered := time.Date(2026, 6, 1, 10, 0, 0, 0, time.Local)
 	groups := noticeContentGroups([]app.NoticeRow{{
 		CourseName: "컴퓨터그래픽스",
-		Notice: klas.Notice{
+		Notice: app.Notice{
 			Title:      "중요 공지",
 			Top:        true,
 			Registered: &registered,
@@ -741,7 +741,7 @@ func testChromeModel(active screen) model {
 		noticeRows: []app.NoticeRow{{
 			ID:         "1",
 			CourseName: "강의",
-			Notice: klas.Notice{
+			Notice: app.Notice{
 				Title:      "공지",
 				Registered: &dueAt,
 			},
@@ -776,7 +776,7 @@ func testChromeModel(active screen) model {
 			ID:         "1",
 			CourseName: "강의",
 			DetailURL:  "https://klas.kw.ac.kr",
-			Detail:     klas.NoticeDetail{Title: "공지", Registered: &dueAt, ContentText: "본문"},
+			Detail:     app.NoticeDetail{Title: "공지", Registered: &dueAt, ContentText: "본문"},
 		},
 		configSettings: app.ConfigSettings{
 			Reminder: app.ReminderSettings{ListName: "Kwangwoon Univ.", AlarmBeforeMin: 1440},
@@ -873,7 +873,7 @@ func TestDetailScrollClampsAtEdges(t *testing.T) {
 		active:       screenNoticeDetail,
 		width:        80,
 		height:       14,
-		noticeDetail: app.NoticeDetailResult{ID: "1", CourseName: "강의", DetailURL: "https://klas.kw.ac.kr", Detail: klas.NoticeDetail{Title: "공지", ContentText: content}},
+		noticeDetail: app.NoticeDetailResult{ID: "1", CourseName: "강의", DetailURL: "https://klas.kw.ac.kr", Detail: app.NoticeDetail{Title: "공지", ContentText: content}},
 	}
 	m.moveDetailCursor(1)
 	if m.detailCursor != 1 {
@@ -909,7 +909,7 @@ func TestDashboardFormatUsesScanSections(t *testing.T) {
 		Notices: []app.NoticeRow{{
 			ID:         "2:1151742:1",
 			CourseName: "창의설계입문",
-			Notice: klas.Notice{
+			Notice: app.Notice{
 				Title:      "최종 발표 일정 안내",
 				Registered: &due,
 			},
@@ -949,7 +949,7 @@ func TestDashboardPagedPanelShowsCoursePages(t *testing.T) {
 				}},
 				Notices: []app.NoticeRow{{
 					CourseName: "컴퓨터그래픽스",
-					Notice:     klas.Notice{Title: "강의 공지", Registered: &due},
+					Notice:     app.Notice{Title: "강의 공지", Registered: &due},
 				}},
 				Attendance: &app.DashboardAttendanceRow{Completed: 10, Absent: 1},
 			},
