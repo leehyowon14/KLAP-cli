@@ -101,7 +101,7 @@ func selectTermRow(rows []TermRow, selector string) (TermRow, error) {
 	for index := range rows {
 		if rows[index].Term.Value == selector || strings.Contains(rows[index].Term.Label, selector) {
 			if matched != nil {
-				return TermRow{}, fmt.Errorf("학기명이 여러 개와 일치합니다. term list 번호를 사용하세요: %s", selector)
+				return TermRow{}, fmt.Errorf("학기명이 여러 개와 일치합니다. 학기 목록 번호를 사용하세요: %s", selector)
 			}
 			matched = &rows[index]
 		}
