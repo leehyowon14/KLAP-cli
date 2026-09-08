@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -77,5 +78,27 @@ func TestHelpAliasesProduceSameOutput(t *testing.T) {
 		} else if out.String() != expected {
 			t.Fatalf("help alias %q differs", name)
 		}
+	}
+}
+
+func TestReadmeCommandListMatchesRegistryHelp(t *testing.T) {
+	data, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const start = "<!-- cli-help:start -->\n" + "```text\n"
+	const end = "```\n<!-- cli-help:end -->"
+	_, section, ok := strings.Cut(string(data), start)
+	if !ok {
+		t.Fatal("README command section missing")
+	}
+	section, _, ok = strings.Cut(section, end)
+	if !ok {
+		t.Fatal("README command section end missing")
+	}
+	var out bytes.Buffer
+	(Runner{Out: &out}).printHelp()
+	if section != out.String() {
+		t.Fatal("README command list differs from registry help")
 	}
 }
