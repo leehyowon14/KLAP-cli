@@ -79,8 +79,7 @@ type model struct {
 	syllabusCursor      int
 	detailBack          screen
 	detailCursor        int
-	contentCourse       int
-	contentCursor       int
+	pager               coursePager
 	syncStatus          string
 	width               int
 	height              int
@@ -327,6 +326,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applyChildAction(action)
 			}
 		}
+		if m.isCoursePagedScreen() && !m.loading && m.pager.Update(msg, m.contentGroups(m.width)) {
+			return m, nil
+		}
 		key := msg.String()
 		switch {
 		case keyMatches(key, "q", "ㅂ"):
@@ -368,8 +370,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveDueCursor(-1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicCursor(-1)
-			} else if m.isCoursePagedScreen() && !m.loading {
-				m.moveContentCursor(-1)
 			}
 		case key == "down" || keyMatches(key, "j", "ㅓ"):
 			if m.active == screenConfig && !m.loading {
@@ -386,8 +386,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveDueCursor(1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicCursor(1)
-			} else if m.isCoursePagedScreen() && !m.loading {
-				m.moveContentCursor(1)
 			}
 		case key == "left":
 			if m.active == screenConfig && !m.loading {
@@ -400,8 +398,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveDuePage(-1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicMonth(-1)
-			} else if m.isCoursePagedScreen() && !m.loading {
-				m.moveContentCourse(-1)
 			}
 		case key == "right":
 			if m.active == screenConfig && !m.loading {
@@ -414,8 +410,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveDuePage(1)
 			} else if m.active == screenAcademic && !m.loading {
 				m.moveAcademicMonth(1)
-			} else if m.isCoursePagedScreen() && !m.loading {
-				m.moveContentCourse(1)
 			}
 		case key == "tab" || key == "]":
 			if m.active == screenConfig && !m.loading {
@@ -717,8 +711,8 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 		if msg.screen == screenConfig {
 			m.clampConfigCursor()
 		}
-		m.contentCourse = 0
-		m.contentCursor = 0
+		m.pager.contentCourse = 0
+		m.pager.contentCursor = 0
 		if m.syncPhase == "" {
 			m.syncStatus = ""
 		}
@@ -932,21 +926,21 @@ func openExternalURL(target string) error {
 
 func (m model) selectedAssignmentRow() (app.AssignmentRow, bool) {
 	group := m.currentContentGroup(m.width)
-	return selectedRowByCourse(m.assignmentRows, group.name, m.contentCursor, func(row app.AssignmentRow) string {
+	return selectedRowByCourse(m.assignmentRows, group.name, m.pager.contentCursor, func(row app.AssignmentRow) string {
 		return row.CourseName
 	})
 }
 
 func (m model) selectedNoticeRow() (app.NoticeRow, bool) {
 	group := m.currentContentGroup(m.width)
-	return selectedRowByCourse(m.noticeRows, group.name, m.contentCursor, func(row app.NoticeRow) string {
+	return selectedRowByCourse(m.noticeRows, group.name, m.pager.contentCursor, func(row app.NoticeRow) string {
 		return row.CourseName
 	})
 }
 
 func (m model) selectedLectureRow() (app.LectureRow, bool) {
 	group := m.currentContentGroup(m.width)
-	return selectedRowByCourse(m.lectureRows, group.name, m.contentCursor, func(row app.LectureRow) string {
+	return selectedRowByCourse(m.lectureRows, group.name, m.pager.contentCursor, func(row app.LectureRow) string {
 		return row.CourseName
 	})
 }
@@ -2292,8 +2286,8 @@ func (m *model) resetLoadedMainScreens() {
 	m.noticeRows = nil
 	m.lectureRows = nil
 	m.academicResult = app.AcademicListResult{}
-	m.contentCourse = 0
-	m.contentCursor = 0
+	m.pager.contentCourse = 0
+	m.pager.contentCursor = 0
 }
 
 func (m *model) clampConfigCursor() {

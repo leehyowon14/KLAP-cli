@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	tea "github.com/charmbracelet/bubbletea"
 	"strings"
 )
 
@@ -56,7 +57,10 @@ func (m model) contentGroups(width int) []contentCourseGroup {
 }
 
 func (m model) currentContentGroup(width int) contentCourseGroup {
-	groups := m.contentGroups(width)
+	return m.pager.currentGroup(m.contentGroups(width))
+}
+
+func (m coursePager) currentGroup(groups []contentCourseGroup) contentCourseGroup {
 	if len(groups) == 0 {
 		return contentCourseGroup{}
 	}
@@ -70,8 +74,9 @@ func (m model) currentContentGroup(width int) contentCourseGroup {
 	return groups[index]
 }
 
-func (m *model) moveContentCourse(delta int) {
-	groups := m.contentGroups(m.width)
+func (m *model) moveContentCourse(delta int) { m.pager.moveCourse(m.contentGroups(m.width), delta) }
+
+func (m *coursePager) moveCourse(groups []contentCourseGroup, delta int) {
 	if len(groups) == 0 {
 		m.contentCourse = 0
 		m.contentCursor = 0
@@ -87,8 +92,10 @@ func (m *model) moveContentCourse(delta int) {
 	m.contentCursor = 0
 }
 
-func (m *model) moveContentCursor(delta int) {
-	group := m.currentContentGroup(m.width)
+func (m *model) moveContentCursor(delta int) { m.pager.moveCursor(m.contentGroups(m.width), delta) }
+
+func (m *coursePager) moveCursor(groups []contentCourseGroup, delta int) {
+	group := m.currentGroup(groups)
 	if len(group.lines) == 0 {
 		m.contentCursor = 0
 		return
@@ -117,9 +124,12 @@ func contentGroupIndex(groups *[]contentCourseGroup, indexByName map[string]int,
 }
 
 func (m model) renderCoursePagedPanel(width int) string {
-	groups := m.contentGroups(width)
+	return m.pager.View(m.contentGroups(width), m.height, m.active)
+}
+
+func (m coursePager) View(groups []contentCourseGroup, height int, active screen) string {
 	if len(groups) == 0 {
-		switch m.active {
+		switch active {
 		case screenAssignments:
 			return emptyStyle.Render("과제가 없습니다") + "\n"
 		case screenNotices:
@@ -131,7 +141,7 @@ func (m model) renderCoursePagedPanel(width int) string {
 		}
 	}
 
-	group := m.currentContentGroup(width)
+	group := m.currentGroup(groups)
 	page := m.contentCourse + 1
 	if page < 1 {
 		page = 1
@@ -144,8 +154,8 @@ func (m model) renderCoursePagedPanel(width int) string {
 	b.WriteString(mutedStyle.Render(fmt.Sprintf("%d/%d  %s", page, len(groups), group.name)))
 	b.WriteString("\n\n")
 
-	visibleRows := maxInt(5, m.height-10)
-	if m.height <= 0 {
+	visibleRows := maxInt(5, height-10)
+	if height <= 0 {
 		visibleRows = 16
 	}
 	if visibleRows > len(group.lines) {
@@ -186,4 +196,29 @@ func (m model) renderCoursePagedPanel(width int) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+type coursePager struct {
+	contentCourse int
+	contentCursor int
+}
+
+func (m *coursePager) Update(msg tea.Msg, groups []contentCourseGroup) bool {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return false
+	}
+	switch {
+	case key.String() == "up":
+		m.moveCursor(groups, -1)
+	case key.String() == "down" || keyMatches(key.String(), "j", "ㅓ"):
+		m.moveCursor(groups, 1)
+	case key.String() == "left":
+		m.moveCourse(groups, -1)
+	case key.String() == "right":
+		m.moveCourse(groups, 1)
+	default:
+		return false
+	}
+	return true
 }
