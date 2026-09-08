@@ -85,17 +85,9 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 
 	rows := make([]LectureRow, 0)
 	for _, selectedCourse := range courses {
-		lectures, err := client.Lectures(ctx, term.Value, selectedCourse.Course)
-		if err != nil {
-			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-			if refreshErr != nil {
-				return nil, refreshErr
-			}
-			if refreshed {
-				client = refreshedClient
-				lectures, err = client.Lectures(ctx, term.Value, selectedCourse.Course)
-			}
-		}
+		lectures, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.Lecture, error) {
+			return client.Lectures(ctx, term.Value, selectedCourse.Course)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -139,17 +131,9 @@ func (s *Service) LectureOpenURL(ctx context.Context, id string, user UserOption
 	if err != nil {
 		return OpenURLResult{}, err
 	}
-	lectures, err := resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return OpenURLResult{}, refreshErr
-		}
-		if refreshed {
-			resource.Client = refreshedClient
-			lectures, err = resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
-		}
-	}
+	lectures, err := executeSessionRequest(ctx, s, studentID, &resource.Client, func(client *klas.Client) ([]klas.Lecture, error) {
+		return client.Lectures(ctx, resource.Term.Value, resource.Course)
+	})
 	if err != nil {
 		return OpenURLResult{}, err
 	}
@@ -175,17 +159,9 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 	if err != nil {
 		return LectureAttendResult{}, err
 	}
-	lectures, err := resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return LectureAttendResult{}, refreshErr
-		}
-		if refreshed {
-			resource.Client = refreshedClient
-			lectures, err = resource.Client.Lectures(ctx, resource.Term.Value, resource.Course)
-		}
-	}
+	lectures, err := executeSessionRequest(ctx, s, studentID, &resource.Client, func(client *klas.Client) ([]klas.Lecture, error) {
+		return client.Lectures(ctx, resource.Term.Value, resource.Course)
+	})
 	if err != nil {
 		return LectureAttendResult{}, err
 	}
@@ -233,17 +209,9 @@ func (s *Service) AttendAllLectures(ctx context.Context, opts LectureAttendAllOp
 	result := LectureAttendAllResult{}
 	now := time.Now()
 	for _, selectedCourse := range courses {
-		lectures, err := client.Lectures(ctx, term.Value, selectedCourse.Course)
-		if err != nil {
-			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-			if refreshErr != nil {
-				return LectureAttendAllResult{}, refreshErr
-			}
-			if refreshed {
-				client = refreshedClient
-				lectures, err = client.Lectures(ctx, term.Value, selectedCourse.Course)
-			}
-		}
+		lectures, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.Lecture, error) {
+			return client.Lectures(ctx, term.Value, selectedCourse.Course)
+		})
 		if err != nil {
 			return LectureAttendAllResult{}, err
 		}
