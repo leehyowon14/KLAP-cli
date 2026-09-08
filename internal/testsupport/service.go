@@ -7,7 +7,6 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
-	category "github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/download"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/kwcommons"
@@ -46,7 +45,7 @@ func NewService(t *testing.T) *app.Service {
 		Accounts:          store, Sessions: store, Settings: settingsStore, Cache: cacheStore, SyncState: syncStore,
 		Reminder:      macos.NewReminderBridge("unused"),
 		Calendar:      macos.NewCalendarBridge("unused"),
-		Categories:    category.NewMacOSBridge("unused"),
+		Categories:    macos.NewCategoryBridge("unused"),
 		Transcriber:   transcript.NewMacOSBridge("unused"),
 		NewKlasClient: klas.NewClient,
 		Login: func(ctx context.Context, c *klas.Client, id, password string) (klas.Session, error) {

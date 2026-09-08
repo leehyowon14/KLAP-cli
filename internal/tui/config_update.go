@@ -28,7 +28,7 @@ type configScreenModel struct {
 
 type configScreenService interface {
 	ConfigSettings() (app.ConfigSettings, error)
-	CategoryOptions() (app.CategoryOptions, error)
+	CategoryOptionsContext(context.Context) (app.CategoryOptions, error)
 	Users(context.Context) ([]app.UserRow, error)
 	TermList(context.Context, app.TermListOptions) ([]app.TermRow, error)
 	SelectUser(context.Context, string) error

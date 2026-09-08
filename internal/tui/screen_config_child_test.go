@@ -24,7 +24,7 @@ func (s *fakeConfigScreenService) ConfigSettings() (app.ConfigSettings, error) {
 	s.reads++
 	return s.settings, s.readErr
 }
-func (s *fakeConfigScreenService) CategoryOptions() (app.CategoryOptions, error) {
+func (s *fakeConfigScreenService) CategoryOptionsContext(context.Context) (app.CategoryOptions, error) {
 	return app.CategoryOptions{}, nil
 }
 func (s *fakeConfigScreenService) Users(context.Context) ([]app.UserRow, error) { return nil, nil }

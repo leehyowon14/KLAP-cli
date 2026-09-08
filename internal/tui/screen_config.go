@@ -326,7 +326,7 @@ func loadConfigMsg(ctx context.Context, service configScreenService) loadMsg {
 	if err != nil {
 		return loadMsg{err: err}
 	}
-	categories, err := service.CategoryOptions()
+	categories, err := service.CategoryOptionsContext(ctx)
 	if err != nil {
 		return loadMsg{err: err}
 	}

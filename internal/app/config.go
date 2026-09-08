@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/leehyowon14/KLAP-cli/internal/category"
@@ -228,12 +229,20 @@ func (s *Service) ConfigSettings() (ConfigSettings, error) {
 	}, nil
 }
 
+// CategoryOptions retains the non-context compatibility API.
 func (s *Service) CategoryOptions() (CategoryOptions, error) {
+	return s.CategoryOptionsContext(context.Background())
+}
+
+func (s *Service) CategoryOptionsContext(ctx context.Context) (CategoryOptions, error) {
 	current, err := s.loadSettings()
 	if err != nil {
 		return CategoryOptions{}, err
 	}
-	options, err := s.categoryLister.List()
+	options, err := s.categoryLister.List(ctx)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return CategoryOptions{}, err
+	}
 	if err != nil {
 		return CategoryOptions{
 			Reminders: uniqueNonEmpty(current.Reminder.ListName, settings.DefaultReminderListName),
@@ -268,5 +277,5 @@ func (s *Service) saveSettings(value settings.Settings) error {
 }
 
 type CategoryLister interface {
-	List() (category.Options, error)
+	List(context.Context) (category.Options, error)
 }

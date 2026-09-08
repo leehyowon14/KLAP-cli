@@ -7,7 +7,6 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
-	category "github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/download"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/kwcommons"
@@ -60,7 +59,7 @@ func newService(store *account.Store, factories serviceStoreFactories) (*app.Ser
 		},
 		Reminder:    macos.NewReminderBridge(defaultReminderBridgePath()),
 		Calendar:    macos.NewCalendarBridge(defaultCalendarBridgePath()),
-		Categories:  category.NewMacOSBridge(defaultCategoryBridgePath()),
+		Categories:  macos.NewCategoryBridge(defaultCategoryBridgePath()),
 		Transcriber: transcript.NewMacOSBridge(defaultTranscriptBridgePath()),
 	})
 }

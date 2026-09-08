@@ -8,7 +8,6 @@ import (
 
 	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
-	category "github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/platform/macos"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
@@ -33,7 +32,7 @@ func testDependencies(t *testing.T) Dependencies {
 		SyncState:     &fakeSyncStateStore{},
 		Reminder:      macos.NewReminderBridge("unused"),
 		Calendar:      macos.NewCalendarBridge("unused"),
-		Categories:    category.NewMacOSBridge("unused"),
+		Categories:    macos.NewCategoryBridge("unused"),
 		Transcriber:   transcript.NewMacOSBridge("unused"),
 		NewKlasClient: func() (*klas.Client, error) { t.Fatal("constructor called client factory"); return nil, nil },
 		Login: func(context.Context, *klas.Client, string, string) (klas.Session, error) {
@@ -107,7 +106,7 @@ func TestDependenciesRequireCalendar(t *testing.T) {
 }
 
 func TestDependenciesRequireCategories(t *testing.T) {
-	for _, value := range []CategoryLister{nil, (*category.MacOSBridge)(nil)} {
+	for _, value := range []CategoryLister{nil, (*macos.CategoryBridge)(nil)} {
 		deps := testDependencies(t)
 		deps.Categories = value
 		s, err := NewService(deps)
