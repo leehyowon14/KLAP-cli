@@ -7,7 +7,6 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	"github.com/leehyowon14/KLAP-cli/internal/transcript"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -212,7 +211,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
 
-	path := lectureVideoPath(dir, resource.Course.Name, lectureModel(*matched), mediaURL, weekOrder)
+	path := s.downloader.VideoPath(dir, resource.Course.Name, lectureFileName(lectureModel(*matched)), mediaURL, weekOrder)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
@@ -450,7 +449,7 @@ func downloadLectureTask(ctx context.Context, media MediaResolver, downloader Do
 		return item
 	}
 
-	item.Path = lectureVideoPath(dir, course.Name, row.Lecture, mediaURL, weekOrder)
+	item.Path = downloader.VideoPath(dir, course.Name, lectureFileName(row.Lecture), mediaURL, weekOrder)
 	if err := os.MkdirAll(filepath.Dir(item.Path), 0o755); err != nil {
 		item.Err = err
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
@@ -760,48 +759,6 @@ func (s *Service) effectiveDownloadConcurrency(concurrency int) (int, error) {
 
 var lectureWeekPattern = regexp.MustCompile(`([0-9]{1,2})\s*주차`)
 
-func lectureVideoPath(root string, courseName string, lecture Lecture, mediaURL string, weekOrder int) string {
-	return filepath.Join(root, lectureCourseDirName(courseName), "video", lectureFilename(lecture, mediaURL, weekOrder))
-}
-
-func lectureCourseDirName(courseName string) string {
-	courseDir := sanitizePathComponent(courseName)
-	if courseDir == "" {
-		return "course"
-	}
-	return courseDir
-}
-
-func lectureFilename(lecture Lecture, mediaURL string, weekOrder int) string {
-	extension := ".mp4"
-	if parsed, err := url.Parse(mediaURL); err == nil {
-		if ext := filepath.Ext(parsed.Path); ext != "" {
-			extension = ext
-		}
-	}
-
-	if week := lectureWeekNumber(lecture); week > 0 && weekOrder > 0 {
-		title := sanitizePathComponent(firstNonEmpty(lecture.Title, lecture.ModuleTitle, lecture.ContentID, lecture.LearningSeq, "lecture"))
-		return fmt.Sprintf("%d-%d. %s%s", week, weekOrder, title, extension)
-	}
-
-	parts := []string{
-		sanitizePathComponent(lecture.ModuleTitle),
-		sanitizePathComponent(lecture.Title),
-	}
-
-	filtered := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if strings.TrimSpace(part) != "" {
-			filtered = append(filtered, part)
-		}
-	}
-	if len(filtered) == 0 {
-		filtered = append(filtered, "lecture")
-	}
-	return strings.Join(filtered, "_") + extension
-}
-
 func lectureWeekNumber(lecture Lecture) int {
 	if week := parsePositiveInt(lecture.WeekNo); week > 0 {
 		return week
@@ -876,34 +833,6 @@ func parsePositiveInt(value string) int {
 		return 0
 	}
 	return number
-}
-
-func sanitizePathComponent(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	replacer := strings.NewReplacer(
-		"/", "_",
-		"\\", "_",
-		":", "_",
-		"*", "_",
-		"?", "_",
-		"\"", "_",
-		"<", "_",
-		">", "_",
-		"|", "_",
-		"\n", " ",
-		"\r", " ",
-		"\t", " ",
-	)
-	value = replacer.Replace(value)
-	value = strings.Join(strings.Fields(value), " ")
-	if len([]rune(value)) > 120 {
-		runes := []rune(value)
-		value = string(runes[:120])
-	}
-	return strings.Trim(value, ". ")
 }
 
 func emitLectureDownloadProgress(onProgress func(LectureDownloadProgress), progress LectureDownloadProgress) {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 )
 
@@ -9,6 +10,9 @@ type fakeDownloader struct {
 	download func(context.Context, string, string, bool, func(int64, int64)) (int64, error)
 }
 
+func (*fakeDownloader) VideoPath(root, course string, lecture LectureFileName, media string, order int) string {
+	return filepath.Join(root, "fixture.mp4")
+}
 func (f *fakeDownloader) DownloadFile(ctx context.Context, url, path string, keep bool, progress func(int64, int64)) (int64, error) {
 	return f.download(ctx, url, path, keep, progress)
 }
@@ -42,5 +46,21 @@ func TestDownloadTaskUsesInjectedDownloader(t *testing.T) {
 	result := downloadLectureTask(ctx, media, downloader, t.TempDir(), true, 1, 1, Course{Name: "Course"}, LectureRow{Lecture: Lecture{ContentID: "id", Title: "Title"}}, 1, func(p LectureDownloadProgress) { stages = append(stages, p.Stage) })
 	if calls != 1 || result.Err != nil || result.Bytes != 8 || stages[len(stages)-1] != LectureStageDone {
 		t.Fatalf("result=%+v calls=%d stages=%v", result, calls, stages)
+	}
+}
+
+func TestLectureFileNameNormalizesWeek(t *testing.T) {
+	for _, tc := range []struct {
+		lecture Lecture
+		week    int
+	}{
+		{Lecture{WeekNo: "14", ModuleTitle: "1주차"}, 14},
+		{Lecture{ModuleTitle: "1주차: 소개"}, 1},
+		{Lecture{WeekNo: "bad"}, 0},
+	} {
+		got := lectureFileName(tc.lecture)
+		if got.Week != tc.week || got.ModuleTitle != tc.lecture.ModuleTitle {
+			t.Fatalf("got=%+v", got)
+		}
 	}
 }

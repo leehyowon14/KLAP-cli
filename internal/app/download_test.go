@@ -101,30 +101,6 @@ func TestDownloadStatusReportsPartialFiles(t *testing.T) {
 	}
 }
 
-func TestLectureFilenameSanitizesPathComponents(t *testing.T) {
-	got := lectureVideoPath("root", "오픈소스/실습", Lecture{
-		ModuleTitle: "1주차: 소개",
-		Title:       "Git? GitHub* 시작",
-	}, "https://media.example.com/video.mp4?token=1", 1)
-	want := filepath.Join("root", "오픈소스_실습", "video", "1-1. Git_ GitHub_ 시작.mp4")
-	if got != want {
-		t.Fatalf("lectureVideoPath() = %q, want %q", got, want)
-	}
-}
-
-func TestLectureFilenameUsesKlasWeekSequence(t *testing.T) {
-	got := lectureVideoPath("root", "컴퓨터그래픽스", Lecture{
-		WeekNo:      "14",
-		WeeklySeq:   "2",
-		ModuleTitle: "보강",
-		Title:       "기말/정리",
-	}, "https://media.example.com/final.mov", 2)
-	want := filepath.Join("root", "컴퓨터그래픽스", "video", "14-2. 기말_정리.mov")
-	if got != want {
-		t.Fatalf("lectureVideoPath() = %q, want %q", got, want)
-	}
-}
-
 func TestLectureWeekOrderFallsBackToCourseOrder(t *testing.T) {
 	rows := []LectureRow{
 		{ID: "1:a", Lecture: Lecture{ContentID: "a", ModuleTitle: "1주차", Title: "첫번째"}},
