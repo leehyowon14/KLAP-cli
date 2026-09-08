@@ -78,9 +78,9 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "room":
 		return r.runRoom(ctx, service, args[1:])
 	case "lecture":
-		return runLecture(ctx, service, args[1:])
+		return r.runLecture(ctx, service, args[1:])
 	case "attend":
-		return runAttend(ctx, service, args[1:])
+		return r.runAttend(ctx, service, args[1:])
 	case "academic":
 		return r.runAcademic(ctx, service, args[1:])
 	case "config":

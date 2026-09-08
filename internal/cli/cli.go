@@ -844,7 +844,7 @@ func (r Runner) runAcademic(ctx context.Context, service *app.Service, args []st
 	}
 }
 
-func runLecture(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runLecture(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap lecture <list|download|attend>")
 	}
@@ -859,7 +859,7 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		if err != nil {
 			return err
 		}
-		printLectureRows(rows)
+		r.printLectureRows(rows)
 		return nil
 	case "status":
 		opts, err := lectureListOptions(args[1:])
@@ -870,7 +870,7 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		if err != nil {
 			return err
 		}
-		printLectureStatusRows(rows)
+		r.printLectureStatusRows(rows)
 		return nil
 	case "download":
 		if len(args) < 2 {
@@ -885,7 +885,7 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 			if err != nil {
 				return err
 			}
-			printDownloadStatus(result)
+			r.printDownloadStatus(result)
 			return nil
 		}
 		if args[1] == "open" {
@@ -897,8 +897,8 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 			if err != nil {
 				return err
 			}
-			fmt.Printf("다운로드 폴더: %s\n", result.Dir)
-			return openExternal(result.Dir, "폴더")
+			_, _ = fmt.Fprintf(r.Out, "다운로드 폴더: %s\n", result.Dir)
+			return r.openExternal(result.Dir, "폴더")
 		}
 		dir, err := dirFlag(args[2:])
 		if err != nil {
@@ -913,7 +913,7 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 			if err != nil {
 				return err
 			}
-			printLectureDownloadAllResult(result)
+			r.printLectureDownloadAllResult(result)
 			return nil
 		}
 		result, err := service.DownloadLecture(ctx, args[1], app.LectureDownloadOptions{
@@ -923,22 +923,22 @@ func runLecture(ctx context.Context, service *app.Service, args []string) error 
 		if err != nil {
 			return err
 		}
-		fmt.Printf("다운로드 완료: %s (%s)\n", result.Path, formatBytes(result.Bytes))
+		_, _ = fmt.Fprintf(r.Out, "다운로드 완료: %s (%s)\n", result.Path, formatBytes(result.Bytes))
 		return nil
 	case "attend":
-		return runLectureAttend(ctx, service, args[1:])
+		return r.runLectureAttend(ctx, service, args[1:])
 	case "open":
 		if len(args) != 2 {
 			return errors.New("usage: klap lecture open <강의ID>")
 		}
 		result, err := service.LectureOpenURL(ctx, args[1], app.UserOption{})
-		return openAndPrintURL(result.URL, err)
+		return r.openAndPrintURL(result.URL, err)
 	default:
 		return fmt.Errorf("unknown lecture command: %s", args[0])
 	}
 }
 
-func runLectureAttend(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runLectureAttend(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap lecture attend <강의ID|all> [--course <과목명|번호>] [--interval <초>]")
 	}
@@ -947,7 +947,7 @@ func runLectureAttend(ctx context.Context, service *app.Service, args []string) 
 	if err != nil {
 		return err
 	}
-	progressPrinter := newLectureProgressPrinter(os.Stdout, stdoutSupportsInPlaceProgress())
+	progressPrinter := newLectureProgressPrinter(r.Out, r.stdoutSupportsInPlaceProgress())
 
 	if args[0] == "all" {
 		course, err := courseFilter(args[1:])
@@ -964,7 +964,7 @@ func runLectureAttend(ctx context.Context, service *app.Service, args []string) 
 		if err != nil {
 			return err
 		}
-		printLectureAttendAllResult(result)
+		r.printLectureAttendAllResult(result)
 		return nil
 	}
 
@@ -977,11 +977,11 @@ func runLectureAttend(ctx context.Context, service *app.Service, args []string) 
 	if err != nil {
 		return err
 	}
-	fmt.Printf("수강 완료: %s | %s\n", formatLectureProgress(result.Lecture, result.Progress), result.Lecture.Lecture.Title)
+	_, _ = fmt.Fprintf(r.Out, "수강 완료: %s | %s\n", formatLectureProgress(result.Lecture, result.Progress), result.Lecture.Lecture.Title)
 	return nil
 }
 
-func runAttend(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runAttend(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap attend <all|과목명|과목번호> [--interval <초>]")
 	}
@@ -996,7 +996,7 @@ func runAttend(ctx context.Context, service *app.Service, args []string) error {
 	if err != nil {
 		return err
 	}
-	progressPrinter := newLectureProgressPrinter(os.Stdout, stdoutSupportsInPlaceProgress())
+	progressPrinter := newLectureProgressPrinter(r.Out, r.stdoutSupportsInPlaceProgress())
 	result, err := service.AttendAllLectures(ctx, app.LectureAttendAllOptions{
 		User:         app.UserOption{StudentID: userFlag(flagArgs)},
 		CourseFilter: courseFilter,
@@ -1007,7 +1007,7 @@ func runAttend(ctx context.Context, service *app.Service, args []string) error {
 	if err != nil {
 		return err
 	}
-	printLectureAttendAllResult(result)
+	r.printLectureAttendAllResult(result)
 	return nil
 }
 
@@ -2552,9 +2552,9 @@ func formatSyllabusEvaluation(evaluation klas.SyllabusEvaluation) string {
 	return strings.Join(parts, " / ")
 }
 
-func printLectureRows(rows []app.LectureRow) {
+func (r Runner) printLectureRows(rows []app.LectureRow) {
 	if len(rows) == 0 {
-		fmt.Println("온라인 강의가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "온라인 강의가 없습니다")
 		return
 	}
 
@@ -2568,7 +2568,7 @@ func printLectureRows(rows []app.LectureRow) {
 				status = "다운로드 불가"
 			}
 		}
-		fmt.Printf("%s | %s | %s | %s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%s | %s | %s | %s | %s | %s | %s\n",
 			id,
 			formatLectureRange(row.Lecture.StartAt, row.Lecture.EndAt),
 			emptyFallback(row.Lecture.Progress, "진도 확인 필요"),
@@ -2580,18 +2580,18 @@ func printLectureRows(rows []app.LectureRow) {
 	}
 }
 
-func printLectureStatusRows(rows []app.LectureRow) {
+func (r Runner) printLectureStatusRows(rows []app.LectureRow) {
 	if len(rows) == 0 {
-		fmt.Println("온라인 강의가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "온라인 강의가 없습니다")
 		return
 	}
 
 	for _, row := range rows {
 		percent := lectureStatusPercent(row.Lecture)
-		fmt.Printf("%s %s | %s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%s %s | %s | %s | %s | %s\n",
 			renderProgressBar(percent, 28),
 			formatLectureStatusMinutes(row.Lecture),
-			lectureStatusLabel(row.Lecture, percent),
+			r.lectureStatusLabel(row.Lecture, percent),
 			row.CourseName,
 			emptyFallback(row.Lecture.ModuleTitle, "주차 확인 필요"),
 			row.Lecture.Title,
@@ -2599,9 +2599,9 @@ func printLectureStatusRows(rows []app.LectureRow) {
 	}
 }
 
-func printLectureDownloadAllResult(result app.LectureDownloadAllResult) {
+func (r Runner) printLectureDownloadAllResult(result app.LectureDownloadAllResult) {
 	if len(result.Items) == 0 {
-		fmt.Println("다운로드할 온라인 강의가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "다운로드할 온라인 강의가 없습니다")
 		return
 	}
 
@@ -2617,36 +2617,36 @@ func printLectureDownloadAllResult(result app.LectureDownloadAllResult) {
 		switch {
 		case item.Err != nil && item.Skipped:
 			skipped++
-			fmt.Printf("건너뜀: %s (%v)\n", label, item.Err)
+			_, _ = fmt.Fprintf(r.Out, "건너뜀: %s (%v)\n", label, item.Err)
 		case item.Err != nil:
 			failed++
-			fmt.Printf("실패: %s (%v)\n", label, item.Err)
+			_, _ = fmt.Fprintf(r.Out, "실패: %s (%v)\n", label, item.Err)
 		case item.Skipped:
 			skipped++
-			fmt.Printf("건너뜀: %s (이미 있음)\n", item.Path)
+			_, _ = fmt.Fprintf(r.Out, "건너뜀: %s (이미 있음)\n", item.Path)
 		default:
 			downloaded++
-			fmt.Printf("완료: %s (%s)\n", item.Path, formatBytes(item.Bytes))
+			_, _ = fmt.Fprintf(r.Out, "완료: %s (%s)\n", item.Path, formatBytes(item.Bytes))
 		}
 	}
 
-	fmt.Printf("전체 다운로드 결과: 완료 %d, 건너뜀 %d, 실패 %d\n", downloaded, skipped, failed)
+	_, _ = fmt.Fprintf(r.Out, "전체 다운로드 결과: 완료 %d, 건너뜀 %d, 실패 %d\n", downloaded, skipped, failed)
 }
 
-func printDownloadStatus(result app.DownloadStatusResult) {
-	fmt.Printf("다운로드 폴더: %s\n", result.Dir)
-	fmt.Printf("파일 수: %d\n", result.Files)
-	fmt.Printf("크기: %s\n", formatBytes(result.Bytes))
+func (r Runner) printDownloadStatus(result app.DownloadStatusResult) {
+	_, _ = fmt.Fprintf(r.Out, "다운로드 폴더: %s\n", result.Dir)
+	_, _ = fmt.Fprintf(r.Out, "파일 수: %d\n", result.Files)
+	_, _ = fmt.Fprintf(r.Out, "크기: %s\n", formatBytes(result.Bytes))
 	if result.PartialFiles > 0 {
-		fmt.Printf("부분 파일: %d개 (%s)\n", result.PartialFiles, formatBytes(result.PartialBytes))
+		_, _ = fmt.Fprintf(r.Out, "부분 파일: %d개 (%s)\n", result.PartialFiles, formatBytes(result.PartialBytes))
 	}
 	if len(result.Items) == 0 {
-		fmt.Println("다운로드된 파일이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "다운로드된 파일이 없습니다")
 		return
 	}
-	fmt.Println("\n최근 파일")
+	_, _ = fmt.Fprintln(r.Out, "\n최근 파일")
 	for _, item := range result.Items {
-		fmt.Printf("  %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "  %s | %s | %s\n",
 			item.ModifiedAt.Format("2006-01-02 15:04"),
 			formatBytes(item.Bytes),
 			item.Path,
@@ -2654,9 +2654,9 @@ func printDownloadStatus(result app.DownloadStatusResult) {
 	}
 }
 
-func printLectureAttendAllResult(result app.LectureAttendAllResult) {
+func (r Runner) printLectureAttendAllResult(result app.LectureAttendAllResult) {
 	if len(result.Items) == 0 {
-		fmt.Println("수강할 온라인 강의가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "수강할 온라인 강의가 없습니다")
 		return
 	}
 
@@ -2665,13 +2665,13 @@ func printLectureAttendAllResult(result app.LectureAttendAllResult) {
 	for _, item := range result.Items {
 		if item.Err != nil {
 			failed++
-			fmt.Printf("실패: %s (%v)\n", item.Lecture.Lecture.Title, item.Err)
+			_, _ = fmt.Fprintf(r.Out, "실패: %s (%v)\n", item.Lecture.Lecture.Title, item.Err)
 			continue
 		}
 		completed++
-		fmt.Printf("완료: %s | %s\n", formatLectureProgress(item.Lecture, item.Progress), item.Lecture.Lecture.Title)
+		_, _ = fmt.Fprintf(r.Out, "완료: %s | %s\n", formatLectureProgress(item.Lecture, item.Progress), item.Lecture.Lecture.Title)
 	}
-	fmt.Printf("전체 수강 결과: 완료 %d, 실패 %d\n", completed, failed)
+	_, _ = fmt.Fprintf(r.Out, "전체 수강 결과: 완료 %d, 실패 %d\n", completed, failed)
 }
 
 type lectureProgressPrinter struct {
