@@ -99,10 +99,10 @@ func (s *Service) currentStudentID(ctx context.Context) (string, error) {
 	}
 	switch len(users) {
 	case 0:
-		return "", errors.New("저장된 유저가 없습니다. 먼저 klap auth를 실행하세요")
+		return "", errors.New("저장된 유저가 없습니다. 먼저 계정을 등록하세요")
 	case 1:
 		return users[0].StudentID, nil
 	default:
-		return "", errors.New("저장된 유저가 여러 명입니다. klap user select <학번> 또는 --user <학번>을 지정하세요")
+		return "", errors.New("저장된 유저가 여러 명입니다. 사용할 학번을 선택하거나 지정하세요")
 	}
 }
