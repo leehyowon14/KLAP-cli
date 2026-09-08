@@ -7,7 +7,7 @@ import (
 )
 
 func (r Runner) runAuth(ctx context.Context, service *app.Service) error {
-	credentials, err := RunAuthForm()
+	credentials, err := r.AuthPrompt(ctx, r.In, r.Out)
 	if err != nil {
 		return err
 	}

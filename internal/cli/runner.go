@@ -15,15 +15,20 @@ type TerminalCapabilities struct {
 }
 
 type Runner struct {
-	Terminal TerminalCapabilities
-	Service  *app.Service
-	Out      io.Writer
-	ErrOut   io.Writer
-	Opener   func(string, string) error
-	Clock    func() time.Time
+	In         io.Reader
+	AuthPrompt func(context.Context, io.Reader, io.Writer) (AuthCredentials, error)
+	Terminal   TerminalCapabilities
+	Service    *app.Service
+	Out        io.Writer
+	ErrOut     io.Writer
+	Opener     func(string, string) error
+	Clock      func() time.Time
 }
 
 func (r Runner) normalized() Runner {
+	if r.AuthPrompt == nil {
+		r.AuthPrompt = runAuthForm
+	}
 	if r.Out == nil {
 		r.Out = io.Discard
 	}

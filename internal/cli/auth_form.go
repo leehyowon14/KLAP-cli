@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"context"
 	"errors"
+	"io"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,7 +24,7 @@ type authModel struct {
 	height int
 }
 
-func RunAuthForm() (AuthCredentials, error) {
+func newAuthModel() authModel {
 	studentID := textinput.New()
 	studentID.Placeholder = "학번"
 	studentID.Prompt = "학번 "
@@ -38,12 +40,25 @@ func RunAuthForm() (AuthCredentials, error) {
 	password.CharLimit = 128
 	password.Width = 32
 
-	model := authModel{inputs: []textinput.Model{studentID, password}}
-	result, err := tea.NewProgram(model).Run()
+	return authModel{inputs: []textinput.Model{studentID, password}}
+}
+
+func runAuthForm(ctx context.Context, in io.Reader, out io.Writer) (AuthCredentials, error) {
+	if in == nil {
+		return AuthCredentials{}, errors.New("auth input is not configured")
+	}
+	if out == nil {
+		out = io.Discard
+	}
+	result, err := tea.NewProgram(newAuthModel(), tea.WithContext(ctx), tea.WithInput(in), tea.WithOutput(out)).Run()
 	if err != nil {
 		return AuthCredentials{}, err
 	}
 
+	return authCredentialsFromModel(result)
+}
+
+func authCredentialsFromModel(result tea.Model) (AuthCredentials, error) {
 	finalModel, ok := result.(authModel)
 	if !ok {
 		return AuthCredentials{}, errors.New("auth form returned unexpected model")
