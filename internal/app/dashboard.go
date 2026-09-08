@@ -75,6 +75,7 @@ type DashboardSectionError struct {
 }
 
 func (s *Service) Dashboard(ctx context.Context, opts DashboardOptions) (DashboardResult, error) {
+	s = s.withRequestSession()
 	studentID, err := s.selectedStudentID(ctx, opts.User)
 	if err != nil {
 		return DashboardResult{}, err
