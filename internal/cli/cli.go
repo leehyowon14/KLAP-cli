@@ -391,7 +391,7 @@ func runTerm(ctx context.Context, service *app.Service, args []string) error {
 	}
 }
 
-func runAssignment(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runAssignment(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap assignment <list|detail|open|remind>")
 	}
@@ -406,7 +406,7 @@ func runAssignment(ctx context.Context, service *app.Service, args []string) err
 		if err != nil {
 			return err
 		}
-		printAssignmentRows(rows)
+		r.printAssignmentRows(rows)
 		return nil
 	case "detail":
 		if len(args) != 2 {
@@ -416,16 +416,16 @@ func runAssignment(ctx context.Context, service *app.Service, args []string) err
 		if err != nil {
 			return err
 		}
-		printAssignmentDetail(detail)
+		r.printAssignmentDetail(detail)
 		return nil
 	case "open":
 		if len(args) != 2 {
 			return errors.New("usage: klap assignment open <과제ID>")
 		}
 		result, err := service.AssignmentOpenURL(ctx, args[1], app.UserOption{})
-		return openAndPrintURL(result.URL, err)
+		return r.openAndPrintURL(result.URL, err)
 	case "remind":
-		return runAssignmentRemind(ctx, service, args[1:])
+		return r.runAssignmentRemind(ctx, service, args[1:])
 	default:
 		return fmt.Errorf("unknown assignment command: %s", args[0])
 	}
@@ -1011,16 +1011,16 @@ func runAttend(ctx context.Context, service *app.Service, args []string) error {
 	return nil
 }
 
-func runAssignmentRemind(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runAssignmentRemind(ctx context.Context, service *app.Service, args []string) error {
 	auto := hasFlag(args, "--auto")
 	if !auto {
-		return syncAssignmentReminders(ctx, service, args)
+		return r.syncAssignmentReminders(ctx, service, args)
 	}
 
-	fmt.Println("과제 reminder 자동 동기화를 시작합니다. 종료하려면 Ctrl+C를 누르세요.")
+	_, _ = fmt.Fprintln(r.Out, "과제 reminder 자동 동기화를 시작합니다. 종료하려면 Ctrl+C를 누르세요.")
 	for {
-		if err := syncAssignmentReminders(ctx, service, args); err != nil {
-			fmt.Printf("동기화 실패: %v\n", err)
+		if err := r.syncAssignmentReminders(ctx, service, args); err != nil {
+			_, _ = fmt.Fprintf(r.Out, "동기화 실패: %v\n", err)
 		}
 
 		timer := time.NewTimer(30 * time.Minute)
@@ -1033,7 +1033,7 @@ func runAssignmentRemind(ctx context.Context, service *app.Service, args []strin
 	}
 }
 
-func syncAssignmentReminders(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) syncAssignmentReminders(ctx context.Context, service *app.Service, args []string) error {
 	opts, err := assignmentListOptions(args)
 	if err != nil {
 		return err
@@ -1044,11 +1044,11 @@ func syncAssignmentReminders(ctx context.Context, service *app.Service, args []s
 		return err
 	}
 	if result.EligibleCount == 0 {
-		fmt.Println("등록할 과제 reminder가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "등록할 과제 reminder가 없습니다")
 		return nil
 	}
 
-	fmt.Printf("Reminder 동기화 완료: 생성 %d, 갱신 %d, 완료 %d, 제외 %d\n",
+	_, _ = fmt.Fprintf(r.Out, "Reminder 동기화 완료: 생성 %d, 갱신 %d, 완료 %d, 제외 %d\n",
 		result.Result.Created,
 		result.Result.Updated,
 		result.Result.Completed,
@@ -1914,9 +1914,9 @@ func printTermRows(rows []app.TermRow) {
 	}
 }
 
-func printAssignmentRows(rows []app.AssignmentRow) {
+func (r Runner) printAssignmentRows(rows []app.AssignmentRow) {
 	if len(rows) == 0 {
-		fmt.Println("과제가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "과제가 없습니다")
 		return
 	}
 
@@ -1925,7 +1925,7 @@ func printAssignmentRows(rows []app.AssignmentRow) {
 		if row.Assignment.Submitted {
 			status = "제출"
 		}
-		fmt.Printf("%s | %s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%s | %s | %s | %s | %s\n",
 			row.ID,
 			formatTime(row.Assignment.DueAt),
 			status,
@@ -1935,47 +1935,47 @@ func printAssignmentRows(rows []app.AssignmentRow) {
 	}
 }
 
-func printAssignmentDetail(result app.AssignmentDetailResult) {
+func (r Runner) printAssignmentDetail(result app.AssignmentDetailResult) {
 	detail := result.Detail
 	status := "미제출"
 	if detail.Submitted {
 		status = "제출"
 	}
 
-	fmt.Printf("ID: %s\n", result.ID)
-	fmt.Printf("과목: %s\n", result.CourseName)
-	fmt.Printf("제목: %s\n", detail.Title)
-	fmt.Printf("마감: %s\n", formatTime(detail.DueAt))
-	fmt.Printf("상태: %s\n", status)
+	_, _ = fmt.Fprintf(r.Out, "ID: %s\n", result.ID)
+	_, _ = fmt.Fprintf(r.Out, "과목: %s\n", result.CourseName)
+	_, _ = fmt.Fprintf(r.Out, "제목: %s\n", detail.Title)
+	_, _ = fmt.Fprintf(r.Out, "마감: %s\n", formatTime(detail.DueAt))
+	_, _ = fmt.Fprintf(r.Out, "상태: %s\n", status)
 	if detail.ReportType != "" {
-		fmt.Printf("제출 방식: %s\n", detail.ReportType)
+		_, _ = fmt.Fprintf(r.Out, "제출 방식: %s\n", detail.ReportType)
 	}
 	if detail.SubmitFileType != "" {
-		fmt.Printf("파일 형식: %s\n", detail.SubmitFileType)
+		_, _ = fmt.Fprintf(r.Out, "파일 형식: %s\n", detail.SubmitFileType)
 	}
 	if detail.FileLimitMB != "" {
-		fmt.Printf("파일 제한: %sMB\n", detail.FileLimitMB)
+		_, _ = fmt.Fprintf(r.Out, "파일 제한: %sMB\n", detail.FileLimitMB)
 	}
 	if detail.ContentText != "" {
-		fmt.Printf("\n%s\n", linkifyForTerminal(detail.ContentText))
+		_, _ = fmt.Fprintf(r.Out, "\n%s\n", r.linkifyForTerminal(detail.ContentText))
 	}
 	if detail.SubmittedText != "" || detail.SubmittedTitle != "" {
-		fmt.Println("\n내 제출")
+		_, _ = fmt.Fprintln(r.Out, "\n내 제출")
 		if detail.SubmittedTitle != "" {
-			fmt.Printf("제목: %s\n", detail.SubmittedTitle)
+			_, _ = fmt.Fprintf(r.Out, "제목: %s\n", detail.SubmittedTitle)
 		}
 		if detail.SubmittedText != "" {
-			fmt.Println(linkifyForTerminal(detail.SubmittedText))
+			_, _ = fmt.Fprintln(r.Out, r.linkifyForTerminal(detail.SubmittedText))
 		}
 	}
 	if detail.FinalScore != "" && detail.FinalScore != "<nil>" {
-		fmt.Printf("\n점수: %s\n", detail.FinalScore)
+		_, _ = fmt.Fprintf(r.Out, "\n점수: %s\n", detail.FinalScore)
 	}
 	if detail.TutorText != "" {
-		fmt.Printf("\n피드백:\n%s\n", linkifyForTerminal(detail.TutorText))
+		_, _ = fmt.Fprintf(r.Out, "\n피드백:\n%s\n", r.linkifyForTerminal(detail.TutorText))
 	}
 	if result.DetailURL != "" {
-		fmt.Printf("\n원문: %s\n", linkifyForTerminal(result.DetailURL))
+		_, _ = fmt.Fprintf(r.Out, "\n원문: %s\n", r.linkifyForTerminal(result.DetailURL))
 	}
 }
 
