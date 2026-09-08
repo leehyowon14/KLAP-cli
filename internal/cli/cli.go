@@ -36,7 +36,11 @@ func (r Runner) runConfig(ctx context.Context, service *app.Service, args []stri
 		if len(args) < 3 {
 			return errors.New("usage: klap config set <key> <value>")
 		}
-		settings, err := service.SetConfigValue(args[1], strings.Join(args[2:], " "))
+		update, err := parseConfigUpdate(args[1], strings.Join(args[2:], " "))
+		if err != nil {
+			return err
+		}
+		settings, err := service.UpdateConfig(update)
 		if err != nil {
 			return err
 		}
