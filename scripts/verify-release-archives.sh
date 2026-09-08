@@ -7,11 +7,11 @@ required_entries=(
   LICENSE
   README.md
   docs/ARCHITECTURE.md
-  bridges/macos/reminder.swift
-  bridges/macos/calendar.swift
-  bridges/macos/categories.swift
-  bridges/macos/transcribe.swift
 )
+products=(ReminderBridge CalendarBridge CategoryBridge TranscriptBridge)
+bridge_dir="bridges/macos/.build/artifacts"
+verification_dir="$(mktemp -d)"
+trap 'rm -rf "$verification_dir"' EXIT
 expected_archives=(
   Darwin_x86_64.tar.gz
   Darwin_arm64.tar.gz
@@ -59,6 +59,35 @@ for suffix in "${expected_archives[@]}"; do
     fi
   done
 
+  if grep -Eq '\.swift$' <<<"$manifest"; then
+    echo "${archive} contains obsolete Swift scripts" >&2
+    exit 1
+  fi
+  if [[ "$suffix" == Darwin_* ]]; then
+    extracted="$verification_dir/$suffix"
+    mkdir -p "$extracted"
+    tar -xzf "$archive" -C "$extracted"
+    for product in "${products[@]}"; do
+      entry="bridges/macos/$product"
+      grep -Fqx "$entry" <<<"$manifest"
+      test -x "$extracted/$entry"
+      # Exact bytes: no rebuild or script substitution after bridge CI.
+      cmp "$bridge_dir/$product" "$extracted/$entry"
+      if [[ "$(uname -s)" == Darwin ]]; then
+        for arch in arm64 x86_64; do
+          lipo "$extracted/$entry" -verify_arch "$arch"
+        done
+      fi
+    done
+    if [[ "$(uname -s)" == Darwin ]]; then
+      bash scripts/verify-bridge-metadata.sh "$extracted/bridges/macos"
+      bash scripts/verify-transcript-binary.sh "$extracted/bridges/macos/TranscriptBridge"
+    fi
+  elif grep -q '^bridges/macos/' <<<"$manifest"; then
+    echo "${archive} unexpectedly contains macOS bridges" >&2
+    exit 1
+  fi
+
   binary=klap
   if [[ "$suffix" == Windows_* ]]; then
     binary=klap.exe
@@ -81,8 +110,8 @@ case "$(uname -s)-$(uname -m)" in
 esac
 
 native_archive="$(archive_for_suffix "$native_suffix")"
-smoke_dir="$(mktemp -d)"
-trap 'rm -rf "$smoke_dir"' EXIT
+smoke_dir="$verification_dir/native"
+mkdir -p "$smoke_dir"
 tar -xzf "$native_archive" -C "$smoke_dir"
 KLAP_CACHE_DIR="$smoke_dir/cache" "$smoke_dir/klap" cache status >/dev/null
 

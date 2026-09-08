@@ -1,0 +1,27 @@
+name: Verified macOS bridges
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test EventKit and Speech cores without live services
+        run: swift test --disable-xctest --package-path bridges/macos
+      - name: Build and verify the four universal bridges
+        run: bash scripts/build-macos-bridges.sh
+      # Tar preserves executable permissions through artifact upload/download.
+      - name: Package verified artifacts
+        run: tar -cf "$RUNNER_TEMP/klap-bridges.tar" -C bridges/macos/.build/artifacts ReminderBridge CalendarBridge CategoryBridge TranscriptBridge
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-bridges
+          path: ${{ runner.temp }}/klap-bridges.tar
+          if-no-files-found: error

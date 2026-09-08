@@ -9,7 +9,6 @@ builds:
     env:
       - CGO_ENABLED=0
     goos:
-      - darwin
       - linux
       - windows
     goarch:
@@ -18,6 +17,19 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
+    ldflags:
+      - -s -w
+
+  - id: klap-macos
+    main: ./cmd/klap
+    binary: klap
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
     ldflags:
       - -s -w
 
@@ -42,14 +54,30 @@ archives:
       - README.md
       - LICENSE
       - docs/ARCHITECTURE.md
-      - src: bridges/macos/reminder.swift
-        dst: bridges/macos/reminder.swift
-      - src: bridges/macos/calendar.swift
-        dst: bridges/macos/calendar.swift
-      - src: bridges/macos/categories.swift
-        dst: bridges/macos/categories.swift
-      - src: bridges/macos/transcribe.swift
-        dst: bridges/macos/transcribe.swift
+  - id: klap-macos
+    ids:
+      - klap-macos
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats:
+      - tar.gz
+    files:
+      - README.md
+      - LICENSE
+      - docs/ARCHITECTURE.md
+      - src: bridges/macos/.build/artifacts/ReminderBridge
+        dst: bridges/macos/ReminderBridge
+      - src: bridges/macos/.build/artifacts/CalendarBridge
+        dst: bridges/macos/CalendarBridge
+      - src: bridges/macos/.build/artifacts/CategoryBridge
+        dst: bridges/macos/CategoryBridge
+      - src: bridges/macos/.build/artifacts/TranscriptBridge
+        dst: bridges/macos/TranscriptBridge
 
 checksum:
   name_template: checksums.txt
@@ -75,7 +103,7 @@ release:
 homebrew_casks:
   - name: klap
     ids:
-      - klap
+      - klap-macos
     binaries:
       - klap
     repository:
