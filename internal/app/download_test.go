@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,7 +73,7 @@ func TestTranscribeDownloadedLecturesReturnsPreflightFailure(t *testing.T) {
 		t.Fatalf("WriteFile(blocker) error = %v", err)
 	}
 	videoPath := filepath.Join(blocker, "video", "lecture.mp4")
-	row := LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", Title: "소개"}}
+	row := LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: Lecture{ContentID: "a", Title: "소개"}}
 
 	result := (&Service{}).TranscribeDownloadedLectures(context.Background(), []LectureDownloadItem{{
 		Lecture: row,
@@ -95,7 +94,7 @@ func TestTranscribeDownloadedLecturesReturnsPreflightFailure(t *testing.T) {
 func TestLectureTranscriptContextIncludesCourseAndCodeSwitching(t *testing.T) {
 	got := lectureTranscriptContext(LectureRow{
 		CourseName: "컴퓨터그래픽스",
-		Lecture: klas.Lecture{
+		Lecture: Lecture{
 			ModuleTitle: "14주차",
 			Title:       "렌더링 파이프라인",
 		},
@@ -147,7 +146,7 @@ func TestDownloadStatusReportsPartialFiles(t *testing.T) {
 }
 
 func TestLectureFilenameSanitizesPathComponents(t *testing.T) {
-	got := lectureVideoPath("root", "오픈소스/실습", klas.Lecture{
+	got := lectureVideoPath("root", "오픈소스/실습", Lecture{
 		ModuleTitle: "1주차: 소개",
 		Title:       "Git? GitHub* 시작",
 	}, "https://media.example.com/video.mp4?token=1", 1)
@@ -158,7 +157,7 @@ func TestLectureFilenameSanitizesPathComponents(t *testing.T) {
 }
 
 func TestLectureFilenameUsesKlasWeekSequence(t *testing.T) {
-	got := lectureVideoPath("root", "컴퓨터그래픽스", klas.Lecture{
+	got := lectureVideoPath("root", "컴퓨터그래픽스", Lecture{
 		WeekNo:      "14",
 		WeeklySeq:   "2",
 		ModuleTitle: "보강",
@@ -172,9 +171,9 @@ func TestLectureFilenameUsesKlasWeekSequence(t *testing.T) {
 
 func TestLectureWeekOrderFallsBackToCourseOrder(t *testing.T) {
 	rows := []LectureRow{
-		{ID: "1:a", Lecture: klas.Lecture{ContentID: "a", ModuleTitle: "1주차", Title: "첫번째"}},
-		{ID: "1:b", Lecture: klas.Lecture{ContentID: "b", ModuleTitle: "1주차", Title: "두번째"}},
-		{ID: "1:c", Lecture: klas.Lecture{ContentID: "c", ModuleTitle: "2주차", Title: "첫번째"}},
+		{ID: "1:a", Lecture: Lecture{ContentID: "a", ModuleTitle: "1주차", Title: "첫번째"}},
+		{ID: "1:b", Lecture: Lecture{ContentID: "b", ModuleTitle: "1주차", Title: "두번째"}},
+		{ID: "1:c", Lecture: Lecture{ContentID: "c", ModuleTitle: "2주차", Title: "첫번째"}},
 	}
 	orders := lectureRowWeekOrders(rows)
 	if orders["1:a"] != 1 || orders["1:b"] != 2 || orders["1:c"] != 1 {

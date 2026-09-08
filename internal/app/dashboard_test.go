@@ -2,7 +2,6 @@ package app
 
 import (
 	"errors"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ func TestDashboardCoursesBuildsCourseScopedSummary(t *testing.T) {
 		{CourseName: "오픈소스소프트웨어실습", Assignment: Assignment{Title: "기말", DueAt: &due}},
 	}
 	lectures := []LectureRow{
-		{CourseName: "오픈소스소프트웨어실습", Lecture: klas.Lecture{Title: "HuggingFace", ContentID: "a", Progress: "0", EndAt: &due}},
+		{CourseName: "오픈소스소프트웨어실습", Lecture: Lecture{Title: "HuggingFace", ContentID: "a", Progress: "0", EndAt: &due}},
 	}
 	notices := []NoticeRow{
 		{CourseName: "컴퓨터그래픽스", Notice: Notice{Title: "공지"}},
@@ -44,7 +43,7 @@ func TestNormalizeCachedDashboardResultMigratesTopLevelAndCourseRows(t *testing.
 	term := Term{Value: "2026,1", Courses: []Course{{Name: "컴퓨터그래픽스", Value: "course-a"}}}
 	legacyAssignment := AssignmentRow{ID: "1:7", CourseName: "컴퓨터그래픽스"}
 	legacyNotice := NoticeRow{ID: "1:board:master", CourseName: "컴퓨터그래픽스"}
-	legacyLecture := LectureRow{ID: "1:content", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "content"}}
+	legacyLecture := LectureRow{ID: "1:content", CourseName: "컴퓨터그래픽스", Lecture: Lecture{ContentID: "content"}}
 	result, migrated, err := normalizeCachedDashboardResult(DashboardResult{
 		Assignments: []AssignmentRow{legacyAssignment},
 		Notices:     []NoticeRow{legacyNotice},

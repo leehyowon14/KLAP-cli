@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"os"
 )
 
@@ -51,7 +51,7 @@ func (r Runner) stdoutIsTerminal() bool {
 	return stdout.Mode()&os.ModeCharDevice != 0
 }
 
-func (r Runner) lectureStatusLabel(lecture klas.Lecture, percent float64) string {
+func (r Runner) lectureStatusLabel(lecture app.Lecture, percent float64) string {
 	if percent >= 100 {
 		return "완료"
 	}

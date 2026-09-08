@@ -16,7 +16,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	settingspkg "github.com/leehyowon14/KLAP-cli/internal/settings"
 )
 
@@ -2054,14 +2053,14 @@ func fixedColumn(value string, width int) string {
 	return lipgloss.NewStyle().Width(width).Render(value)
 }
 
-func lectureProgressStyle(lecture klas.Lecture) lipgloss.Style {
+func lectureProgressStyle(lecture app.Lecture) lipgloss.Style {
 	if lectureCompleted(lecture) {
 		return successTextStyle
 	}
 	return warnTextStyle
 }
 
-func lectureCompleted(lecture klas.Lecture) bool {
+func lectureCompleted(lecture app.Lecture) bool {
 	if strings.TrimSpace(lecture.ContentID) != "" {
 		progress, err := strconv.ParseFloat(strings.TrimSpace(lecture.Progress), 64)
 		return err == nil && progress >= 100
@@ -5235,7 +5234,7 @@ func formatTime(value *time.Time) string {
 	return value.Format("2006-01-02 15:04")
 }
 
-func lectureProgress(lecture klas.Lecture) string {
+func lectureProgress(lecture app.Lecture) string {
 	if strings.TrimSpace(lecture.ContentID) != "" {
 		progress := strings.TrimSpace(lecture.Progress)
 		if progress == "" {

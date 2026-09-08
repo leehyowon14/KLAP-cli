@@ -6,7 +6,6 @@ import (
 	"fmt"
 	bubblesprogress "github.com/charmbracelet/bubbles/progress"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/ui"
 	"io"
 	"regexp"
@@ -2681,7 +2680,7 @@ func newLectureProgressPrinter(writer io.Writer, inline bool) *lectureProgressPr
 	return &lectureProgressPrinter{writer: writer, inline: inline}
 }
 
-func (p *lectureProgressPrinter) Print(row app.LectureRow, progress klas.LectureProgress) {
+func (p *lectureProgressPrinter) Print(row app.LectureRow, progress app.LectureProgress) {
 	line := fmt.Sprintf("수강중: %s | %s", formatLectureProgress(row, progress), row.Lecture.Title)
 	if !p.inline {
 		_, _ = fmt.Fprintln(p.writer, line)
@@ -2699,7 +2698,7 @@ func (p *lectureProgressPrinter) Clear() {
 	p.active = false
 }
 
-func formatLectureProgress(row app.LectureRow, progress klas.LectureProgress) string {
+func formatLectureProgress(row app.LectureRow, progress app.LectureProgress) string {
 	return fmt.Sprintf("%s %s | %s",
 		renderProgressBar(progress.Progress, 28),
 		formatProgressMinutes(progress),
@@ -2725,13 +2724,13 @@ func renderProgressBar(percent float64, width int) string {
 	return bar.ViewAs(percent / 100)
 }
 
-func formatProgressMinutes(progress klas.LectureProgress) string {
+func formatProgressMinutes(progress app.LectureProgress) string {
 	total := emptyFallback(progress.TotalTime, "?")
 	required := emptyFallback(progress.PTime, "?")
 	return total + "/" + required + "분"
 }
 
-func lectureStatusPercent(lecture klas.Lecture) float64 {
+func lectureStatusPercent(lecture app.Lecture) float64 {
 	if lecture.ContentID != "" {
 		return boundedPercent(parseFloatOrDefault(lecture.Progress, 0))
 	}
@@ -2744,7 +2743,7 @@ func lectureStatusPercent(lecture klas.Lecture) float64 {
 	return boundedPercent(achieved / required * 100)
 }
 
-func formatLectureStatusMinutes(lecture klas.Lecture) string {
+func formatLectureStatusMinutes(lecture app.Lecture) string {
 	if lecture.ContentID != "" {
 		return emptyFallback(lecture.AchievedTime, "0") + "/" + emptyFallback(lecture.RequiredTime, "?") + "분"
 	}

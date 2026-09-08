@@ -332,7 +332,7 @@ func TestListFormatsHideInternalIDs(t *testing.T) {
 	lectures := formatLectures([]app.LectureRow{{
 		ID:         "1:6a0ebcc046111",
 		CourseName: "진로탐색및설계",
-		Lecture: klas.Lecture{
+		Lecture: app.Lecture{
 			Title:       "최신 면접 따라잡기",
 			ModuleTitle: "1주차",
 			ContentID:   "6a0ebcc046111",
@@ -349,9 +349,9 @@ func TestCoursePagedContentGroupsByCourse(t *testing.T) {
 		active: screenLectures,
 		width:  96,
 		lectureRows: []app.LectureRow{
-			{CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{Title: "렌더링", ModuleTitle: "1주차", Progress: "20", ContentID: "a"}},
-			{CourseName: "오픈소스소프트웨어실습", Lecture: klas.Lecture{Title: "Git", ModuleTitle: "2주차", Progress: "0", ContentID: "b"}},
-			{CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{Title: "셰이딩", ModuleTitle: "3주차", Progress: "30", ContentID: "c"}},
+			{CourseName: "컴퓨터그래픽스", Lecture: app.Lecture{Title: "렌더링", ModuleTitle: "1주차", Progress: "20", ContentID: "a"}},
+			{CourseName: "오픈소스소프트웨어실습", Lecture: app.Lecture{Title: "Git", ModuleTitle: "2주차", Progress: "0", ContentID: "b"}},
+			{CourseName: "컴퓨터그래픽스", Lecture: app.Lecture{Title: "셰이딩", ModuleTitle: "3주차", Progress: "30", ContentID: "c"}},
 		},
 	}
 
@@ -504,7 +504,7 @@ func TestLectureContentGroupsAlignsTitleColumn(t *testing.T) {
 	groups := lectureContentGroups([]app.LectureRow{
 		{
 			CourseName: "Gen-AI",
-			Lecture: klas.Lecture{
+			Lecture: app.Lecture{
 				Progress:    "100",
 				ContentID:   "a",
 				ModuleTitle: "Basics of Python I",
@@ -513,7 +513,7 @@ func TestLectureContentGroupsAlignsTitleColumn(t *testing.T) {
 		},
 		{
 			CourseName: "Gen-AI",
-			Lecture: klas.Lecture{
+			Lecture: app.Lecture{
 				Progress:    "100",
 				ContentID:   "b",
 				ModuleTitle: "Basics of Python II / Goal of Data Science and Data Storytelling",
@@ -541,16 +541,16 @@ func TestLectureContentGroupsAlignsTitleColumn(t *testing.T) {
 }
 
 func TestLectureCompletedDetectsPercentAndMinuteProgress(t *testing.T) {
-	if !lectureCompleted(klas.Lecture{ContentID: "content", Progress: "100"}) {
+	if !lectureCompleted(app.Lecture{ContentID: "content", Progress: "100"}) {
 		t.Fatal("content lecture with 100% progress should be completed")
 	}
-	if lectureCompleted(klas.Lecture{ContentID: "content", Progress: "99"}) {
+	if lectureCompleted(app.Lecture{ContentID: "content", Progress: "99"}) {
 		t.Fatal("content lecture below 100% should not be completed")
 	}
-	if !lectureCompleted(klas.Lecture{AchievedTime: "10", RequiredTime: "10"}) {
+	if !lectureCompleted(app.Lecture{AchievedTime: "10", RequiredTime: "10"}) {
 		t.Fatal("minute based lecture with achieved >= required should be completed")
 	}
-	if lectureCompleted(klas.Lecture{AchievedTime: "9", RequiredTime: "10"}) {
+	if lectureCompleted(app.Lecture{AchievedTime: "9", RequiredTime: "10"}) {
 		t.Fatal("minute based lecture below required time should not be completed")
 	}
 }
@@ -666,7 +666,7 @@ func TestViewLinesFitTerminalWidth(t *testing.T) {
 		lectureRows: []app.LectureRow{{
 			ID:         "1",
 			CourseName: "진로탐색및설계",
-			Lecture: klas.Lecture{
+			Lecture: app.Lecture{
 				Title:        "2026-1학기 진로탐색 및 설계 오리엔테이션 매우 긴 제목",
 				Progress:     "100",
 				AchievedTime: "10",
@@ -705,9 +705,9 @@ func TestViewStartsWithHeaderBeforeRule(t *testing.T) {
 		{name: "download-select", view: testChromeModel(screenDownloadSelect).View()},
 		{name: "download-confirm", view: testChromeModel(screenDownloadConfirm).View()},
 		{name: "download-language", view: testChromeModel(screenDownloadLanguage).View()},
-		{name: "download-progress", view: lectureDownloadModel{width: 80, height: 24, items: initialDownloadStatusLines([]app.LectureRow{{ID: "1", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}})}.View()},
+		{name: "download-progress", view: lectureDownloadModel{width: 80, height: 24, items: initialDownloadStatusLines([]app.LectureRow{{ID: "1", CourseName: "강의", Lecture: app.Lecture{Title: "영상"}}})}.View()},
 		{name: "attend-confirm", view: testChromeModel(screenAttendConfirm).View()},
-		{name: "attend-progress", view: lectureAttendModel{width: 80, height: 24, row: app.LectureRow{ID: "1:video", CourseName: "강의", Lecture: klas.Lecture{Title: "영상"}}, progress: klas.LectureProgress{Progress: 50, TotalTime: "5", PTime: "10"}}.View()},
+		{name: "attend-progress", view: lectureAttendModel{width: 80, height: 24, row: app.LectureRow{ID: "1:video", CourseName: "강의", Lecture: app.Lecture{Title: "영상"}}, progress: app.LectureProgress{Progress: 50, TotalTime: "5", PTime: "10"}}.View()},
 	} {
 		assertChromeInvariant(t, tt.name, tt.view, 80)
 	}
@@ -749,7 +749,7 @@ func testChromeModel(active screen) model {
 		lectureRows: []app.LectureRow{{
 			ID:         "1",
 			CourseName: "강의",
-			Lecture: klas.Lecture{
+			Lecture: app.Lecture{
 				Title:        "영상",
 				Progress:     "100",
 				AchievedTime: "10",
@@ -1102,7 +1102,7 @@ func TestDashboardFooterShowsSyllabusShortcutOnlyOnCoursePage(t *testing.T) {
 func TestLectureDownloadFormatting(t *testing.T) {
 	row := app.LectureRow{
 		CourseName: "오픈소스소프트웨어실습",
-		Lecture: klas.Lecture{
+		Lecture: app.Lecture{
 			ModuleTitle: "14주차",
 			Title:       "기말 보강 영상",
 		},
@@ -1124,8 +1124,8 @@ func TestLectureDownloadFormatting(t *testing.T) {
 
 func TestLectureDownloadProgressListUsesProgressRows(t *testing.T) {
 	rows := []app.LectureRow{
-		{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", ModuleTitle: "1주차", Title: "소개"}},
-		{ID: "1:b", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "b", ModuleTitle: "2주차", Title: "렌더링"}},
+		{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: app.Lecture{ContentID: "a", ModuleTitle: "1주차", Title: "소개"}},
+		{ID: "1:b", CourseName: "컴퓨터그래픽스", Lecture: app.Lecture{ContentID: "b", ModuleTitle: "2주차", Title: "렌더링"}},
 	}
 	m := lectureDownloadModel{
 		width:  96,
@@ -1142,7 +1142,7 @@ func TestLectureDownloadProgressListUsesProgressRows(t *testing.T) {
 }
 
 func TestLectureDownloadTranscriptStatusPreservesDoneOverwrite(t *testing.T) {
-	row := app.LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", Title: "소개"}}
+	row := app.LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: app.Lecture{ContentID: "a", Title: "소개"}}
 	m := lectureDownloadModel{items: initialDownloadStatusLines([]app.LectureRow{row})}
 	m.upsertTranscriptStatusLine(app.LectureTranscriptProgress{Lecture: row, Stage: "transcribe", OutputPath: "lecture.txt", Progress: 0.42})
 	m.upsertStatusLine(app.LectureDownloadProgress{Lecture: row, Stage: "done", Path: "lecture.mp4", Bytes: 10, TotalBytes: 10})
@@ -1201,8 +1201,8 @@ func TestLectureDownloadCancelCleanupRemovesArtifacts(t *testing.T) {
 }
 
 func TestLectureDownloadTranscriptQueueRespectsConcurrency(t *testing.T) {
-	rowA := app.LectureRow{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a", Title: "A"}}
-	rowB := app.LectureRow{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b", Title: "B"}}
+	rowA := app.LectureRow{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a", Title: "A"}}
+	rowB := app.LectureRow{ID: "1:b", CourseName: "A", Lecture: app.Lecture{ContentID: "b", Title: "B"}}
 	m := lectureDownloadModel{
 		request: LectureDownloadRequest{
 			Transcribe:            true,
@@ -1239,7 +1239,7 @@ func TestLectureDownloadTranscribesSkippedVideoWhenTranscriptMissing(t *testing.
 		t.Fatalf("WriteFile(video) error = %v", err)
 	}
 
-	row := app.LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: klas.Lecture{ContentID: "a", Title: "소개"}}
+	row := app.LectureRow{ID: "1:a", CourseName: "컴퓨터그래픽스", Lecture: app.Lecture{ContentID: "a", Title: "소개"}}
 	m := lectureDownloadModel{
 		request: LectureDownloadRequest{
 			Transcribe:            true,
@@ -1293,8 +1293,8 @@ func TestLectureDownloadTranscribesSkippedVideoWhenTranscriptMissing(t *testing.
 
 func TestLectureDownloadProgressCursorWraps(t *testing.T) {
 	rows := []app.LectureRow{
-		{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
-		{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b"}},
+		{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
+		{ID: "1:b", CourseName: "A", Lecture: app.Lecture{ContentID: "b"}},
 	}
 	m := lectureDownloadModel{items: initialDownloadStatusLines(rows)}
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -1316,7 +1316,7 @@ func TestLectureAttendShortcutOpensConfirmation(t *testing.T) {
 		lectureRows: []app.LectureRow{{
 			ID:         "1:video",
 			CourseName: "운영체제",
-			Lecture: klas.Lecture{
+			Lecture: app.Lecture{
 				ContentID: "video",
 				Title:     "프로세스",
 				Progress:  "25",
@@ -1342,7 +1342,7 @@ func TestLectureAttendShortcutAcceptsKoreanKeyboardKey(t *testing.T) {
 		active: screenLectures,
 		lectureRows: []app.LectureRow{{
 			ID:      "1:video",
-			Lecture: klas.Lecture{ContentID: "video", Progress: "25"},
+			Lecture: app.Lecture{ContentID: "video", Progress: "25"},
 		}},
 	}
 
@@ -1360,7 +1360,7 @@ func TestIntegratedAttendFlowStartsProgress(t *testing.T) {
 		lectureRows: []app.LectureRow{{
 			ID:         "course/1:lecture/video",
 			CourseName: "운영체제",
-			Lecture: klas.Lecture{
+			Lecture: app.Lecture{
 				ContentID: "video",
 				Title:     "프로세스",
 				Progress:  "25",
@@ -1393,12 +1393,12 @@ func TestValidateLectureAttendRejectsInvalidStates(t *testing.T) {
 		name string
 		row  app.LectureRow
 	}{
-		{name: "missing id", row: app.LectureRow{Lecture: klas.Lecture{ContentID: "video"}}},
+		{name: "missing id", row: app.LectureRow{Lecture: app.Lecture{ContentID: "video"}}},
 		{name: "unsupported", row: app.LectureRow{ID: "1:unsupported"}},
-		{name: "completed video", row: app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video", Progress: "100"}}},
-		{name: "completed activity", row: app.LectureRow{ID: "1:lrn-1", Lecture: klas.Lecture{LearningSeq: "1", AchievedTime: "10", RequiredTime: "10"}}},
-		{name: "not started", row: app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video", StartAt: &before}}},
-		{name: "expired", row: app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video", EndAt: &after}}},
+		{name: "completed video", row: app.LectureRow{ID: "1:video", Lecture: app.Lecture{ContentID: "video", Progress: "100"}}},
+		{name: "completed activity", row: app.LectureRow{ID: "1:lrn-1", Lecture: app.Lecture{LearningSeq: "1", AchievedTime: "10", RequiredTime: "10"}}},
+		{name: "not started", row: app.LectureRow{ID: "1:video", Lecture: app.Lecture{ContentID: "video", StartAt: &before}}},
+		{name: "expired", row: app.LectureRow{ID: "1:video", Lecture: app.Lecture{ContentID: "video", EndAt: &after}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1408,7 +1408,7 @@ func TestValidateLectureAttendRejectsInvalidStates(t *testing.T) {
 		})
 	}
 
-	valid := app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video", Progress: "99"}}
+	valid := app.LectureRow{ID: "1:video", Lecture: app.Lecture{ContentID: "video", Progress: "99"}}
 	if err := validateLectureAttend(valid, now); err != nil {
 		t.Fatalf("validateLectureAttend(valid) error = %v", err)
 	}
@@ -1417,7 +1417,7 @@ func TestValidateLectureAttendRejectsInvalidStates(t *testing.T) {
 func TestAttendConfirmationCanCancel(t *testing.T) {
 	m := model{
 		active:    screenAttendConfirm,
-		attendRow: app.LectureRow{ID: "1:video", Lecture: klas.Lecture{ContentID: "video"}},
+		attendRow: app.LectureRow{ID: "1:video", Lecture: app.Lecture{ContentID: "video"}},
 	}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	got := updated.(model)
@@ -1432,7 +1432,7 @@ func TestLectureAttendModelTracksProgressAndCompletion(t *testing.T) {
 		cancel: func() { canceled = true },
 		row:    app.LectureRow{ID: "1:video"},
 	}
-	updated, _ := m.Update(lectureAttendProgressMsg{progress: klas.LectureProgress{Progress: 40, TotalTime: "4", PTime: "10"}})
+	updated, _ := m.Update(lectureAttendProgressMsg{progress: app.LectureProgress{Progress: 40, TotalTime: "4", PTime: "10"}})
 	got := updated.(lectureAttendModel)
 	if got.progress.Progress != 40 || got.done {
 		t.Fatalf("progress=%+v done=%t", got.progress, got.done)
@@ -1440,7 +1440,7 @@ func TestLectureAttendModelTracksProgressAndCompletion(t *testing.T) {
 
 	updated, _ = got.Update(lectureAttendDoneMsg{result: app.LectureAttendResult{
 		Lecture:  app.LectureRow{ID: "1:video"},
-		Progress: klas.LectureProgress{Progress: 100, Completed: true},
+		Progress: app.LectureProgress{Progress: 100, Completed: true},
 	}})
 	got = updated.(lectureAttendModel)
 	if !got.done || got.progress.Progress != 100 || !canceled {
@@ -1450,7 +1450,7 @@ func TestLectureAttendModelTracksProgressAndCompletion(t *testing.T) {
 
 type fakeLectureAttender struct {
 	id       string
-	progress klas.LectureProgress
+	progress app.LectureProgress
 }
 
 func (f *fakeLectureAttender) AttendLecture(_ context.Context, id string, opts app.LectureAttendOptions) (app.LectureAttendResult, error) {
@@ -1465,7 +1465,7 @@ func (f *fakeLectureAttender) AttendLecture(_ context.Context, id string, opts a
 }
 
 func TestLectureAttendRunCallsServiceAndEmitsProgress(t *testing.T) {
-	progress := klas.LectureProgress{Progress: 75, TotalTime: "9", PTime: "12"}
+	progress := app.LectureProgress{Progress: 75, TotalTime: "9", PTime: "12"}
 	service := &fakeLectureAttender{progress: progress}
 	m := lectureAttendModel{
 		ctx:     context.Background(),
@@ -1489,7 +1489,7 @@ func TestLectureAttendRunCallsServiceAndEmitsProgress(t *testing.T) {
 }
 
 func TestInitialAttendProgressForLearningActivity(t *testing.T) {
-	progress := initialAttendProgress(app.LectureRow{Lecture: klas.Lecture{
+	progress := initialAttendProgress(app.LectureRow{Lecture: app.Lecture{
 		LearningSeq:  "1",
 		AchievedTime: "3",
 		RequiredTime: "12",
@@ -1502,8 +1502,8 @@ func TestInitialAttendProgressForLearningActivity(t *testing.T) {
 func TestModelDownloadSelectionIDs(t *testing.T) {
 	m := model{
 		downloadRows: []app.LectureRow{
-			{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
-			{ID: "1:b", CourseName: "B", Lecture: klas.Lecture{ContentID: "b"}},
+			{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
+			{ID: "1:b", CourseName: "B", Lecture: app.Lecture{ContentID: "b"}},
 		},
 		downloadSelected: map[string]bool{"1:b": true},
 	}
@@ -1516,9 +1516,9 @@ func TestModelDownloadSelectionIDs(t *testing.T) {
 func TestDownloadSelectionGroupsByCourse(t *testing.T) {
 	m := model{
 		downloadRows: []app.LectureRow{
-			{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
-			{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b"}},
-			{ID: "2:c", CourseName: "B", Lecture: klas.Lecture{ContentID: "c"}},
+			{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
+			{ID: "1:b", CourseName: "A", Lecture: app.Lecture{ContentID: "b"}},
+			{ID: "2:c", CourseName: "B", Lecture: app.Lecture{ContentID: "c"}},
 		},
 		downloadSelected: map[string]bool{},
 	}
@@ -1544,7 +1544,7 @@ func TestDownloadSelectionGroupsByCourse(t *testing.T) {
 func TestDownloadRowsStartUnselected(t *testing.T) {
 	m := model{active: screenDownloadSelect}
 	updated, _ := m.Update(downloadRowsMsg{rows: []app.LectureRow{
-		{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
+		{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
 	}})
 	got := updated.(model)
 	if len(got.downloadSelected) != 0 {
@@ -1560,7 +1560,7 @@ func TestIntegratedDownloadFlowStartsSelectedTranscript(t *testing.T) {
 		downloadRows: []app.LectureRow{{
 			ID:         "course/1:lecture/video",
 			CourseName: "운영체제",
-			Lecture:    klas.Lecture{ContentID: "video", Title: "프로세스"},
+			Lecture:    app.Lecture{ContentID: "video", Title: "프로세스"},
 		}},
 		downloadSelected: map[string]bool{},
 	}
@@ -1595,7 +1595,7 @@ func TestDownloadSelectIgnoresSelectionWhileLoading(t *testing.T) {
 	m := model{
 		active:             screenDownloadSelect,
 		loading:            true,
-		downloadRows:       []app.LectureRow{{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}}},
+		downloadRows:       []app.LectureRow{{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}}},
 		downloadSelected:   map[string]bool{},
 		downloadCourse:     0,
 		downloadCursor:     1,
@@ -1741,8 +1741,8 @@ func TestDownloadSelectionLeftRightChangesCourse(t *testing.T) {
 	m := model{
 		active: screenDownloadSelect,
 		downloadRows: []app.LectureRow{
-			{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
-			{ID: "2:b", CourseName: "B", Lecture: klas.Lecture{ContentID: "b"}},
+			{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
+			{ID: "2:b", CourseName: "B", Lecture: app.Lecture{ContentID: "b"}},
 		},
 		downloadSelected: map[string]bool{},
 	}
@@ -1762,8 +1762,8 @@ func TestDownloadSelectCursorWraps(t *testing.T) {
 	m := model{
 		active: screenDownloadSelect,
 		downloadRows: []app.LectureRow{
-			{ID: "1:a", CourseName: "A", Lecture: klas.Lecture{ContentID: "a"}},
-			{ID: "1:b", CourseName: "A", Lecture: klas.Lecture{ContentID: "b"}},
+			{ID: "1:a", CourseName: "A", Lecture: app.Lecture{ContentID: "a"}},
+			{ID: "1:b", CourseName: "A", Lecture: app.Lecture{ContentID: "b"}},
 		},
 		downloadSelected: map[string]bool{},
 	}

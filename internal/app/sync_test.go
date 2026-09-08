@@ -5,7 +5,6 @@ import (
 	"errors"
 	"github.com/leehyowon14/KLAP-cli/internal/cache"
 	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/reminder"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
 	"os"
@@ -507,7 +506,7 @@ func TestBuildLectureReminderNotesIncludesMarker(t *testing.T) {
 		ID:         "7:lecture",
 		TermValue:  "2026,1",
 		CourseName: "오픈소스소프트웨어실습",
-		Lecture: klas.Lecture{
+		Lecture: Lecture{
 			Title:        "HuggingFace",
 			ModuleTitle:  "14주차",
 			EndAt:        &dueAt,

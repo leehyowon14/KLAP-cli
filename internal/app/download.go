@@ -190,9 +190,9 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		LegacyID:   resource.LegacyID,
 		TermValue:  resource.Term.Value,
 		CourseName: resource.Course.Name,
-		Lecture:    *matched,
+		Lecture:    lectureModel(*matched),
 	}
-	weekOrder := lectureWeekOrder(lectures, *matched)
+	weekOrder := lectureWeekOrder(lectureModels(lectures), lectureModel(*matched))
 	emitLectureDownloadProgress(opts.OnProgress, LectureDownloadProgress{
 		Lecture:      row,
 		Stage:        "resolve",
@@ -214,7 +214,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
 
-	path := lectureVideoPath(dir, resource.Course.Name, *matched, mediaURL, weekOrder)
+	path := lectureVideoPath(dir, resource.Course.Name, lectureModel(*matched), mediaURL, weekOrder)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return LectureDownloadResult{}, fmt.Errorf("다운로드 폴더 생성 실패: %w", err)
 	}
@@ -342,7 +342,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 
 		rows := make([]LectureRow, 0, len(lectures))
 		for _, lecture := range lectures {
-			row, err := newLectureRow(term.Value, selectedCourse, lecture)
+			row, err := newLectureRow(term.Value, selectedCourse, lectureModel(lecture))
 			if err != nil {
 				return LectureDownloadAllResult{}, err
 			}
@@ -762,7 +762,7 @@ func (s *Service) effectiveDownloadConcurrency(concurrency int) (int, error) {
 
 var lectureWeekPattern = regexp.MustCompile(`([0-9]{1,2})\s*주차`)
 
-func lectureVideoPath(root string, courseName string, lecture klas.Lecture, mediaURL string, weekOrder int) string {
+func lectureVideoPath(root string, courseName string, lecture Lecture, mediaURL string, weekOrder int) string {
 	return filepath.Join(root, lectureCourseDirName(courseName), "video", lectureFilename(lecture, mediaURL, weekOrder))
 }
 
@@ -774,7 +774,7 @@ func lectureCourseDirName(courseName string) string {
 	return courseDir
 }
 
-func lectureFilename(lecture klas.Lecture, mediaURL string, weekOrder int) string {
+func lectureFilename(lecture Lecture, mediaURL string, weekOrder int) string {
 	extension := ".mp4"
 	if parsed, err := url.Parse(mediaURL); err == nil {
 		if ext := filepath.Ext(parsed.Path); ext != "" {
@@ -804,7 +804,7 @@ func lectureFilename(lecture klas.Lecture, mediaURL string, weekOrder int) strin
 	return strings.Join(filtered, "_") + extension
 }
 
-func lectureWeekNumber(lecture klas.Lecture) int {
+func lectureWeekNumber(lecture Lecture) int {
 	if week := parsePositiveInt(lecture.WeekNo); week > 0 {
 		return week
 	}
@@ -815,7 +815,7 @@ func lectureWeekNumber(lecture klas.Lecture) int {
 	return 0
 }
 
-func lectureWeekOrder(lectures []klas.Lecture, target klas.Lecture) int {
+func lectureWeekOrder(lectures []Lecture, target Lecture) int {
 	if order := parsePositiveInt(target.WeeklySeq); order > 0 {
 		return order
 	}
@@ -861,7 +861,7 @@ func lectureRowWeekOrders(rows []LectureRow) map[string]int {
 	return orders
 }
 
-func sameLectureForFilename(left klas.Lecture, right klas.Lecture) bool {
+func sameLectureForFilename(left Lecture, right Lecture) bool {
 	if strings.TrimSpace(left.ContentID) != "" && strings.TrimSpace(left.ContentID) == strings.TrimSpace(right.ContentID) {
 		return true
 	}

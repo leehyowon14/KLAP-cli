@@ -42,7 +42,7 @@ func TestLectureCacheHitAttendRefetchesActionPayload(t *testing.T) {
 		LegacyID:   "1:lrn-42",
 		TermValue:  term.Value,
 		CourseName: term.Courses[0].Name,
-		Lecture: klas.Lecture{
+		Lecture: Lecture{
 			LearningSeq:  "42",
 			Title:        "캐시 강의",
 			RequiredTime: "1",
@@ -174,7 +174,7 @@ func TestStableLectureTermValueRejectsMixedTerms(t *testing.T) {
 }
 
 func TestNewLectureRowIDIgnoresCourseOrder(t *testing.T) {
-	lecture := klas.Lecture{ContentID: "content-123", Title: "소개"}
+	lecture := Lecture{ContentID: "content-123", Title: "소개"}
 	course := Course{Name: "컴퓨터그래픽스", Value: "course-a"}
 	first, err := newLectureRow("2026,1", selectedCourse{Index: 1, Course: course}, lecture)
 	if err != nil {
@@ -198,7 +198,7 @@ func TestNormalizeCachedLectureRowsUsesCourseNameAfterReorder(t *testing.T) {
 		ID:         "1:content-123",
 		TermValue:  term.Value,
 		CourseName: "컴퓨터그래픽스",
-		Lecture:    klas.Lecture{ContentID: "content-123"},
+		Lecture:    Lecture{ContentID: "content-123"},
 	}}, term)
 	if err != nil {
 		t.Fatalf("normalizeCachedLectureRows() error = %v", err)
@@ -227,7 +227,7 @@ func TestLectureLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
 	rows, _, err := normalizeCachedLectureRows([]LectureRow{{
 		ID:         "1:content",
 		CourseName: "A",
-		Lecture:    klas.Lecture{ContentID: "content"},
+		Lecture:    Lecture{ContentID: "content"},
 	}}, term)
 	if err != nil {
 		t.Fatalf("normalizeCachedLectureRows() error = %v", err)
@@ -239,7 +239,7 @@ func TestLectureLegacyFilterCacheMustMatchSelectedCourse(t *testing.T) {
 }
 
 func TestLectureResourceKeyHasStableFallbackWithoutAttendID(t *testing.T) {
-	lecture := klas.Lecture{ModuleTitle: "1주차", Title: "오리엔테이션"}
+	lecture := Lecture{ModuleTitle: "1주차", Title: "오리엔테이션"}
 	first := lectureResourceKey(lecture)
 	second := lectureResourceKey(lecture)
 	if first == "" || first != second || !strings.HasPrefix(first, "meta-") {
@@ -248,7 +248,7 @@ func TestLectureResourceKeyHasStableFallbackWithoutAttendID(t *testing.T) {
 }
 
 func TestLectureRowIDMatchesLearningSeqFallback(t *testing.T) {
-	lecture := klas.Lecture{LearningSeq: "39769"}
+	lecture := Lecture{LearningSeq: "39769"}
 	if got := lectureRowID(1, lecture); got != "1:lrn-39769" {
 		t.Fatalf("lectureRowID() = %q", got)
 	}
@@ -263,19 +263,19 @@ func TestLectureNeedsAttendance(t *testing.T) {
 	start := now.Add(-time.Hour)
 	end := now.Add(time.Hour)
 
-	if !lectureNeedsAttendance(klas.Lecture{ContentID: "content", Progress: "20", StartAt: &start, EndAt: &end}, now) {
+	if !lectureNeedsAttendance(Lecture{ContentID: "content", Progress: "20", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected true")
 	}
-	if lectureNeedsAttendance(klas.Lecture{ContentID: "content", Progress: "100", StartAt: &start, EndAt: &end}, now) {
+	if lectureNeedsAttendance(Lecture{ContentID: "content", Progress: "100", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected false for completed lecture")
 	}
-	if lectureNeedsAttendance(klas.Lecture{ContentID: "", Progress: "20", StartAt: &start, EndAt: &end}, now) {
+	if lectureNeedsAttendance(Lecture{ContentID: "", Progress: "20", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected false without content id")
 	}
-	if !lectureNeedsAttendance(klas.Lecture{LearningSeq: "15", AchievedTime: "0", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
+	if !lectureNeedsAttendance(Lecture{LearningSeq: "15", AchievedTime: "0", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected true for incomplete learning activity")
 	}
-	if lectureNeedsAttendance(klas.Lecture{LearningSeq: "15", AchievedTime: "10", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
+	if lectureNeedsAttendance(Lecture{LearningSeq: "15", AchievedTime: "10", RequiredTime: "10", StartAt: &start, EndAt: &end}, now) {
 		t.Fatal("lectureNeedsAttendance() expected false for completed learning activity")
 	}
 }

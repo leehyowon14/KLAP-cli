@@ -3,7 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"testing"
 	"time"
 )
@@ -39,7 +39,7 @@ func TestRunnerClockControlsLectureStatus(t *testing.T) {
 		want string
 	}{{start.Add(-time.Second), "예정"}, {start, "미완료"}, {end.Add(time.Second), "기간 종료"}} {
 		r := Runner{Clock: func() time.Time { return tc.now }}
-		if got := r.lectureStatusLabel(klas.Lecture{StartAt: &start, EndAt: &end}, 0); got != tc.want {
+		if got := r.lectureStatusLabel(app.Lecture{StartAt: &start, EndAt: &end}, 0); got != tc.want {
 			t.Fatalf("status=%q want=%q", got, tc.want)
 		}
 	}

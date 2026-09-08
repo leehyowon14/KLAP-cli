@@ -11,7 +11,6 @@ import (
 	bubblesprogress "github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 )
 
 type lectureAttendModel struct {
@@ -20,7 +19,7 @@ type lectureAttendModel struct {
 	service   lectureAttender
 	row       app.LectureRow
 	updates   chan tea.Msg
-	progress  klas.LectureProgress
+	progress  app.LectureProgress
 	width     int
 	height    int
 	done      bool
@@ -33,7 +32,7 @@ type lectureAttender interface {
 }
 
 type lectureAttendProgressMsg struct {
-	progress klas.LectureProgress
+	progress app.LectureProgress
 }
 
 type lectureAttendDoneMsg struct {
@@ -122,7 +121,7 @@ func (m lectureAttendModel) run() tea.Cmd {
 	return func() tea.Msg {
 		defer close(m.updates)
 		result, err := m.service.AttendLecture(m.ctx, m.row.ID, app.LectureAttendOptions{
-			OnProgress: func(_ app.LectureRow, progress klas.LectureProgress) {
+			OnProgress: func(_ app.LectureRow, progress app.LectureProgress) {
 				select {
 				case m.updates <- lectureAttendProgressMsg{progress: progress}:
 				default:
@@ -139,7 +138,7 @@ func waitLectureAttendProgress(updates <-chan tea.Msg) tea.Cmd {
 	}
 }
 
-func renderLectureAttendProgress(progress klas.LectureProgress, width int) string {
+func renderLectureAttendProgress(progress app.LectureProgress, width int) string {
 	percent := boundedAttendPercent(progress.Progress)
 	bar := bubblesprogress.New(
 		bubblesprogress.WithWidth(width),
@@ -188,9 +187,9 @@ func validateLectureAttend(row app.LectureRow, now time.Time) error {
 	return nil
 }
 
-func initialAttendProgress(row app.LectureRow) klas.LectureProgress {
+func initialAttendProgress(row app.LectureRow) app.LectureProgress {
 	if strings.TrimSpace(row.Lecture.ContentID) != "" {
-		return klas.LectureProgress{Progress: parseAttendFloat(row.Lecture.Progress)}
+		return app.LectureProgress{Progress: parseAttendFloat(row.Lecture.Progress)}
 	}
 	achieved := parseAttendFloat(row.Lecture.AchievedTime)
 	required := parseAttendFloat(row.Lecture.RequiredTime)
@@ -198,7 +197,7 @@ func initialAttendProgress(row app.LectureRow) klas.LectureProgress {
 	if required > 0 {
 		percent = achieved / required * 100
 	}
-	return klas.LectureProgress{
+	return app.LectureProgress{
 		TotalTime: row.Lecture.AchievedTime,
 		PTime:     row.Lecture.RequiredTime,
 		Progress:  boundedAttendPercent(percent),

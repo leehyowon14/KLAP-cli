@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"strings"
 	"testing"
 	"time"
@@ -197,11 +196,11 @@ func TestLectureProgressPrinterUpdatesCurrentTerminalLine(t *testing.T) {
 	row := app.LectureRow{
 		ID:         "1:video",
 		CourseName: "자료구조",
-		Lecture:    klas.Lecture{Title: "01-DS-preliminary"},
+		Lecture:    app.Lecture{Title: "01-DS-preliminary"},
 	}
 
-	printer.Print(row, klas.LectureProgress{Progress: 2, TotalTime: "1", PTime: "41"})
-	printer.Print(row, klas.LectureProgress{Progress: 5, TotalTime: "2", PTime: "41"})
+	printer.Print(row, app.LectureProgress{Progress: 2, TotalTime: "1", PTime: "41"})
+	printer.Print(row, app.LectureProgress{Progress: 5, TotalTime: "2", PTime: "41"})
 	printer.Clear()
 
 	got := output.String()
@@ -222,10 +221,10 @@ func TestLectureProgressPrinterUpdatesCurrentTerminalLine(t *testing.T) {
 func TestLectureProgressPrinterKeepsLineLogsWhenNotInteractive(t *testing.T) {
 	var output bytes.Buffer
 	printer := newLectureProgressPrinter(&output, false)
-	row := app.LectureRow{ID: "1:video", Lecture: klas.Lecture{Title: "영상"}}
+	row := app.LectureRow{ID: "1:video", Lecture: app.Lecture{Title: "영상"}}
 
-	printer.Print(row, klas.LectureProgress{Progress: 25})
-	printer.Print(row, klas.LectureProgress{Progress: 50})
+	printer.Print(row, app.LectureProgress{Progress: 25})
+	printer.Print(row, app.LectureProgress{Progress: 50})
 	printer.Clear()
 
 	got := output.String()
@@ -247,10 +246,10 @@ func TestLectureProgressPrinterClearBeforeFirstUpdateDoesNothing(t *testing.T) {
 }
 
 func TestLectureStatusPercent(t *testing.T) {
-	if got := lectureStatusPercent(klas.Lecture{ContentID: "content", Progress: "75"}); got != 75 {
+	if got := lectureStatusPercent(app.Lecture{ContentID: "content", Progress: "75"}); got != 75 {
 		t.Fatalf("lectureStatusPercent() video = %v", got)
 	}
-	if got := lectureStatusPercent(klas.Lecture{LearningSeq: "10", AchievedTime: "5", RequiredTime: "10"}); got != 50 {
+	if got := lectureStatusPercent(app.Lecture{LearningSeq: "10", AchievedTime: "5", RequiredTime: "10"}); got != 50 {
 		t.Fatalf("lectureStatusPercent() activity = %v", got)
 	}
 }

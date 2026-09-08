@@ -21,14 +21,14 @@ type LectureListOptions struct {
 type LectureAttendOptions struct {
 	User       UserOption
 	Interval   time.Duration
-	OnProgress func(LectureRow, klas.LectureProgress)
+	OnProgress func(LectureRow, LectureProgress)
 }
 
 type LectureAttendAllOptions struct {
 	User         UserOption
 	CourseFilter string
 	Interval     time.Duration
-	OnProgress   func(LectureRow, klas.LectureProgress)
+	OnProgress   func(LectureRow, LectureProgress)
 }
 
 type LectureRow struct {
@@ -36,17 +36,17 @@ type LectureRow struct {
 	LegacyID   string `json:"-"`
 	TermValue  string
 	CourseName string
-	Lecture    klas.Lecture
+	Lecture    Lecture
 }
 
 type LectureAttendResult struct {
 	Lecture  LectureRow
-	Progress klas.LectureProgress
+	Progress LectureProgress
 }
 
 type LectureAttendItem struct {
 	Lecture  LectureRow
-	Progress klas.LectureProgress
+	Progress LectureProgress
 	Err      error
 }
 
@@ -92,7 +92,7 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 			return nil, err
 		}
 		for _, lecture := range lectures {
-			row, err := newLectureRow(term.Value, selectedCourse, lecture)
+			row, err := newLectureRow(term.Value, selectedCourse, lectureModel(lecture))
 			if err != nil {
 				return nil, err
 			}
@@ -139,7 +139,7 @@ func (s *Service) LectureOpenURL(ctx context.Context, id string, user UserOption
 	}
 
 	for _, lecture := range lectures {
-		if !lectureMatchesKey(lecture, resource.Key) {
+		if !lectureMatchesKey(lectureModel(lecture), resource.Key) {
 			continue
 		}
 		if strings.TrimSpace(lecture.PlayURL) == "" {
@@ -168,7 +168,7 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 
 	var matched *klas.Lecture
 	for index := range lectures {
-		if lectureMatchesKey(lectures[index], resource.Key) {
+		if lectureMatchesKey(lectureModel(lectures[index]), resource.Key) {
 			matched = &lectures[index]
 			break
 		}
@@ -182,9 +182,9 @@ func (s *Service) AttendLecture(ctx context.Context, id string, opts LectureAtte
 		LegacyID:   resource.LegacyID,
 		TermValue:  resource.Term.Value,
 		CourseName: resource.Course.Name,
-		Lecture:    *matched,
+		Lecture:    lectureModel(*matched),
 	}
-	progress, err := attendLecture(ctx, resource.Client, row, opts.Interval, opts.OnProgress)
+	progress, err := attendLecture(ctx, resource.Client, *matched, row, opts.Interval, opts.OnProgress)
 	if err != nil {
 		return LectureAttendResult{}, err
 	}
@@ -217,14 +217,14 @@ func (s *Service) AttendAllLectures(ctx context.Context, opts LectureAttendAllOp
 		}
 
 		for _, lecture := range lectures {
-			if !lectureNeedsAttendance(lecture, now) {
+			if !lectureNeedsAttendance(lectureModel(lecture), now) {
 				continue
 			}
-			row, rowErr := newLectureRow(term.Value, selectedCourse, lecture)
+			row, rowErr := newLectureRow(term.Value, selectedCourse, lectureModel(lecture))
 			if rowErr != nil {
 				return LectureAttendAllResult{}, rowErr
 			}
-			progress, err := attendLecture(ctx, client, row, opts.Interval, opts.OnProgress)
+			progress, err := attendLecture(ctx, client, lecture, row, opts.Interval, opts.OnProgress)
 			result.Items = append(result.Items, LectureAttendItem{
 				Lecture:  row,
 				Progress: progress,
@@ -243,7 +243,7 @@ func lectureRowIDs(rows []LectureRow) []string {
 	return ids
 }
 
-func lectureDueStatus(lecture klas.Lecture) string {
+func lectureDueStatus(lecture Lecture) string {
 	if lectureIsLearningActivity(lecture) {
 		return formatProgressValue(lecture.AchievedTime, lecture.RequiredTime)
 	}
@@ -355,7 +355,7 @@ func (s *Service) resolveLectureResource(ctx context.Context, studentID string, 
 	}, nil
 }
 
-func newLectureRow(termValue string, selected selectedCourse, lecture klas.Lecture) (LectureRow, error) {
+func newLectureRow(termValue string, selected selectedCourse, lecture Lecture) (LectureRow, error) {
 	ref, err := NewCourseRef(termValue, selected.Course)
 	if err != nil {
 		return LectureRow{}, err
@@ -443,13 +443,14 @@ func ParseLectureID(id string) (int, string, error) {
 	return courseIndex, lectureKey, nil
 }
 
-func attendLecture(ctx context.Context, client *klas.Client, row LectureRow, interval time.Duration, onProgress func(LectureRow, klas.LectureProgress)) (klas.LectureProgress, error) {
+func attendLecture(ctx context.Context, client *klas.Client, source klas.Lecture, row LectureRow, interval time.Duration, onProgress func(LectureRow, LectureProgress)) (LectureProgress, error) {
 	if lectureIsLearningActivity(row.Lecture) {
 		status := lectureLearningStatus(row.Lecture, time.Now())
 		if status != "Y" {
-			return klas.LectureProgress{}, errors.New("학습기간이 아니어서 학습활동 시간이 반영되지 않습니다")
+			return LectureProgress{}, errors.New("학습기간이 아니어서 학습활동 시간이 반영되지 않습니다")
 		}
-		progress, err := client.SaveLectureLearningStatus(ctx, row.Lecture, status)
+		rawProgress, err := client.SaveLectureLearningStatus(ctx, source, status)
+		progress := lectureProgressModel(rawProgress)
 		if err != nil {
 			return progress, err
 		}
@@ -458,25 +459,26 @@ func attendLecture(ctx context.Context, client *klas.Client, row LectureRow, int
 		}
 		return progress, nil
 	}
-	return attendLectureLoop(ctx, client, row, interval, onProgress)
+	return attendLectureLoop(ctx, client, source, row, interval, onProgress)
 }
 
-func attendLectureLoop(ctx context.Context, client *klas.Client, row LectureRow, interval time.Duration, onProgress func(LectureRow, klas.LectureProgress)) (klas.LectureProgress, error) {
+func attendLectureLoop(ctx context.Context, client *klas.Client, source klas.Lecture, row LectureRow, interval time.Duration, onProgress func(LectureRow, LectureProgress)) (LectureProgress, error) {
 	if interval <= 0 {
 		interval = 60 * time.Second
 	}
 
-	lecKey, err := client.LectureKey(ctx, row.Lecture)
+	lecKey, err := client.LectureKey(ctx, source)
 	if err != nil {
-		return klas.LectureProgress{}, err
+		return LectureProgress{}, err
 	}
 
-	var lastProgress klas.LectureProgress
+	var lastProgress LectureProgress
 	for {
-		if err := client.CheckLectureView(ctx, row.Lecture, lecKey); err != nil {
+		if err := client.CheckLectureView(ctx, source, lecKey); err != nil {
 			return lastProgress, err
 		}
-		progress, err := client.UpdateLectureProgress(ctx, row.Lecture, lecKey)
+		rawProgress, err := client.UpdateLectureProgress(ctx, source, lecKey)
+		progress := lectureProgressModel(rawProgress)
 		if err != nil {
 			return lastProgress, err
 		}
@@ -498,7 +500,7 @@ func attendLectureLoop(ctx context.Context, client *klas.Client, row LectureRow,
 	}
 }
 
-func lectureNeedsAttendance(lecture klas.Lecture, now time.Time) bool {
+func lectureNeedsAttendance(lecture Lecture, now time.Time) bool {
 	if lectureIsLearningActivity(lecture) {
 		if lecture.StartAt != nil && now.Before(*lecture.StartAt) {
 			return false
@@ -527,11 +529,11 @@ func lectureNeedsAttendance(lecture klas.Lecture, now time.Time) bool {
 	return strings.TrimSpace(lecture.ContentID) != ""
 }
 
-func lectureIsLearningActivity(lecture klas.Lecture) bool {
+func lectureIsLearningActivity(lecture Lecture) bool {
 	return strings.TrimSpace(lecture.ContentID) == "" && strings.TrimSpace(lecture.LearningSeq) != ""
 }
 
-func lectureLearningStatus(lecture klas.Lecture, now time.Time) string {
+func lectureLearningStatus(lecture Lecture, now time.Time) string {
 	if lecture.StartAt != nil && now.Before(*lecture.StartAt) {
 		return "N"
 	}
@@ -541,7 +543,7 @@ func lectureLearningStatus(lecture klas.Lecture, now time.Time) string {
 	return "Y"
 }
 
-func lectureAttendKey(lecture klas.Lecture) string {
+func lectureAttendKey(lecture Lecture) string {
 	if contentID := strings.TrimSpace(lecture.ContentID); contentID != "" {
 		return contentID
 	}
@@ -551,7 +553,7 @@ func lectureAttendKey(lecture klas.Lecture) string {
 	return ""
 }
 
-func lectureResourceKey(lecture klas.Lecture) string {
+func lectureResourceKey(lecture Lecture) string {
 	if key := lectureAttendKey(lecture); key != "" {
 		return key
 	}
@@ -572,11 +574,11 @@ func lectureResourceKey(lecture klas.Lecture) string {
 	return "meta-" + hashSyncParts(lecture.ModuleTitle, lecture.Title, startAt, endAt)[:24]
 }
 
-func lectureRowID(courseIndex int, lecture klas.Lecture) string {
+func lectureRowID(courseIndex int, lecture Lecture) string {
 	return LectureID(courseIndex, lectureAttendKey(lecture))
 }
 
-func lectureMatchesKey(lecture klas.Lecture, key string) bool {
+func lectureMatchesKey(lecture Lecture, key string) bool {
 	key = strings.TrimSpace(key)
 	return key != "" && lectureResourceKey(lecture) == key
 }
