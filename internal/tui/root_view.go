@@ -22,7 +22,7 @@ func (m model) View() string {
 		return appStyle.Render(m.download.View(contentWidth, m.height, m.active, m.loading, m.err))
 	case screenDownloadProgress:
 		return m.download.View(contentWidth, m.height, m.active, m.loading, m.err)
-	case screenAttendConfirm:
+	case screenAttendSelect, screenAttendConfirm:
 		return appStyle.Render(m.attend.View(contentWidth, m.active))
 	case screenAttendProgress:
 		return m.attend.View(contentWidth, m.active)
@@ -78,7 +78,7 @@ func (m model) footerHelp() string {
 		return "↑↓ 스크롤  k KLAS  b/esc 목록  q 종료"
 	}
 	if m.active == screenLectures {
-		return "←/→ 과목  ↑↓ 스크롤  a 수강  k KLAS  d 다운로드  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
+		return "←/→ 과목  ↑↓ 스크롤  a 수강  m 여러 강의 수강  k KLAS  d 다운로드  s 동기화  b/esc 뒤로  r 새로고침  q 종료"
 	}
 	if m.active == screenConfig {
 		return "←/→ 페이지  ↑↓ 선택  enter 선택  [] 변경  b/esc 뒤로  r 새로고침  q 종료"

@@ -10,6 +10,7 @@ import (
 )
 
 type attendScreenModel struct {
+	batch          *attendBatch
 	attendRow      app.LectureRow
 	attendProgress *lectureAttendModel
 }
@@ -22,9 +23,13 @@ func (m *attendScreenModel) Start(row app.LectureRow, selected bool, now time.Ti
 		return err
 	}
 	m.attendRow = row
+	m.batch = nil
 	return nil
 }
 func (m *attendScreenModel) Update(msg tea.Msg, route screen, ctx context.Context, service lectureAttender, now time.Time) (childAction, bool) {
+	if m.batch != nil {
+		return m.updateBatch(msg, route, ctx, service, now), true
+	}
 	if route == screenAttendProgress {
 		return m.updateProgress(msg), true
 	}
@@ -87,6 +92,9 @@ func (m *attendScreenModel) updateProgress(msg tea.Msg) childAction {
 	return childAction{cmd: cmd}
 }
 func (m attendScreenModel) View(width int, route screen) string {
+	if m.batch != nil {
+		return m.batchView(width, route)
+	}
 	if route == screenAttendConfirm {
 		return m.renderAttendConfirmView(width)
 	}

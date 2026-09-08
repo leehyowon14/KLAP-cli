@@ -15,7 +15,7 @@ func (m *model) updateActiveChild(msg tea.Msg) (childAction, bool) {
 		return m.auth.Update(msg, m.ctx, m.service)
 	case screenDownloadSelect, screenDownloadConfirm, screenDownloadLanguage, screenDownloadProgress:
 		return m.download.Update(msg, m.active, m.loading, m.ctx, m.service)
-	case screenAttendConfirm, screenAttendProgress:
+	case screenAttendSelect, screenAttendConfirm, screenAttendProgress:
 		return m.attend.Update(msg, m.active, m.ctx, m.service, time.Now())
 	case screenConfig, screenConfigChoice, screenConfigInput:
 		return m.config.Update(msg, m.active, m.loading, m.ctx, m.service)
@@ -73,6 +73,7 @@ const (
 	screenDownloadProgress
 	screenAttendConfirm
 	screenAttendProgress
+	screenAttendSelect
 )
 
 func (m model) updateGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

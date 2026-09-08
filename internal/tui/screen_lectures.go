@@ -121,6 +121,9 @@ func (m *lectureScreenModel) Update(msg tea.Msg, width int, loading bool) (child
 	if keyMatches(key.String(), "a", "ㅁ") {
 		return childAction{navigate: true, target: screenAttendConfirm}, true
 	}
+	if keyMatches(key.String(), "m", "ㅡ") {
+		return childAction{navigate: true, target: screenAttendSelect}, true
+	}
 	return childAction{}, false
 }
 

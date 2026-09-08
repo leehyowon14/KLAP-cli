@@ -64,6 +64,13 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 			m.content = ""
 			return m, loadDownloadRows(m.ctx, m.service)
 		}
+		if action.target == screenAttendSelect {
+			m.attend.StartSelection(m.lectures.lectureRows)
+			m.attend.batch.height = m.height
+			m.active = screenAttendSelect
+			m.err = nil
+			return m, nil
+		}
 		if action.target == screenAttendConfirm {
 			row, ok := m.lectures.selectedRow(m.width)
 			m.err = m.attend.Start(row, ok, time.Now())

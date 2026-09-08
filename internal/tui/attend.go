@@ -13,17 +13,18 @@ import (
 )
 
 type lectureAttendModel struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	service   lectureAttender
-	row       app.LectureRow
-	updates   chan tea.Msg
-	progress  app.LectureProgress
-	width     int
-	height    int
-	done      bool
-	canceling bool
-	err       error
+	ctx             context.Context
+	cancel          context.CancelFunc
+	service         lectureAttender
+	row             app.LectureRow
+	updates         chan tea.Msg
+	progress        app.LectureProgress
+	width           int
+	height          int
+	done            bool
+	canceling       bool
+	err             error
+	requireEligible bool
 }
 
 type lectureAttender interface {
@@ -31,12 +32,14 @@ type lectureAttender interface {
 }
 
 type lectureAttendProgressMsg struct {
+	updates  chan tea.Msg
 	progress app.LectureProgress
 }
 
 type lectureAttendDoneMsg struct {
-	result app.LectureAttendResult
-	err    error
+	updates chan tea.Msg
+	result  app.LectureAttendResult
+	err     error
 }
 
 func (m lectureAttendModel) Init() tea.Cmd {
@@ -49,9 +52,15 @@ func (m lectureAttendModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case lectureAttendProgressMsg:
+		if (msg.updates != nil && msg.updates != m.updates) || m.done {
+			return m, nil
+		}
 		m.progress = msg.progress
 		return m, waitLectureAttendProgress(m.updates)
 	case lectureAttendDoneMsg:
+		if msg.updates != nil && msg.updates != m.updates {
+			return m, nil
+		}
 		m.done = true
 		m.err = msg.err
 		if msg.err == nil {
@@ -120,14 +129,15 @@ func (m lectureAttendModel) run() tea.Cmd {
 	return func() tea.Msg {
 		defer close(m.updates)
 		result, err := m.service.AttendLecture(m.ctx, m.row.ID, app.LectureAttendOptions{
+			RequireEligible: m.requireEligible,
 			OnProgress: func(_ app.LectureRow, progress app.LectureProgress) {
 				select {
-				case m.updates <- lectureAttendProgressMsg{progress: progress}:
+				case m.updates <- lectureAttendProgressMsg{updates: m.updates, progress: progress}:
 				default:
 				}
 			},
 		})
-		return lectureAttendDoneMsg{result: result, err: err}
+		return lectureAttendDoneMsg{updates: m.updates, result: result, err: err}
 	}
 }
 
