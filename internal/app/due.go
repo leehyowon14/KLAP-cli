@@ -30,6 +30,7 @@ type DueItem struct {
 }
 
 func (s *Service) Due(ctx context.Context, opts DueOptions) (DueResult, error) {
+	s = s.withRequestSession()
 	days := opts.Days
 	if days <= 0 {
 		days = 14
