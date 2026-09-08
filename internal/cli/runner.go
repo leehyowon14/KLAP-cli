@@ -54,7 +54,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "cache":
 		return r.runCache(ctx, service, args[1:])
 	case "course":
-		return runCourse(ctx, service, args[1:])
+		return r.runCourse(ctx, service, args[1:])
 	case "subject":
 		return runSubject(ctx, service, args[1:])
 	case "term":

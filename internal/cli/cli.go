@@ -318,7 +318,7 @@ func (r Runner) runCache(ctx context.Context, service *app.Service, args []strin
 	}
 }
 
-func runCourse(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runCourse(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap course list [--user <학번>]")
 	}
@@ -332,7 +332,7 @@ func runCourse(ctx context.Context, service *app.Service, args []string) error {
 		if err != nil {
 			return err
 		}
-		printCourseList(terms)
+		r.printCourseList(terms)
 		return nil
 	default:
 		return fmt.Errorf("unknown course command: %s", args[0])
@@ -1856,21 +1856,21 @@ func (r Runner) printDue(result app.DueResult) {
 	}
 }
 
-func printCourseList(terms []klas.Term) {
+func (r Runner) printCourseList(terms []klas.Term) {
 	if len(terms) == 0 {
-		fmt.Println("수강 학기가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "수강 학기가 없습니다")
 		return
 	}
 
 	term := terms[0]
-	fmt.Printf("%s (%s)\n", term.Label, term.Value)
+	_, _ = fmt.Fprintf(r.Out, "%s (%s)\n", term.Label, term.Value)
 	if len(term.Courses) == 0 {
-		fmt.Println("수업이 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "수업이 없습니다")
 		return
 	}
 
 	for index, course := range term.Courses {
-		fmt.Printf("%d. %s\n", index+1, strings.TrimSpace(course.Name))
+		_, _ = fmt.Fprintf(r.Out, "%d. %s\n", index+1, strings.TrimSpace(course.Name))
 	}
 }
 
