@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,83 +18,27 @@ type syncMsg struct {
 
 type syncDoneTimeoutMsg struct{}
 
-func (m model) syncCurrentScreen() tea.Cmd {
-	return m.syncScreenWithDecisions(m.active, nil)
-}
-
-func (m model) syncScreenWithDecisions(source screen, decisions map[string]app.SyncDecision) tea.Cmd {
+func syncForScreen(ctx context.Context, service syncScreenService, source screen, allowDue bool, decisions map[string]app.SyncDecision) tea.Cmd {
 	switch source {
 	case screenDashboard:
-		return m.syncDashboard(decisions)
+		return syncDashboard(ctx, service, copySyncDecisions(decisions))
 	case screenDue:
-		if m.due.duePage == 3 {
-			return m.syncAcademic(decisions)
+		if allowDue {
+			return syncAcademic(ctx, service, copySyncDecisions(decisions))
 		}
 		return nil
 	case screenAssignments:
-		return m.syncAssignments(decisions)
+		return syncAssignments(ctx, service, copySyncDecisions(decisions))
 	case screenLectures:
-		return m.syncLectures(decisions)
+		return syncLectures(ctx, service, copySyncDecisions(decisions))
 	case screenAcademic:
-		return m.syncAcademic(decisions)
+		return syncAcademic(ctx, service, copySyncDecisions(decisions))
 	default:
 		return nil
 	}
 }
 
-func (m model) updateSyncConflict(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	switch {
-	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
-		return m, tea.Quit
-	case key == "esc" || keyMatches(key, "b", "ㅠ"):
-		m.active = m.syncConflictSource
-		if m.active == screenSyncConflict || m.active == 0 {
-			m.active = screenHome
-		}
-		m.syncConflicts = nil
-		m.syncConflictCursor = 0
-		m.syncConflictActions = nil
-		return m, nil
-	case key == "left" || key == "right":
-		conflict, ok := m.currentSyncConflict()
-		if !ok {
-			return m, nil
-		}
-		if m.syncConflictActions == nil {
-			m.syncConflictActions = map[string]app.SyncDecision{}
-		}
-		if m.syncConflictActions[conflict.Key] == app.SyncDecisionApply {
-			m.syncConflictActions[conflict.Key] = app.SyncDecisionKeep
-		} else {
-			m.syncConflictActions[conflict.Key] = app.SyncDecisionApply
-		}
-	case key == "enter":
-		if len(m.syncConflicts) == 0 {
-			m.active = screenHome
-			return m, nil
-		}
-		if m.syncConflictCursor < len(m.syncConflicts)-1 {
-			m.syncConflictCursor++
-			return m, nil
-		}
-		source := m.syncConflictSource
-		if source == screenSyncConflict || source == 0 {
-			source = screenDashboard
-		}
-		decisions := copySyncDecisions(m.syncConflictActions)
-		m.active = source
-		m.syncConflicts = nil
-		m.syncConflictCursor = 0
-		m.syncPhase = "syncing"
-		m.syncStatus = ""
-		m.err = nil
-		return m, m.syncScreenWithDecisions(source, decisions)
-	}
-	return m, nil
-}
-
-func (m model) currentSyncConflict() (app.SyncConflict, bool) {
+func (m syncScreenModel) currentSyncConflict() (app.SyncConflict, bool) {
 	if len(m.syncConflicts) == 0 {
 		return app.SyncConflict{}, false
 	}
@@ -117,9 +62,9 @@ func copySyncDecisions(source map[string]app.SyncDecision) map[string]app.SyncDe
 	return copied
 }
 
-func (m model) syncDashboard(decisions map[string]app.SyncDecision) tea.Cmd {
+func syncDashboard(ctx context.Context, service syncScreenService, decisions map[string]app.SyncDecision) tea.Cmd {
 	return func() tea.Msg {
-		result := m.service.SyncDashboard(m.ctx, app.DashboardSyncOptions{Decisions: decisions})
+		result := service.SyncDashboard(ctx, app.DashboardSyncOptions{Decisions: decisions})
 		assignments, assignmentErr := result.Assignments, result.AssignmentError
 		lectures, lectureErr := result.Lectures, result.LectureError
 		academic, academicErr := result.Academic, result.AcademicError
@@ -141,9 +86,9 @@ func (m model) syncDashboard(decisions map[string]app.SyncDecision) tea.Cmd {
 	}
 }
 
-func (m model) syncAssignments(decisions map[string]app.SyncDecision) tea.Cmd {
+func syncAssignments(ctx context.Context, service syncScreenService, decisions map[string]app.SyncDecision) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.SyncAssignmentReminders(m.ctx, app.AssignmentSyncOptions{Decisions: decisions})
+		result, err := service.SyncAssignmentReminders(ctx, app.AssignmentSyncOptions{Decisions: decisions})
 		if conflicts := syncConflictsFromErrors(err); len(conflicts) > 0 {
 			return syncMsg{conflicts: conflicts}
 		}
@@ -151,9 +96,9 @@ func (m model) syncAssignments(decisions map[string]app.SyncDecision) tea.Cmd {
 	}
 }
 
-func (m model) syncLectures(decisions map[string]app.SyncDecision) tea.Cmd {
+func syncLectures(ctx context.Context, service syncScreenService, decisions map[string]app.SyncDecision) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.SyncLectureReminders(m.ctx, app.LectureSyncOptions{Decisions: decisions})
+		result, err := service.SyncLectureReminders(ctx, app.LectureSyncOptions{Decisions: decisions})
 		if conflicts := syncConflictsFromErrors(err); len(conflicts) > 0 {
 			return syncMsg{conflicts: conflicts}
 		}
@@ -161,9 +106,9 @@ func (m model) syncLectures(decisions map[string]app.SyncDecision) tea.Cmd {
 	}
 }
 
-func (m model) syncAcademic(decisions map[string]app.SyncDecision) tea.Cmd {
+func syncAcademic(ctx context.Context, service syncScreenService, decisions map[string]app.SyncDecision) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.SyncAcademicCalendar(m.ctx, app.AcademicSyncOptions{Decisions: decisions})
+		result, err := service.SyncAcademicCalendar(ctx, app.AcademicSyncOptions{Decisions: decisions})
 		if conflicts := syncConflictsFromErrors(err); len(conflicts) > 0 {
 			return syncMsg{conflicts: conflicts}
 		}
@@ -221,7 +166,7 @@ func formatCalendarSyncStatus(label string, result app.CalendarSyncResult) strin
 	)
 }
 
-func (m model) renderSyncConflictPanel(width int) string {
+func (m syncScreenModel) View(width int) string {
 	var b strings.Builder
 	conflict, ok := m.currentSyncConflict()
 	if !ok {
@@ -272,18 +217,18 @@ func (m model) renderSyncConflictPanel(width int) string {
 	return b.String()
 }
 
-func (m model) renderSyncPanel() string {
+func (m syncScreenModel) StatusView(statusText string) string {
 	switch m.syncPhase {
 	case "syncing":
 		return warnBadgeStyle.Render("SYNCING") + " " + "캘린더와 미리알림을 동기화하는 중입니다\n"
 	case "error":
-		status := strings.TrimSpace(m.syncStatus)
+		status := strings.TrimSpace(statusText)
 		if status == "" {
 			status = "동기화 중 오류가 발생했습니다"
 		}
 		return errorStyle.Render("ERROR") + " " + status + "\n"
 	default:
-		status := strings.TrimSpace(m.syncStatus)
+		status := strings.TrimSpace(statusText)
 		if status == "" {
 			status = "동기화 완료"
 		}
@@ -307,4 +252,96 @@ func formatSyncPanelStatus(status string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+type syncScreenModel struct {
+	syncConflictSource  screen
+	syncConflicts       []app.SyncConflict
+	syncConflictCursor  int
+	syncConflictActions map[string]app.SyncDecision
+	syncPhase           string
+}
+type syncScreenService interface {
+	SyncDashboard(context.Context, app.DashboardSyncOptions) app.DashboardSyncResult
+	SyncAssignmentReminders(context.Context, app.AssignmentSyncOptions) (app.ReminderSyncResult, error)
+	SyncLectureReminders(context.Context, app.LectureSyncOptions) (app.ReminderSyncResult, error)
+	SyncAcademicCalendar(context.Context, app.AcademicSyncOptions) (app.CalendarSyncResult, error)
+}
+
+func (m *syncScreenModel) Start(source screen) {
+	m.syncConflictSource = source
+	m.syncConflictActions = map[string]app.SyncDecision{}
+	m.syncPhase = "syncing"
+}
+func (m *syncScreenModel) ClearPhase() { m.syncPhase = "" }
+func (m *syncScreenModel) Loaded(msg syncMsg) {
+	if len(msg.conflicts) > 0 {
+		m.syncPhase = ""
+		m.syncConflicts = msg.conflicts
+		m.syncConflictCursor = 0
+		if m.syncConflictActions == nil {
+			m.syncConflictActions = map[string]app.SyncDecision{}
+		}
+		for _, conflict := range msg.conflicts {
+			if m.syncConflictActions[conflict.Key] == "" {
+				m.syncConflictActions[conflict.Key] = app.SyncDecisionKeep
+			}
+		}
+		return
+	}
+	m.syncPhase = "done"
+	if msg.err != nil {
+		m.syncPhase = "error"
+	}
+}
+func (m *syncScreenModel) Update(msg tea.Msg, ctx context.Context, service syncScreenService, allowDue bool) (childAction, bool) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	k := key.String()
+	switch {
+	case k == "ctrl+c" || keyMatches(k, "q", "ㅂ"):
+		return childAction{cmd: tea.Quit}, true
+	case k == "esc" || keyMatches(k, "b", "ㅠ"):
+		target := m.syncConflictSource
+		if target == screenSyncConflict || target == 0 {
+			target = screenHome
+		}
+		m.syncConflicts = nil
+		m.syncConflictCursor = 0
+		m.syncConflictActions = nil
+		return childAction{navigate: true, routeOnly: true, target: target}, true
+	case k == "left" || k == "right":
+		conflict, ok := m.currentSyncConflict()
+		if !ok {
+			return childAction{}, true
+		}
+		if m.syncConflictActions == nil {
+			m.syncConflictActions = map[string]app.SyncDecision{}
+		}
+		if m.syncConflictActions[conflict.Key] == app.SyncDecisionApply {
+			m.syncConflictActions[conflict.Key] = app.SyncDecisionKeep
+		} else {
+			m.syncConflictActions[conflict.Key] = app.SyncDecisionApply
+		}
+	case k == "enter":
+		if len(m.syncConflicts) == 0 {
+			return childAction{navigate: true, routeOnly: true, target: screenHome}, true
+		}
+		if m.syncConflictCursor < len(m.syncConflicts)-1 {
+			m.syncConflictCursor++
+			return childAction{}, true
+		}
+		source := m.syncConflictSource
+		if source == screenSyncConflict || source == 0 {
+			source = screenDashboard
+		}
+		decisions := copySyncDecisions(m.syncConflictActions)
+		m.syncConflicts = nil
+		m.syncConflictCursor = 0
+		m.syncPhase = "syncing"
+		return childAction{navigate: true, routeOnly: true, target: source, setStatus: true, setError: true, cmd: syncForScreen(ctx, service, source, allowDue, decisions)}, true
+	}
+	return childAction{}, true
 }

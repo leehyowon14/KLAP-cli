@@ -12,6 +12,7 @@ type childAction struct {
 	status      string
 	setError    bool
 	err         error
+	routeOnly   bool
 	navigate    bool
 	target      screen
 	cmd         tea.Cmd
@@ -28,6 +29,11 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 		m.err = action.err
 	}
 	if action.navigate {
+		if action.routeOnly {
+			m.active = action.target
+			return m, action.cmd
+		}
+
 		if action.target == screenHome {
 			m.active = screenHome
 			m.loading = false

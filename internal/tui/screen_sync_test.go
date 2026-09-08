@@ -19,12 +19,12 @@ func TestFormatSyncStatus(t *testing.T) {
 
 func TestSyncPanelHidesDashboardStatus(t *testing.T) {
 	m := model{
-		active:     screenDashboard,
-		syncPhase:  "done",
+		active: screenDashboard,
+
 		syncStatus: "동기화 완료: 과제 생성 1",
 		dashboard: dashboardScreenModel{dashboardResult: app.DashboardResult{
 			Term: app.Term{Value: "2026,1", Label: "2026년도 1학기"},
-		}},
+		}}, sync: syncScreenModel{syncPhase: "done"},
 	}
 	view := m.renderPanel(96)
 	if !strings.Contains(view, "DONE") || !strings.Contains(view, "과제 생성 1") {

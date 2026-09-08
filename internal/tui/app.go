@@ -43,49 +43,45 @@ const (
 )
 
 type model struct {
-	ctx                 context.Context
-	service             *app.Service
-	home                homeModel
-	active              screen
-	loading             bool
-	loadedScreens       map[screen]bool
-	loadingScreens      map[screen]bool
-	screenErrors        map[screen]error
-	prefetchQueue       []screen
-	prefetchCurrent     screen
-	prefetchActive      bool
-	err                 error
-	content             string
-	dashboard           dashboardScreenModel
-	assignments         assignmentScreenModel
-	notices             noticeScreenModel
-	lectures            lectureScreenModel
-	due                 dueScreenModel
-	academic            academicScreenModel
-	syllabus            syllabusScreenModel
-	detailBack          screen
-	syncStatus          string
-	width               int
-	height              int
-	loadedAt            time.Time
-	lastSyncAt          time.Time
-	syncPhase           string
-	config              configScreenModel
-	downloadRows        []app.LectureRow
-	downloadSelected    map[string]bool
-	downloadCourse      int
-	downloadCursor      int
-	downloadTranscribe  bool
-	downloadLanguage    int
-	downloadProgress    *lectureDownloadModel
-	attendRow           app.LectureRow
-	attendProgress      *lectureAttendModel
-	room                roomScreenModel
-	syncConflictSource  screen
-	syncConflicts       []app.SyncConflict
-	syncConflictCursor  int
-	syncConflictActions map[string]app.SyncDecision
-	auth                authScreenModel
+	ctx                context.Context
+	service            *app.Service
+	home               homeModel
+	active             screen
+	loading            bool
+	loadedScreens      map[screen]bool
+	loadingScreens     map[screen]bool
+	screenErrors       map[screen]error
+	prefetchQueue      []screen
+	prefetchCurrent    screen
+	prefetchActive     bool
+	err                error
+	content            string
+	dashboard          dashboardScreenModel
+	assignments        assignmentScreenModel
+	notices            noticeScreenModel
+	lectures           lectureScreenModel
+	due                dueScreenModel
+	academic           academicScreenModel
+	syllabus           syllabusScreenModel
+	detailBack         screen
+	syncStatus         string
+	width              int
+	height             int
+	loadedAt           time.Time
+	lastSyncAt         time.Time
+	config             configScreenModel
+	downloadRows       []app.LectureRow
+	downloadSelected   map[string]bool
+	downloadCourse     int
+	downloadCursor     int
+	downloadTranscribe bool
+	downloadLanguage   int
+	downloadProgress   *lectureDownloadModel
+	attendRow          app.LectureRow
+	attendProgress     *lectureAttendModel
+	room               roomScreenModel
+	sync               syncScreenModel
+	auth               authScreenModel
 }
 
 type transcriptLanguage struct {
@@ -229,7 +225,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.active == screenSyncConflict {
-			return m.updateSyncConflict(msg)
+			action, _ := m.sync.Update(msg, m.ctx, m.service, m.due.duePage == 3)
+			return m.applyChildAction(action)
 		}
 		switch msg.String() {
 		case "ctrl+c":
@@ -318,12 +315,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.load(m.active, true)
 			}
 		case keyMatches(key, "s", "ㄴ"):
-			if cmd := m.syncCurrentScreen(); cmd != nil {
+			if cmd := syncForScreen(m.ctx, m.service, m.active, m.due.duePage == 3, nil); cmd != nil {
 				m.loading = false
 				m.err = nil
-				m.syncConflictSource = m.active
-				m.syncConflictActions = map[string]app.SyncDecision{}
-				m.syncPhase = "syncing"
+				m.sync.Start(m.active)
 				m.syncStatus = ""
 				return m, cmd
 			}
@@ -394,35 +389,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		if len(msg.conflicts) > 0 {
 			m.active = screenSyncConflict
-			m.syncPhase = ""
+			m.sync.Loaded(msg)
 			m.syncStatus = ""
 			m.err = nil
-			m.syncConflicts = msg.conflicts
-			m.syncConflictCursor = 0
-			if m.syncConflictActions == nil {
-				m.syncConflictActions = map[string]app.SyncDecision{}
-			}
-			for _, conflict := range msg.conflicts {
-				if m.syncConflictActions[conflict.Key] == "" {
-					m.syncConflictActions[conflict.Key] = app.SyncDecisionKeep
-				}
-			}
 			return m, nil
 		}
 		m.active = screenDashboard
 		m.dashboard.resetPage()
 		m.syncStatus = msg.status
-		m.syncPhase = "done"
-		if msg.err != nil {
-			m.syncPhase = "error"
-		} else {
+		m.sync.Loaded(msg)
+		if msg.err == nil {
 			m.lastSyncAt = time.Now()
 		}
 		m.err = nil
 		m.loadedAt = time.Now()
 		return m, tea.Batch(m.load(screenDashboard, false), syncDoneTimeout())
 	case syncDoneTimeoutMsg:
-		m.syncPhase = ""
+		m.sync.ClearPhase()
 		m.syncStatus = ""
 		m.err = nil
 	case statusMsg:
@@ -570,7 +553,7 @@ func (m *model) applyLoadMsg(msg loadMsg) {
 		}
 		m.activePager().contentCourse = 0
 		m.activePager().contentCursor = 0
-		if m.syncPhase == "" {
+		if m.sync.syncPhase == "" {
 			m.syncStatus = ""
 		}
 		m.loadedAt = time.Now()
@@ -1105,7 +1088,7 @@ func (m model) View() string {
 }
 
 func (m model) footerHelp() string {
-	if m.syncPhase != "" {
+	if m.sync.syncPhase != "" {
 		return "동기화 진행 중  q 종료"
 	}
 	if m.active == screenDashboard {
@@ -1310,8 +1293,8 @@ func (m model) renderPanel(width int) string {
 		b.WriteString(mutedStyle.Render(subtitle))
 		b.WriteString("\n\n")
 	}
-	if m.syncPhase != "" {
-		b.WriteString(m.renderSyncPanel())
+	if m.sync.syncPhase != "" {
+		b.WriteString(m.sync.StatusView(m.syncStatus))
 		return b.String()
 	}
 	if m.loading {
@@ -1356,7 +1339,7 @@ func (m model) renderPanel(width int) string {
 		return b.String()
 	}
 	if m.active == screenSyncConflict {
-		b.WriteString(m.renderSyncConflictPanel(width))
+		b.WriteString(m.sync.View(width))
 		return b.String()
 	}
 	if m.active == screenConfig {

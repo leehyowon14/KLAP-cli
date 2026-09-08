@@ -227,13 +227,6 @@ func testChromeModel(active screen) model {
 		width:  80,
 		height: 24,
 
-		syncConflicts: []app.SyncConflict{{
-			Key:     "assignment:1",
-			Scope:   "assignment",
-			Title:   "기말 과제",
-			Summary: "기말 과제 · 2026-06-17 23:59",
-		}},
-		syncConflictActions: map[string]app.SyncDecision{"assignment:1": app.SyncDecisionKeep},
 		assignments: assignmentScreenModel{assignmentRows: []app.AssignmentRow{{
 			ID:         "1",
 			CourseName: "강의",
@@ -304,7 +297,13 @@ func testChromeModel(active screen) model {
 			configOptions:   app.CategoryOptions{Reminders: []string{"Kwangwoon Univ."}, Calendars: []string{"학사일정", "시간표"}},
 			configChoiceKey: "calendar.name",
 			configInput:     textinput.New()}, room: roomScreenModel{roomDaysSelected: map[int]bool{1: true},
-			roomPeriodsSelected: map[int]bool{1: true}},
+			roomPeriodsSelected: map[int]bool{1: true}}, sync: syncScreenModel{syncConflicts: []app.SyncConflict{{
+			Key:     "assignment:1",
+			Scope:   "assignment",
+			Title:   "기말 과제",
+			Summary: "기말 과제 · 2026-06-17 23:59",
+		}},
+			syncConflictActions: map[string]app.SyncDecision{"assignment:1": app.SyncDecisionKeep}},
 	}
 	m.config.configInput.SetValue("입력값")
 	return m
