@@ -56,6 +56,23 @@ type SyllabusTime struct {
 }
 
 type SyllabusListItem struct {
+	ThisYear      string
+	Hakgi         string
+	OpenMajorCode string
+	OpenGrade     string
+	OpenGwamokNo  string
+	BunbanNo      string
+	KoreanName    string
+	Professor     string
+	CourseType    string
+	CreditHours   string
+	Credits       string
+	Summary       string
+	CloseOpt      string
+	VideoURL      string
+}
+
+type syllabusListItem struct {
 	ThisYear      string         `json:"thisYear"`
 	Hakgi         string         `json:"hakgi"`
 	OpenMajorCode string         `json:"openMajorCode"`
@@ -70,6 +87,25 @@ type SyllabusListItem struct {
 	Summary       string         `json:"summary"`
 	CloseOpt      string         `json:"closeOpt"`
 	VideoURL      string         `json:"videoUrl"`
+}
+
+func syllabusListModel(item syllabusListItem) SyllabusListItem {
+	return SyllabusListItem{
+		ThisYear:      item.ThisYear,
+		Hakgi:         item.Hakgi,
+		OpenMajorCode: item.OpenMajorCode,
+		OpenGrade:     item.OpenGrade,
+		OpenGwamokNo:  item.OpenGwamokNo,
+		BunbanNo:      item.BunbanNo,
+		KoreanName:    item.KoreanName,
+		Professor:     item.Professor,
+		CourseType:    item.CourseType,
+		CreditHours:   item.CreditHours.String(),
+		Credits:       item.Credits.String(),
+		Summary:       item.Summary,
+		CloseOpt:      item.CloseOpt,
+		VideoURL:      item.VideoURL,
+	}
 }
 
 type syllabusDataItem struct {
@@ -181,11 +217,18 @@ func (c *Client) SyllabusList(ctx context.Context, yearHakgi string, name string
 		return nil, err
 	}
 
-	var response []SyllabusListItem
+	var response []syllabusListItem
 	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("강의계획서 목록 응답 파싱 실패: %w", err)
 	}
-	return response, nil
+	if response == nil {
+		return nil, nil
+	}
+	items := make([]SyllabusListItem, len(response))
+	for i, item := range response {
+		items[i] = syllabusListModel(item)
+	}
+	return items, nil
 }
 
 func (c *Client) SyllabusTimeInfo(ctx context.Context, subjectID string) ([]SyllabusTime, error) {
