@@ -2186,7 +2186,7 @@ func (r Runner) printGrade(result app.GradeResult) {
 	}
 }
 
-func gradeLabel(course klas.GradeCourse) string {
+func gradeLabel(course app.GradeCourse) string {
 	if strings.TrimSpace(course.Grade) != "" {
 		return strings.TrimSpace(course.Grade)
 	}
@@ -2308,7 +2308,7 @@ func (r Runner) printEvaluationSubmitResult(result app.EvaluationSubmitResult) {
 	_, _ = fmt.Fprintf(r.Out, "요약: 제출 가능 %d, 건너뜀 %d, 실패 %d\n", ready, skipped, failed)
 }
 
-func formatClassRank(row klas.Rank) string {
+func formatClassRank(row app.Rank) string {
 	if strings.TrimSpace(row.ClassRank) == "" && strings.TrimSpace(row.ClassSize) == "" {
 		return "-"
 	}

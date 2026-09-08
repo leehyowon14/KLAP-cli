@@ -18,12 +18,12 @@ type RankOptions struct {
 }
 
 type GradeResult struct {
-	Report    klas.GradeReport
+	Report    GradeReport
 	TermValue string
 }
 
 type RankResult struct {
-	Rows []klas.Rank
+	Rows []Rank
 }
 
 func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, error) {
@@ -63,7 +63,7 @@ func (s *Service) Grade(ctx context.Context, opts GradeOptions) (GradeResult, er
 		}
 		report.Terms = filtered
 	}
-	result := GradeResult{Report: report, TermValue: termValue}
+	result := GradeResult{Report: gradeReportModel(report), TermValue: termValue}
 	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
 	return result, nil
 }
@@ -105,7 +105,7 @@ func (s *Service) Rank(ctx context.Context, opts RankOptions) (RankResult, error
 		}
 		rows = filtered
 	}
-	result := RankResult{Rows: rows}
+	result := RankResult{Rows: rankModels(rows)}
 	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
 	return result, nil
 }
