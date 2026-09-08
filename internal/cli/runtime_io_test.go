@@ -51,3 +51,16 @@ func TestRunnerBufferDisablesInPlaceProgress(t *testing.T) {
 		t.Fatal("buffer treated as terminal")
 	}
 }
+
+func TestRunnerUsesInjectedTerminalCapabilities(t *testing.T) {
+	t.Setenv("TERM", "dumb")
+	t.Setenv("KLAP_NO_HYPERLINKS", "1")
+	r := Runner{Terminal: TerminalCapabilities{Hyperlinks: true, InPlaceProgress: true}}
+	if !r.stdoutSupportsInPlaceProgress() || r.linkifyForTerminal("https://example.test") == "https://example.test" {
+		t.Fatal("renderer read environment instead of injected capabilities")
+	}
+	r.Terminal = TerminalCapabilities{}
+	if r.stdoutSupportsInPlaceProgress() || r.linkifyForTerminal("https://example.test") != "https://example.test" {
+		t.Fatal("plain output changed")
+	}
+}

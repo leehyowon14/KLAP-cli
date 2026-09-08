@@ -8,12 +8,19 @@ import (
 	"time"
 )
 
+// TerminalCapabilities is detected by bootstrap and stays deterministic in renderers.
+type TerminalCapabilities struct {
+	Hyperlinks      bool
+	InPlaceProgress bool
+}
+
 type Runner struct {
-	Service *app.Service
-	Out     io.Writer
-	ErrOut  io.Writer
-	Opener  func(string, string) error
-	Clock   func() time.Time
+	Terminal TerminalCapabilities
+	Service  *app.Service
+	Out      io.Writer
+	ErrOut   io.Writer
+	Opener   func(string, string) error
+	Clock    func() time.Time
 }
 
 func (r Runner) normalized() Runner {

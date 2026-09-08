@@ -12,7 +12,7 @@ import (
 
 func Run(ctx context.Context, args []string) error {
 	return runWithFactory(ctx, args, NewService, func(ctx context.Context, args []string, s *app.Service) error {
-		return (cli.Runner{Service: s, Out: os.Stdout, ErrOut: os.Stderr, Opener: openExternal, Clock: time.Now}).Run(ctx, args)
+		return (cli.Runner{Service: s, Out: os.Stdout, ErrOut: os.Stderr, Opener: openExternal, Clock: time.Now, Terminal: detectTerminalCapabilities(os.Stdout, os.Getenv)}).Run(ctx, args)
 	}, tui.Run)
 }
 
