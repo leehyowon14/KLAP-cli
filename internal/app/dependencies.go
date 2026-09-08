@@ -50,7 +50,7 @@ type Dependencies struct {
 	TranscriptBridgePath string
 }
 
-func NewServiceWithDependencies(deps Dependencies) (*Service, error) {
+func NewService(deps Dependencies) (*Service, error) {
 	for _, dependency := range []struct {
 		name  string
 		value any

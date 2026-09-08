@@ -14,48 +14,14 @@ import (
 	"time"
 
 	bubblesprogress "github.com/charmbracelet/bubbles/progress"
-	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
-	"github.com/leehyowon14/KLAP-cli/internal/tui"
 	"github.com/leehyowon14/KLAP-cli/internal/ui"
 )
 
-type commandMode int
-
-const (
-	commandModeTUI commandMode = iota
-	commandModeCLI
-)
-
-func modeForArgs(args []string) commandMode {
-	if len(args) == 0 || args[0] == "tui" {
-		return commandModeTUI
-	}
-	return commandModeCLI
-}
-
-func Run(ctx context.Context, args []string) error {
-	return runWithFactories(ctx, args, account.NewStore, app.NewService)
-}
-
-func runWithFactories(
-	ctx context.Context,
-	args []string,
-	newAccountStore func() (*account.Store, error),
-	newService func(*account.Store) (*app.Service, error),
-) error {
-	store, err := newAccountStore()
-	if err != nil {
-		return err
-	}
-	service, err := newService(store)
-	if err != nil {
-		return err
-	}
-
-	if modeForArgs(args) == commandModeTUI {
-		return tui.Run(ctx, service)
+func Run(ctx context.Context, args []string, service *app.Service) error {
+	if len(args) == 0 {
+		return errors.New("missing CLI command")
 	}
 
 	switch args[0] {

@@ -6,11 +6,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/leehyowon14/KLAP-cli/internal/cli"
+	"github.com/leehyowon14/KLAP-cli/internal/bootstrap"
 )
 
 func main() {
-	os.Exit(run(context.Background(), os.Args[1:], os.Stderr, cli.Run))
+	os.Exit(run(context.Background(), os.Args[1:], os.Stderr, bootstrap.Run))
 }
 
 func run(ctx context.Context, args []string, stderr io.Writer, runner func(context.Context, []string) error) int {

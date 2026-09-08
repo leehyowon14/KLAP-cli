@@ -3,48 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
-	"errors"
+	"github.com/leehyowon14/KLAP-cli/internal/app"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/leehyowon14/KLAP-cli/internal/account"
-	"github.com/leehyowon14/KLAP-cli/internal/app"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 )
-
-func TestModeForArgsStartsTUIWithoutSubcommand(t *testing.T) {
-	if got := modeForArgs(nil); got != commandModeTUI {
-		t.Fatalf("modeForArgs(nil) = %v, want TUI", got)
-	}
-	if got := modeForArgs([]string{"tui"}); got != commandModeTUI {
-		t.Fatalf("modeForArgs(tui) = %v, want TUI", got)
-	}
-	if got := modeForArgs([]string{"dashboard"}); got != commandModeCLI {
-		t.Fatalf("modeForArgs(dashboard) = %v, want CLI", got)
-	}
-}
-
-func TestRunPropagatesServiceInitializationFailure(t *testing.T) {
-	wantErr := errors.New("service initialization failed")
-	store := &account.Store{}
-
-	err := runWithFactories(
-		context.Background(),
-		[]string{"help"},
-		func() (*account.Store, error) { return store, nil },
-		func(got *account.Store) (*app.Service, error) {
-			if got != store {
-				t.Fatalf("newService() store = %p, want %p", got, store)
-			}
-			return nil, wantErr
-		},
-	)
-
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("runWithFactories() error = %v, want %v", err, wantErr)
-	}
-}
 
 func TestCourseFilterRequiresValue(t *testing.T) {
 	_, err := courseFilter([]string{"--course"})

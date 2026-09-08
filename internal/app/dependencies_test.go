@@ -27,7 +27,7 @@ func testDependencies(t *testing.T) Dependencies {
 
 func TestDependenciesConstructionDoesNotPerformIO(t *testing.T) {
 	deps := testDependencies(t)
-	s, err := NewServiceWithDependencies(deps)
+	s, err := NewService(deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestDependenciesRejectMissingAndTypedNil(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := testDependencies(t)
 			tt.omit(&deps)
-			s, err := NewServiceWithDependencies(deps)
+			s, err := NewService(deps)
 			if s != nil || err == nil || !strings.Contains(err.Error(), tt.name) {
 				t.Fatalf("service=%v error=%v", s, err)
 			}

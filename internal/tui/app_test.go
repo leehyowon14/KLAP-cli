@@ -16,7 +16,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/leehyowon14/KLAP-cli/internal/account"
 	"github.com/leehyowon14/KLAP-cli/internal/app"
+	"github.com/leehyowon14/KLAP-cli/internal/cache"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/settings"
+	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
 )
 
 func newTUITestService(t *testing.T) *app.Service {
@@ -27,7 +30,25 @@ func newTUITestService(t *testing.T) *app.Service {
 	if err != nil {
 		t.Fatalf("NewStore() error = %v", err)
 	}
-	service, err := app.NewService(store)
+	settingsStore, err := settings.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacheStore, err := cache.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	syncStore, err := syncstate.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := app.NewService(app.Dependencies{
+		Accounts: store, Sessions: store, Settings: settingsStore, Cache: cacheStore, SyncState: syncStore,
+		NewKlasClient: klas.NewClient,
+		Login: func(ctx context.Context, c *klas.Client, id, password string) (klas.Session, error) {
+			return c.Login(ctx, id, password)
+		},
+	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -65,16 +86,7 @@ func TestHomeViewLinesFitWidth(t *testing.T) {
 }
 
 func TestAuthCheckShowsSetupWhenNoUsers(t *testing.T) {
-	t.Setenv("KLAP_CONFIG_DIR", t.TempDir())
-	store, err := account.NewStore()
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
-	t.Setenv("KLAP_CACHE_DIR", t.TempDir())
-	service, err := app.NewService(store)
-	if err != nil {
-		t.Fatalf("NewService() error = %v", err)
-	}
+	service := newTUITestService(t)
 	m := model{
 		ctx:        context.Background(),
 		service:    service,
