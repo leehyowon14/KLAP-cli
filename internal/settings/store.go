@@ -8,18 +8,6 @@ import (
 	"path/filepath"
 )
 
-const DefaultReminderListName = "Kwangwoon Univ."
-
-const DefaultAcademicCalendarName = "학사일정"
-
-const DefaultTimetableCalendarName = "시간표"
-
-const DefaultDownloadConcurrency = 3
-
-const DefaultTranscriptConcurrency = 1
-
-const MaxTranscriptConcurrency = 3
-
 type Store struct {
 	path string
 }
@@ -64,28 +52,6 @@ func (s *Store) Save(settings Settings) error {
 	return nil
 }
 
-func Default() Settings {
-	return Settings{
-		Reminder: Reminder{
-			ListName:       DefaultReminderListName,
-			AlarmBeforeMin: 24 * 60,
-		},
-		Calendar: Calendar{
-			Name:          DefaultAcademicCalendarName,
-			AcademicName:  DefaultAcademicCalendarName,
-			TimetableName: DefaultTimetableCalendarName,
-		},
-		Download: Download{
-			Dir:         DefaultDownloadDir(),
-			Concurrency: DefaultDownloadConcurrency,
-			Caffeinate:  boolPtr(true),
-		},
-		Transcript: Transcript{
-			Concurrency: DefaultTranscriptConcurrency,
-		},
-	}
-}
-
 func (s *Settings) Normalize() {
 	if s.Reminder.ListName == "" {
 		s.Reminder.ListName = DefaultReminderListName
@@ -114,14 +80,6 @@ func (c *Calendar) Normalize() {
 	c.UseExistingList = c.AcademicUseExistingList
 }
 
-func DefaultDownloadDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join("Documents", "KLAP")
-	}
-	return filepath.Join(home, "Documents", "KLAP")
-}
-
 func DownloadCaffeinateEnabled(download Download) bool {
 	download.Normalize()
 	return download.Caffeinate != nil && *download.Caffeinate
@@ -146,10 +104,6 @@ func (t *Transcript) Normalize() {
 	if t.Concurrency > MaxTranscriptConcurrency {
 		t.Concurrency = MaxTranscriptConcurrency
 	}
-}
-
-func boolPtr(value bool) *bool {
-	return &value
 }
 
 func configDir() (string, error) {
