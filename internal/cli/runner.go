@@ -62,7 +62,7 @@ func (r Runner) Run(ctx context.Context, args []string) error {
 	case "assignment":
 		return r.runAssignment(ctx, service, args[1:])
 	case "notice":
-		return runNotice(ctx, service, args[1:])
+		return r.runNotice(ctx, service, args[1:])
 	case "timetable":
 		return runTimetable(ctx, service, args[1:])
 	case "attendance":

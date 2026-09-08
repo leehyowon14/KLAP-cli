@@ -431,7 +431,7 @@ func (r Runner) runAssignment(ctx context.Context, service *app.Service, args []
 	}
 }
 
-func runNotice(ctx context.Context, service *app.Service, args []string) error {
+func (r Runner) runNotice(ctx context.Context, service *app.Service, args []string) error {
 	if len(args) == 0 {
 		return errors.New("usage: klap notice <list|detail|open>")
 	}
@@ -446,7 +446,7 @@ func runNotice(ctx context.Context, service *app.Service, args []string) error {
 		if err != nil {
 			return err
 		}
-		printNoticeRows(rows)
+		r.printNoticeRows(rows)
 		return nil
 	case "detail":
 		if len(args) != 2 {
@@ -456,14 +456,14 @@ func runNotice(ctx context.Context, service *app.Service, args []string) error {
 		if err != nil {
 			return err
 		}
-		printNoticeDetail(detail)
+		r.printNoticeDetail(detail)
 		return nil
 	case "open":
 		if len(args) != 2 {
 			return errors.New("usage: klap notice open <공지ID>")
 		}
 		result, err := service.NoticeOpenURL(ctx, args[1], app.UserOption{})
-		return openAndPrintURL(result.URL, err)
+		return r.openAndPrintURL(result.URL, err)
 	default:
 		return fmt.Errorf("unknown notice command: %s", args[0])
 	}
@@ -1979,9 +1979,9 @@ func (r Runner) printAssignmentDetail(result app.AssignmentDetailResult) {
 	}
 }
 
-func printNoticeRows(rows []app.NoticeRow) {
+func (r Runner) printNoticeRows(rows []app.NoticeRow) {
 	if len(rows) == 0 {
-		fmt.Println("강의 공지가 없습니다")
+		_, _ = fmt.Fprintln(r.Out, "강의 공지가 없습니다")
 		return
 	}
 
@@ -1990,7 +1990,7 @@ func printNoticeRows(rows []app.NoticeRow) {
 		if row.Notice.Top {
 			prefix = "!"
 		}
-		fmt.Printf("%s %s | %s | %s | %s | %s\n",
+		_, _ = fmt.Fprintf(r.Out, "%s %s | %s | %s | %s | %s\n",
 			prefix,
 			row.ID,
 			formatNoticeTime(row.Notice.Registered),
@@ -2001,28 +2001,28 @@ func printNoticeRows(rows []app.NoticeRow) {
 	}
 }
 
-func printNoticeDetail(result app.NoticeDetailResult) {
+func (r Runner) printNoticeDetail(result app.NoticeDetailResult) {
 	detail := result.Detail
 
-	fmt.Printf("ID: %s\n", result.ID)
-	fmt.Printf("과목: %s\n", result.CourseName)
-	fmt.Printf("제목: %s\n", detail.Title)
+	_, _ = fmt.Fprintf(r.Out, "ID: %s\n", result.ID)
+	_, _ = fmt.Fprintf(r.Out, "과목: %s\n", result.CourseName)
+	_, _ = fmt.Fprintf(r.Out, "제목: %s\n", detail.Title)
 	if detail.Author != "" {
-		fmt.Printf("작성자: %s\n", detail.Author)
+		_, _ = fmt.Fprintf(r.Out, "작성자: %s\n", detail.Author)
 	}
-	fmt.Printf("작성일: %s\n", formatNoticeTime(detail.Registered))
+	_, _ = fmt.Fprintf(r.Out, "작성일: %s\n", formatNoticeTime(detail.Registered))
 	if detail.Top {
-		fmt.Println("중요: 예")
+		_, _ = fmt.Fprintln(r.Out, "중요: 예")
 	}
 	if detail.ReadCount != "" {
-		fmt.Printf("조회수: %s\n", detail.ReadCount)
+		_, _ = fmt.Fprintf(r.Out, "조회수: %s\n", detail.ReadCount)
 	}
 	if detail.Attachment != "" {
-		fmt.Printf("첨부 묶음: %s\n", detail.Attachment)
+		_, _ = fmt.Fprintf(r.Out, "첨부 묶음: %s\n", detail.Attachment)
 	}
-	fmt.Printf("원문: %s\n", linkifyForTerminal(result.DetailURL))
+	_, _ = fmt.Fprintf(r.Out, "원문: %s\n", r.linkifyForTerminal(result.DetailURL))
 	if detail.ContentText != "" {
-		fmt.Printf("\n%s\n", linkifyForTerminal(detail.ContentText))
+		_, _ = fmt.Fprintf(r.Out, "\n%s\n", r.linkifyForTerminal(detail.ContentText))
 	}
 }
 
