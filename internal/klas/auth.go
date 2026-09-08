@@ -14,15 +14,13 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/leehyowon14/KLAP-cli/internal/domain"
 )
 
 var ErrSessionExpired = &Error{Kind: ErrorSessionExpired, Err: errors.New("KLAS 세션이 만료되었습니다")}
 
-type Session struct {
-	UserID    string            `json:"userId"`
-	Cookies   map[string]string `json:"cookies"`
-	CreatedAt time.Time         `json:"createdAt"`
-}
+type Session = domain.Session
 
 type loginSecurityResponse struct {
 	PublicKey string `json:"publicKey"`
