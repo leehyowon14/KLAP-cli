@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -26,6 +27,24 @@ type readSettingsStub struct{ SettingsStore }
 func (readSettingsStub) Load() (settings.Settings, error) { return settings.Default(), nil }
 
 func TestAssignmentListUsesInjectedGateway(t *testing.T) {
+	testAssignmentListGateway(t, nil, nil, 1, 0)
+}
+
+func TestAssignmentListRetriesExpiredSessionOnce(t *testing.T) {
+	testAssignmentListGateway(t, klas.ErrSessionExpired, nil, 2, 1)
+}
+
+func TestAssignmentListReturnsSecondExpiry(t *testing.T) {
+	testAssignmentListGateway(t, klas.ErrSessionExpired, klas.ErrSessionExpired, 2, 1)
+}
+
+func TestAssignmentListDoesNotRetryOtherErrors(t *testing.T) {
+	err := errors.New("request failed")
+	testAssignmentListGateway(t, err, err, 1, 0)
+}
+
+func testAssignmentListGateway(t *testing.T, firstErr, wantErr error, wantCalls, wantLogins int) {
+	t.Helper()
 	previous := http.DefaultTransport
 	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/std/cmn/frame/YearhakgiAtnlcSbjectList.do" {
@@ -43,7 +62,16 @@ func TestAssignmentListUsesInjectedGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	deps := testDependencies(t)
-	deps.Sessions = &fakeSessionStore{loadSession: func(context.Context, string) (klas.Session, error) { return klas.Session{}, nil }}
+	logins, saves := 0, 0
+	deps.Sessions = &fakeSessionStore{
+		loadSession:  func(context.Context, string) (klas.Session, error) { return klas.Session{}, nil },
+		loadPassword: func(context.Context, string) (string, error) { return "password", nil },
+		saveSession:  func(context.Context, string, klas.Session) error { saves++; return nil },
+	}
+	deps.Login = func(context.Context, *klas.Client, string, string) (klas.Session, error) {
+		logins++
+		return klas.Session{}, nil
+	}
 	deps.Settings = readSettingsStub{}
 	deps.Cache = store
 	deps.NewKlasClient = func() (*klas.Client, error) { return client, nil }
@@ -57,6 +85,12 @@ func TestAssignmentListUsesInjectedGateway(t *testing.T) {
 			if term != "2026,1" || course.Value != "subject" {
 				t.Fatal("gateway arguments changed")
 			}
+			if calls == 1 && firstErr != nil {
+				return nil, firstErr
+			}
+			if wantErr != nil {
+				return nil, wantErr
+			}
 			return []klas.Assignment{{OrdSeq: "42", Title: "injected"}}, nil
 		}}
 	}
@@ -65,10 +99,13 @@ func TestAssignmentListUsesInjectedGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows, err := s.AssignmentList(context.Background(), AssignmentListOptions{User: UserOption{StudentID: "student"}, Refresh: true})
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, wantErr) || calls != wantCalls || logins != wantLogins || saves != wantLogins {
+		t.Fatalf("error=%v calls=%d logins=%d saves=%d", err, calls, logins, saves)
 	}
-	if calls != 1 || len(rows) != 1 || rows[0].Assignment.Title != "injected" || rows[0].LegacyID != "1:42" {
+	if wantErr != nil {
+		return
+	}
+	if len(rows) != 1 || rows[0].Assignment.Title != "injected" || rows[0].LegacyID != "1:42" {
 		t.Fatalf("calls=%d rows=%+v", calls, rows)
 	}
 }

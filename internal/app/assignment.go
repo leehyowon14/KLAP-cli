@@ -71,17 +71,9 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 
 	rows := make([]AssignmentRow, 0)
 	for _, selectedCourse := range courses {
-		assignments, err := s.assignmentGateway(client).Assignments(ctx, term.Value, selectedCourse.Course)
-		if err != nil {
-			refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-			if refreshErr != nil {
-				return nil, refreshErr
-			}
-			if refreshed {
-				client = refreshedClient
-				assignments, err = s.assignmentGateway(client).Assignments(ctx, term.Value, selectedCourse.Course)
-			}
-		}
+		assignments, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) ([]klas.Assignment, error) {
+			return s.assignmentGateway(client).Assignments(ctx, term.Value, selectedCourse.Course)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -159,17 +151,9 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
-	detail, err := s.assignmentGateway(client).AssignmentDetail(ctx, term.Value, course, ordSeq)
-	if err != nil {
-		refreshedClient, refreshed, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
-		if refreshErr != nil {
-			return AssignmentDetailResult{}, refreshErr
-		}
-		if refreshed {
-			client = refreshedClient
-			detail, err = s.assignmentGateway(client).AssignmentDetail(ctx, term.Value, course, ordSeq)
-		}
-	}
+	detail, err := executeSessionRequest(ctx, s, studentID, &client, func(client *klas.Client) (klas.AssignmentDetail, error) {
+		return s.assignmentGateway(client).AssignmentDetail(ctx, term.Value, course, ordSeq)
+	})
 	if err != nil {
 		return AssignmentDetailResult{}, err
 	}
