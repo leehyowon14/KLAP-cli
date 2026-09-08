@@ -951,28 +951,6 @@ func (m model) selectedLectureRow() (app.LectureRow, bool) {
 	})
 }
 
-func selectedRowByCourse[T any](rows []T, courseName string, cursor int, course func(T) string) (T, bool) {
-	var zero T
-	if strings.TrimSpace(courseName) == "" || cursor < 0 {
-		return zero, false
-	}
-	seen := 0
-	for _, row := range rows {
-		name := strings.TrimSpace(course(row))
-		if name == "" {
-			name = "과목 확인 필요"
-		}
-		if name != courseName {
-			continue
-		}
-		if seen == cursor {
-			return row, true
-		}
-		seen++
-	}
-	return zero, false
-}
-
 func (m model) syncCurrentScreen() tea.Cmd {
 	return m.syncScreenWithDecisions(m.active, nil)
 }
@@ -1622,11 +1600,6 @@ type downloadCourseGroup struct {
 	rows []app.LectureRow
 }
 
-type contentCourseGroup struct {
-	name  string
-	lines []string
-}
-
 func (m model) downloadGroups() []downloadCourseGroup {
 	groups := make([]downloadCourseGroup, 0)
 	indexByName := make(map[string]int)
@@ -1678,76 +1651,6 @@ func (m model) currentDownloadCourseSelected() bool {
 		}
 	}
 	return hasDownloadable
-}
-
-func (m model) isCoursePagedScreen() bool {
-	switch m.active {
-	case screenAssignments, screenNotices, screenLectures:
-		return true
-	default:
-		return false
-	}
-}
-
-func (m model) contentGroups(width int) []contentCourseGroup {
-	lineWidth := maxInt(24, minInt(92, width-12))
-	switch m.active {
-	case screenAssignments:
-		return assignmentContentGroups(m.assignmentRows, lineWidth)
-	case screenNotices:
-		return noticeContentGroups(m.noticeRows, lineWidth)
-	case screenLectures:
-		return lectureContentGroups(m.lectureRows, lineWidth)
-	default:
-		return nil
-	}
-}
-
-func (m model) currentContentGroup(width int) contentCourseGroup {
-	groups := m.contentGroups(width)
-	if len(groups) == 0 {
-		return contentCourseGroup{}
-	}
-	index := m.contentCourse
-	if index < 0 {
-		index = 0
-	}
-	if index >= len(groups) {
-		index = len(groups) - 1
-	}
-	return groups[index]
-}
-
-func (m *model) moveContentCourse(delta int) {
-	groups := m.contentGroups(m.width)
-	if len(groups) == 0 {
-		m.contentCourse = 0
-		m.contentCursor = 0
-		return
-	}
-	m.contentCourse += delta
-	if m.contentCourse < 0 {
-		m.contentCourse = len(groups) - 1
-	}
-	if m.contentCourse >= len(groups) {
-		m.contentCourse = 0
-	}
-	m.contentCursor = 0
-}
-
-func (m *model) moveContentCursor(delta int) {
-	group := m.currentContentGroup(m.width)
-	if len(group.lines) == 0 {
-		m.contentCursor = 0
-		return
-	}
-	m.contentCursor += delta
-	if m.contentCursor < 0 {
-		m.contentCursor = len(group.lines) - 1
-	}
-	if m.contentCursor >= len(group.lines) {
-		m.contentCursor = 0
-	}
 }
 
 func (m *model) moveDetailCursor(delta int) {
@@ -1932,20 +1835,6 @@ func lectureContentGroups(rows []app.LectureRow, width int) []contentCourseGroup
 		))
 	}
 	return groups
-}
-
-func contentGroupIndex(groups *[]contentCourseGroup, indexByName map[string]int, courseName string) int {
-	name := strings.TrimSpace(courseName)
-	if name == "" {
-		name = "과목 확인 필요"
-	}
-	index, ok := indexByName[name]
-	if !ok {
-		index = len(*groups)
-		indexByName[name] = index
-		*groups = append(*groups, contentCourseGroup{name: name})
-	}
-	return index
 }
 
 func lectureProgressStyle(lecture app.Lecture) lipgloss.Style {
@@ -3153,78 +3042,6 @@ func (m model) renderConfigHint(row configRow) string {
 	default:
 		return mutedStyle.Render(row.hint)
 	}
-}
-
-func (m model) renderCoursePagedPanel(width int) string {
-	groups := m.contentGroups(width)
-	if len(groups) == 0 {
-		switch m.active {
-		case screenAssignments:
-			return emptyStyle.Render("과제가 없습니다") + "\n"
-		case screenNotices:
-			return emptyStyle.Render("강의 공지가 없습니다") + "\n"
-		case screenLectures:
-			return emptyStyle.Render("온라인 강의가 없습니다") + "\n"
-		default:
-			return emptyStyle.Render("표시할 내용이 없습니다") + "\n"
-		}
-	}
-
-	group := m.currentContentGroup(width)
-	page := m.contentCourse + 1
-	if page < 1 {
-		page = 1
-	}
-	if page > len(groups) {
-		page = len(groups)
-	}
-
-	var b strings.Builder
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("%d/%d  %s", page, len(groups), group.name)))
-	b.WriteString("\n\n")
-
-	visibleRows := maxInt(5, m.height-10)
-	if m.height <= 0 {
-		visibleRows = 16
-	}
-	if visibleRows > len(group.lines) {
-		visibleRows = len(group.lines)
-	}
-
-	cursor := m.contentCursor
-	if cursor < 0 {
-		cursor = 0
-	}
-	if cursor >= len(group.lines) {
-		cursor = len(group.lines) - 1
-	}
-
-	start := cursor - visibleRows/2
-	if start < 0 {
-		start = 0
-	}
-	if start+visibleRows > len(group.lines) {
-		start = maxInt(0, len(group.lines)-visibleRows)
-	}
-	end := start + visibleRows
-
-	for index := start; index < end; index++ {
-		marker := "  "
-		if index == cursor {
-			marker = "› "
-		}
-		line := marker + group.lines[index]
-		if index == cursor {
-			line = menuSelectedStyle.Render(line)
-		}
-		b.WriteString(line)
-		b.WriteString("\n")
-	}
-	if start > 0 || end < len(group.lines) {
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("  %d-%d / %d", start+1, end, len(group.lines))))
-		b.WriteString("\n")
-	}
-	return b.String()
 }
 
 func (m model) renderDashboardPagedPanel(width int) string {
