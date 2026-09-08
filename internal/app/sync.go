@@ -132,12 +132,12 @@ func (s *Service) SyncAssignmentReminders(ctx context.Context, opts AssignmentSy
 	}, nil
 }
 
-func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOptions) (ReminderSyncResult, error) {
-	rows, err := s.LectureList(ctx, opts)
+func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureSyncOptions) (ReminderSyncResult, error) {
+	rows, err := s.LectureList(ctx, opts.Query)
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}
-	studentID, err := s.selectedStudentID(ctx, opts.User)
+	studentID, err := s.selectedStudentID(ctx, opts.Query.User)
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}
@@ -169,7 +169,7 @@ func (s *Service) SyncLectureReminders(ctx context.Context, opts LectureListOpti
 	if len(assignments) == 0 {
 		return ReminderSyncResult{}, nil
 	}
-	prepared, err := s.prepareReminderSync("lecture", studentID, assignments, opts.SyncDecisions)
+	prepared, err := s.prepareReminderSync("lecture", studentID, assignments, opts.Decisions)
 	if err != nil {
 		return ReminderSyncResult{}, err
 	}

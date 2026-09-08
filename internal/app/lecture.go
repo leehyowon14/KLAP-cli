@@ -12,10 +12,9 @@ import (
 )
 
 type LectureListOptions struct {
-	User          UserOption
-	CourseFilter  string
-	Refresh       bool
-	SyncDecisions map[string]SyncDecision
+	User         UserOption
+	CourseFilter string
+	Refresh      bool
 }
 
 type LectureAttendOptions struct {

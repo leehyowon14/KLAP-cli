@@ -1187,7 +1187,7 @@ func (m model) syncAssignments(decisions map[string]app.SyncDecision) tea.Cmd {
 
 func (m model) syncLectures(decisions map[string]app.SyncDecision) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.service.SyncLectureReminders(m.ctx, app.LectureListOptions{SyncDecisions: decisions})
+		result, err := m.service.SyncLectureReminders(m.ctx, app.LectureSyncOptions{Decisions: decisions})
 		if conflicts := syncConflictsFromErrors(err); len(conflicts) > 0 {
 			return syncMsg{conflicts: conflicts}
 		}

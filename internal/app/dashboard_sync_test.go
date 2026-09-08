@@ -28,9 +28,9 @@ func (s *dashboardSyncStub) SyncAssignmentReminders(ctx context.Context, o Assig
 	}
 	return ReminderSyncResult{EligibleCount: 1}, s.err
 }
-func (s *dashboardSyncStub) SyncLectureReminders(ctx context.Context, o LectureListOptions) (ReminderSyncResult, error) {
-	s.record(ctx, "lecture", o.SyncDecisions)
-	if o.User.StudentID != "student" {
+func (s *dashboardSyncStub) SyncLectureReminders(ctx context.Context, o LectureSyncOptions) (ReminderSyncResult, error) {
+	s.record(ctx, "lecture", o.Decisions)
+	if o.Query.User.StudentID != "student" {
 		s.t.Fatal("user lost")
 	}
 	return ReminderSyncResult{EligibleCount: 2}, s.err
