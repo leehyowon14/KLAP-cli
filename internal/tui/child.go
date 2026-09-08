@@ -28,6 +28,14 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 		m.err = action.err
 	}
 	if action.navigate {
+		if action.target == screenHome {
+			m.active = screenHome
+			m.loading = false
+			m.err = nil
+			m.content = ""
+			return m, action.cmd
+		}
+
 		if (m.active == screenConfig || m.active == screenConfigChoice || m.active == screenConfigInput) && (action.target == screenConfig || action.target == screenConfigChoice || action.target == screenConfigInput) {
 			m.active = action.target
 			m.loading = false
@@ -60,8 +68,15 @@ func (m model) applyChildAction(action childAction) (tea.Model, tea.Cmd) {
 			m.syncStatus = ""
 			return m, action.cmd
 		}
-		if action.target == screenRoomDay {
-			return m.startRoomFlow()
+		if action.target == screenRoomDay || action.target == screenRoomPeriod || action.target == screenRoomResult {
+			if action.target == screenRoomDay && m.active != screenRoomPeriod {
+				m.room.Start()
+			}
+			m.active = action.target
+			m.err = nil
+			m.content = ""
+			m.loading = action.target == screenRoomResult && action.cmd != nil
+			return m, action.cmd
 		}
 		return m.enterScreen(action.target)
 	}

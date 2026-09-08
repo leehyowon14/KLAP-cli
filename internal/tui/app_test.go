@@ -238,8 +238,6 @@ func testChromeModel(active screen) model {
 		width:  80,
 		height: 24,
 
-		roomDaysSelected:    map[int]bool{1: true},
-		roomPeriodsSelected: map[int]bool{1: true},
 		syncConflicts: []app.SyncConflict{{
 			Key:     "assignment:1",
 			Scope:   "assignment",
@@ -316,7 +314,8 @@ func testChromeModel(active screen) model {
 		},
 			configOptions:   app.CategoryOptions{Reminders: []string{"Kwangwoon Univ."}, Calendars: []string{"학사일정", "시간표"}},
 			configChoiceKey: "calendar.name",
-			configInput:     textinput.New()},
+			configInput:     textinput.New()}, room: roomScreenModel{roomDaysSelected: map[int]bool{1: true},
+			roomPeriodsSelected: map[int]bool{1: true}},
 	}
 	m.config.configInput.SetValue("입력값")
 	return m

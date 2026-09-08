@@ -120,7 +120,7 @@ func TestHomeChildRoutePreservesPrefetchAndRoomEntry(t *testing.T) {
 	m.home.cursor = 6
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	got = updated.(model)
-	if got.active != screenRoomDay || got.roomDaysSelected == nil {
+	if got.active != screenRoomDay || got.room.roomDaysSelected == nil {
 		t.Fatal("room flow entry changed")
 	}
 }

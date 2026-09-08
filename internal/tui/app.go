@@ -80,13 +80,7 @@ type model struct {
 	downloadProgress    *lectureDownloadModel
 	attendRow           app.LectureRow
 	attendProgress      *lectureAttendModel
-	roomDayCursor       int
-	roomDaysSelected    map[int]bool
-	roomPeriodCursor    int
-	roomPeriodsSelected map[int]bool
-	roomResults         []app.RoomAvailableResult
-	roomResultPage      int
-	roomResultCursor    int
+	room                roomScreenModel
 	syncConflictSource  screen
 	syncConflicts       []app.SyncConflict
 	syncConflictCursor  int
@@ -237,11 +231,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applyChildAction(action)
 			}
 		}
-		if m.active == screenRoomDay {
-			return m.updateRoomDay(msg)
-		}
-		if m.active == screenRoomPeriod {
-			return m.updateRoomPeriod(msg)
+		if m.active == screenRoomDay || m.active == screenRoomPeriod || m.active == screenRoomResult {
+			if action, handled := m.room.Update(msg, m.active, m.loading, m.ctx, m.service); handled {
+				return m.applyChildAction(action)
+			}
 		}
 		if m.active == screenSyncConflict {
 			return m.updateSyncConflict(msg)
@@ -295,12 +288,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case keyMatches(key, "q", "ㅂ"):
 			return m, tea.Quit
 		case key == "esc" || keyMatches(key, "b", "ㅠ"):
-			if m.active == screenRoomResult {
-				m.active = screenRoomPeriod
-				m.err = nil
-				m.content = ""
-				m.loading = false
-			} else if m.active == screenSyllabus {
+			if m.active == screenSyllabus {
 				m.active = screenDashboard
 				m.err = nil
 				m.loading = false
@@ -321,32 +309,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loading = false
 			}
 		case key == "up" || (keyMatches(key, "k", "ㅏ") && !m.canOpenKlasURL()):
-			if m.active == screenRoomResult && !m.loading {
-				m.moveRoomResultCursor(-1)
-			} else if m.isDetailScreen() && !m.loading {
+			if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(-1)
 			}
 		case key == "down" || keyMatches(key, "j", "ㅓ"):
-			if m.active == screenRoomResult && !m.loading {
-				m.moveRoomResultCursor(1)
-			} else if m.isDetailScreen() && !m.loading {
+			if m.isDetailScreen() && !m.loading {
 				m.moveDetailCursor(1)
 			}
-		case key == "left":
-			if m.active == screenRoomResult && !m.loading {
-				m.moveRoomResultPage(-1)
-			}
-		case key == "right":
-			if m.active == screenRoomResult && !m.loading {
-				m.moveRoomResultPage(1)
-			}
 		case keyMatches(key, "r", "ㄱ"):
-			if m.active == screenRoomResult {
-				m.loading = true
-				m.err = nil
-				m.content = ""
-				return m, m.loadRoomAvailableResults(true)
-			}
 			if m.active != screenHome {
 				m.loading = true
 				m.err = nil
@@ -515,9 +485,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading = false
 		m.err = msg.err
-		m.roomResults = msg.results
-		m.roomResultPage = 0
-		m.roomResultCursor = 0
+		m.room.Loaded(msg.results)
 		m.loadedAt = time.Now()
 	}
 	return m, nil
@@ -1333,9 +1301,9 @@ func (m model) View() string {
 	case screenConfigInput:
 		return appStyle.Render(m.config.View(contentWidth, m.active, m.err))
 	case screenRoomDay:
-		return appStyle.Render(m.renderRoomDayView(contentWidth))
+		return appStyle.Render(m.room.View(contentWidth, m.height, m.active, m.err))
 	case screenRoomPeriod:
-		return appStyle.Render(m.renderRoomPeriodView(contentWidth))
+		return appStyle.Render(m.room.View(contentWidth, m.height, m.active, m.err))
 	}
 	if m.active == screenHome {
 		return appStyle.Render(m.home.View(contentWidth))
@@ -1596,7 +1564,7 @@ func (m model) renderPanel(width int) string {
 		return b.String()
 	}
 	if m.active == screenRoomResult {
-		b.WriteString(m.renderRoomResultPanel(width))
+		b.WriteString(m.room.View(width, m.height, m.active, m.err))
 		return b.String()
 	}
 	if m.active == screenSyncConflict {

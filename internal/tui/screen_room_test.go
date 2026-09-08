@@ -10,10 +10,10 @@ import (
 
 func TestRoomFlowSelectsDaysAndPeriods(t *testing.T) {
 	m := model{active: screenHome}
-	updated, _ := m.startRoomFlow()
+	updated, _ := m.applyChildAction(childAction{navigate: true, target: screenRoomDay})
 	got := updated.(model)
-	if got.active != screenRoomDay || len(got.roomDaysSelected) != 0 {
-		t.Fatalf("startRoomFlow() active=%v selected=%v", got.active, got.roomDaysSelected)
+	if got.active != screenRoomDay || len(got.room.roomDaysSelected) != 0 {
+		t.Fatalf("startRoomFlow() active=%v selected=%v", got.active, got.room.roomDaysSelected)
 	}
 
 	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
@@ -22,7 +22,7 @@ func TestRoomFlowSelectsDaysAndPeriods(t *testing.T) {
 	got = updated.(model)
 	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	got = updated.(model)
-	if days := got.selectedRoomDays(); len(days) != 2 || days[0] != 1 || days[1] != 2 {
+	if days := got.room.selectedRoomDays(); len(days) != 2 || days[0] != 1 || days[1] != 2 {
 		t.Fatalf("selectedRoomDays() = %v, want [1 2]", days)
 	}
 
@@ -39,7 +39,7 @@ func TestRoomFlowSelectsDaysAndPeriods(t *testing.T) {
 	got = updated.(model)
 	updated, _ = got.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	got = updated.(model)
-	if periods := got.selectedRoomPeriods(); len(periods) != 2 || periods[0] != 1 || periods[1] != 3 {
+	if periods := got.room.selectedRoomPeriods(); len(periods) != 2 || periods[0] != 1 || periods[1] != 3 {
 		t.Fatalf("selectedRoomPeriods() = %v, want [1 3]", periods)
 	}
 }
@@ -86,7 +86,7 @@ func TestRoomAvailableGroupsByBuilding(t *testing.T) {
 }
 
 func TestRoomResultNavigationWrapsByBuildingAndRows(t *testing.T) {
-	m := model{roomResults: []app.RoomAvailableResult{{
+	m := model{room: roomScreenModel{roomResults: []app.RoomAvailableResult{{
 		Weekday: 2,
 		Periods: []int{4},
 		Rooms: []app.RoomAvailableRoom{
@@ -94,18 +94,18 @@ func TestRoomResultNavigationWrapsByBuildingAndRows(t *testing.T) {
 			{Room: "새빛관101"},
 			{Room: "새빛관103"},
 		},
-	}}}
-	m.moveRoomResultPage(1)
-	if m.roomResultPage != 1 || m.roomResultCursor != 0 {
-		t.Fatalf("page=%d cursor=%d", m.roomResultPage, m.roomResultCursor)
+	}}}}
+	m.room.moveRoomResultPage(1)
+	if m.room.roomResultPage != 1 || m.room.roomResultCursor != 0 {
+		t.Fatalf("page=%d cursor=%d", m.room.roomResultPage, m.room.roomResultCursor)
 	}
-	m.moveRoomResultCursor(-1)
-	if m.roomResultCursor != 1 {
-		t.Fatalf("cursor wrap = %d, want 1", m.roomResultCursor)
+	m.room.moveRoomResultCursor(-1)
+	if m.room.roomResultCursor != 1 {
+		t.Fatalf("cursor wrap = %d, want 1", m.room.roomResultCursor)
 	}
-	m.moveRoomResultPage(1)
-	if m.roomResultPage != 0 || m.roomResultCursor != 0 {
-		t.Fatalf("page wrap=%d cursor=%d", m.roomResultPage, m.roomResultCursor)
+	m.room.moveRoomResultPage(1)
+	if m.room.roomResultPage != 0 || m.room.roomResultCursor != 0 {
+		t.Fatalf("page wrap=%d cursor=%d", m.room.roomResultPage, m.room.roomResultCursor)
 	}
 }
 
@@ -117,12 +117,11 @@ func TestRoomResultViewFitsHeightAndKeepsHeader(t *testing.T) {
 	m := model{
 		active: screenRoomResult,
 		width:  96,
-		height: 18,
-		roomResults: []app.RoomAvailableResult{{
+		height: 18, room: roomScreenModel{roomResults: []app.RoomAvailableResult{{
 			Weekday: 2,
 			Periods: []int{4, 5, 6},
 			Rooms:   rooms,
-		}},
+		}}},
 	}
 	view := m.View()
 	lines := strings.Split(view, "\n")

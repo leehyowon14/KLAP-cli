@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
@@ -29,94 +30,7 @@ type roomAvailableResultsMsg struct {
 	err     error
 }
 
-func (m model) startRoomFlow() (tea.Model, tea.Cmd) {
-	m.active = screenRoomDay
-	m.loading = false
-	m.err = nil
-	m.content = ""
-	m.roomDayCursor = 0
-	m.roomPeriodCursor = 0
-	m.roomDaysSelected = map[int]bool{}
-	m.roomPeriodsSelected = map[int]bool{}
-	m.roomResults = nil
-	m.roomResultPage = 0
-	m.roomResultCursor = 0
-	return m, nil
-}
-
-func (m model) updateRoomDay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	switch {
-	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
-		return m, tea.Quit
-	case key == "esc" || keyMatches(key, "b", "ㅠ"):
-		m.active = screenHome
-		m.err = nil
-	case key == "up" || keyMatches(key, "k", "ㅏ"):
-		if m.roomDayCursor > 0 {
-			m.roomDayCursor--
-		}
-	case key == "down" || keyMatches(key, "j", "ㅓ"):
-		if m.roomDayCursor < len(roomDayOptions)-1 {
-			m.roomDayCursor++
-		}
-	case key == " ":
-		m.toggleRoomDayCurrent()
-	case keyMatches(key, "a", "ㅁ"):
-		m.toggleRoomAllDays()
-	case key == "enter":
-		if len(m.selectedRoomDays()) == 0 {
-			m.err = errors.New("요일을 하나 이상 선택하세요")
-			return m, nil
-		}
-		m.err = nil
-		m.active = screenRoomPeriod
-		m.roomPeriodCursor = 0
-		if m.roomPeriodsSelected == nil {
-			m.roomPeriodsSelected = map[int]bool{}
-		}
-	}
-	return m, nil
-}
-
-func (m model) updateRoomPeriod(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	switch {
-	case key == "ctrl+c" || keyMatches(key, "q", "ㅂ"):
-		return m, tea.Quit
-	case key == "esc" || keyMatches(key, "b", "ㅠ"):
-		m.active = screenRoomDay
-		m.err = nil
-	case key == "up" || keyMatches(key, "k", "ㅏ"):
-		if m.roomPeriodCursor > 0 {
-			m.roomPeriodCursor--
-		}
-	case key == "down" || keyMatches(key, "j", "ㅓ"):
-		if m.roomPeriodCursor < 7 {
-			m.roomPeriodCursor++
-		}
-	case key == " ":
-		m.toggleRoomPeriodCurrent()
-	case keyMatches(key, "a", "ㅁ"):
-		m.toggleRoomAllPeriods()
-	case key == "enter":
-		if len(m.selectedRoomPeriods()) == 0 {
-			m.err = errors.New("교시를 하나 이상 선택하세요")
-			return m, nil
-		}
-		m.err = nil
-		m.active = screenRoomResult
-		m.loading = true
-		m.content = ""
-		m.roomResults = nil
-		m.roomResultPage = 0
-		m.roomResultCursor = 0
-		return m, m.loadRoomAvailableResults(false)
-	}
-	return m, nil
-}
-
-func (m *model) toggleRoomDayCurrent() {
+func (m *roomScreenModel) toggleRoomDayCurrent() {
 	if m.roomDaysSelected == nil {
 		m.roomDaysSelected = map[int]bool{}
 	}
@@ -124,7 +38,7 @@ func (m *model) toggleRoomDayCurrent() {
 	m.roomDaysSelected[day] = !m.roomDaysSelected[day]
 }
 
-func (m *model) toggleRoomAllDays() {
+func (m *roomScreenModel) toggleRoomAllDays() {
 	if m.roomDaysSelected == nil {
 		m.roomDaysSelected = map[int]bool{}
 	}
@@ -140,7 +54,7 @@ func (m *model) toggleRoomAllDays() {
 	}
 }
 
-func (m *model) toggleRoomPeriodCurrent() {
+func (m *roomScreenModel) toggleRoomPeriodCurrent() {
 	if m.roomPeriodsSelected == nil {
 		m.roomPeriodsSelected = map[int]bool{}
 	}
@@ -148,7 +62,7 @@ func (m *model) toggleRoomPeriodCurrent() {
 	m.roomPeriodsSelected[period] = !m.roomPeriodsSelected[period]
 }
 
-func (m *model) toggleRoomAllPeriods() {
+func (m *roomScreenModel) toggleRoomAllPeriods() {
 	if m.roomPeriodsSelected == nil {
 		m.roomPeriodsSelected = map[int]bool{}
 	}
@@ -164,7 +78,7 @@ func (m *model) toggleRoomAllPeriods() {
 	}
 }
 
-func (m model) selectedRoomDays() []int {
+func (m roomScreenModel) selectedRoomDays() []int {
 	days := make([]int, 0, len(roomDayOptions))
 	for _, day := range roomDayOptions {
 		if m.roomDaysSelected[day.weekday] {
@@ -174,7 +88,7 @@ func (m model) selectedRoomDays() []int {
 	return days
 }
 
-func (m model) selectedRoomPeriods() []int {
+func (m roomScreenModel) selectedRoomPeriods() []int {
 	periods := make([]int, 0, 8)
 	for period := 1; period <= 8; period++ {
 		if m.roomPeriodsSelected[period] {
@@ -184,18 +98,18 @@ func (m model) selectedRoomPeriods() []int {
 	return periods
 }
 
-func (m model) loadRoomAvailableResults(refresh bool) tea.Cmd {
+func (m roomScreenModel) Load(ctx context.Context, service roomScreenService, refresh bool) tea.Cmd {
 	days := m.selectedRoomDays()
 	periods := m.selectedRoomPeriods()
 	return func() tea.Msg {
-		results, err := m.service.RoomAvailabilityForDays(m.ctx, app.RoomAvailabilityForDaysOptions{Days: days, Periods: periods, Refresh: refresh})
+		results, err := service.RoomAvailabilityForDays(ctx, app.RoomAvailabilityForDaysOptions{Days: days, Periods: periods, Refresh: refresh})
 		return roomAvailableResultsMsg{results: results, err: err}
 	}
 }
 
-func (m model) renderRoomDayView(width int) string {
+func (m roomScreenModel) renderRoomDayView(width int, err error) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, "Rooms"))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
@@ -203,10 +117,10 @@ func (m model) renderRoomDayView(width int) string {
 	b.WriteString("\n")
 	b.WriteString("빈 강의실을 조회할 요일을 선택하세요.")
 	b.WriteString("\n\n")
-	if m.err != nil {
+	if err != nil {
 		b.WriteString(errorStyle.Render("ERROR"))
 		b.WriteString(" ")
-		b.WriteString(m.err.Error())
+		b.WriteString(err.Error())
 		b.WriteString("\n\n")
 	}
 	for index, option := range roomDayOptions {
@@ -230,9 +144,9 @@ func (m model) renderRoomDayView(width int) string {
 	return b.String()
 }
 
-func (m model) renderRoomPeriodView(width int) string {
+func (m roomScreenModel) renderRoomPeriodView(width int, err error) string {
 	var b strings.Builder
-	b.WriteString(m.renderHeader(width))
+	b.WriteString(renderHeaderTitle(width, "Rooms"))
 	b.WriteString("\n")
 	b.WriteString(renderRule(width))
 	b.WriteString("\n\n")
@@ -242,10 +156,10 @@ func (m model) renderRoomPeriodView(width int) string {
 	b.WriteString("\n")
 	b.WriteString(mutedStyle.Render("요일 " + roomSelectedDaysLabel(m.selectedRoomDays())))
 	b.WriteString("\n\n")
-	if m.err != nil {
+	if err != nil {
 		b.WriteString(errorStyle.Render("ERROR"))
 		b.WriteString(" ")
-		b.WriteString(m.err.Error())
+		b.WriteString(err.Error())
 		b.WriteString("\n\n")
 	}
 	for period := 1; period <= 8; period++ {
@@ -280,7 +194,7 @@ type roomAvailableBuildingGroup struct {
 	Rows     []roomAvailableDisplayRow
 }
 
-func (m model) renderRoomResultPanel(width int) string {
+func (m roomScreenModel) renderRoomResultPanel(width, height int) string {
 	groups := roomAvailableBuildingGroups(m.roomResults)
 	if len(groups) == 0 {
 		return emptyStyle.Render("조건에 맞는 빈 강의실이 없습니다") + "\n"
@@ -288,7 +202,7 @@ func (m model) renderRoomResultPanel(width int) string {
 	page := clampInt(m.roomResultPage, 0, len(groups)-1)
 	group := groups[page]
 	warnings := roomAvailableWarnings(m.roomResults)
-	visibleRows := m.visibleRoomResultRows()
+	visibleRows := visibleRoomResultRows(height)
 	if len(warnings) > 0 {
 		visibleRows = maxInt(3, visibleRows-3)
 	}
@@ -334,11 +248,11 @@ func (m model) renderRoomResultPanel(width int) string {
 	return b.String()
 }
 
-func (m model) visibleRoomResultRows() int {
-	if m.height <= 0 {
+func visibleRoomResultRows(height int) int {
+	if height <= 0 {
 		return 14
 	}
-	return maxInt(5, m.height-11)
+	return maxInt(5, height-11)
 }
 
 func formatRoomAvailableResults(results []app.RoomAvailableResult) string {
@@ -469,7 +383,7 @@ func roomBuildingName(room string) string {
 	return room
 }
 
-func (m *model) moveRoomResultPage(delta int) {
+func (m *roomScreenModel) moveRoomResultPage(delta int) {
 	groups := roomAvailableBuildingGroups(m.roomResults)
 	if len(groups) == 0 {
 		m.roomResultPage = 0
@@ -486,7 +400,7 @@ func (m *model) moveRoomResultPage(delta int) {
 	m.roomResultCursor = 0
 }
 
-func (m *model) moveRoomResultCursor(delta int) {
+func (m *roomScreenModel) moveRoomResultCursor(delta int) {
 	groups := roomAvailableBuildingGroups(m.roomResults)
 	if len(groups) == 0 {
 		m.roomResultCursor = 0
@@ -562,4 +476,116 @@ func roomSelectedDaysLabel(days []int) string {
 		labels = append(labels, app.RoomWeekdayLabel(weekday))
 	}
 	return strings.Join(labels, ", ")
+}
+
+type roomScreenModel struct {
+	roomDayCursor       int
+	roomDaysSelected    map[int]bool
+	roomPeriodCursor    int
+	roomPeriodsSelected map[int]bool
+	roomResults         []app.RoomAvailableResult
+	roomResultPage      int
+	roomResultCursor    int
+}
+type roomScreenService interface {
+	RoomAvailabilityForDays(context.Context, app.RoomAvailabilityForDaysOptions) ([]app.RoomAvailableResult, error)
+}
+
+func (m *roomScreenModel) Start() {
+	*m = roomScreenModel{roomDaysSelected: map[int]bool{}, roomPeriodsSelected: map[int]bool{}}
+}
+func (m *roomScreenModel) Loaded(results []app.RoomAvailableResult) {
+	m.roomResults = results
+	m.roomResultPage = 0
+	m.roomResultCursor = 0
+}
+func (m *roomScreenModel) Update(msg tea.Msg, route screen, loading bool, ctx context.Context, service roomScreenService) (childAction, bool) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return childAction{}, false
+	}
+	k := key.String()
+	if k == "ctrl+c" || keyMatches(k, "q", "ㅂ") {
+		return childAction{cmd: tea.Quit}, true
+	}
+	if k == "esc" || keyMatches(k, "b", "ㅠ") {
+		target := screenHome
+		if route == screenRoomPeriod {
+			target = screenRoomDay
+		}
+		if route == screenRoomResult {
+			target = screenRoomPeriod
+		}
+		return childAction{navigate: true, target: target, setError: true}, true
+	}
+	if route == screenRoomResult {
+		if keyMatches(k, "r", "ㄱ") {
+			return childAction{setLoading: true, loading: true, setError: true, cmd: m.Load(ctx, service, true)}, true
+		}
+		if loading {
+			return childAction{}, false
+		}
+		switch {
+		case k == "up" || keyMatches(k, "k", "ㅏ"):
+			m.moveRoomResultCursor(-1)
+		case k == "down" || keyMatches(k, "j", "ㅓ"):
+			m.moveRoomResultCursor(1)
+		case k == "left":
+			m.moveRoomResultPage(-1)
+		case k == "right":
+			m.moveRoomResultPage(1)
+		default:
+			return childAction{}, false
+		}
+		return childAction{}, true
+	}
+	if route == screenRoomDay {
+		switch {
+		case k == "up" || keyMatches(k, "k", "ㅏ"):
+			m.roomDayCursor = maxInt(0, m.roomDayCursor-1)
+		case k == "down" || keyMatches(k, "j", "ㅓ"):
+			m.roomDayCursor = minInt(len(roomDayOptions)-1, m.roomDayCursor+1)
+		case k == " ":
+			m.toggleRoomDayCurrent()
+		case keyMatches(k, "a", "ㅁ"):
+			m.toggleRoomAllDays()
+		case k == "enter":
+			if len(m.selectedRoomDays()) == 0 {
+				return childAction{setError: true, err: errors.New("요일을 하나 이상 선택하세요")}, true
+			}
+			m.roomPeriodCursor = 0
+			if m.roomPeriodsSelected == nil {
+				m.roomPeriodsSelected = map[int]bool{}
+			}
+			return childAction{navigate: true, target: screenRoomPeriod, setError: true}, true
+		}
+		return childAction{}, true
+	}
+	switch {
+	case k == "up" || keyMatches(k, "k", "ㅏ"):
+		m.roomPeriodCursor = maxInt(0, m.roomPeriodCursor-1)
+	case k == "down" || keyMatches(k, "j", "ㅓ"):
+		m.roomPeriodCursor = minInt(7, m.roomPeriodCursor+1)
+	case k == " ":
+		m.toggleRoomPeriodCurrent()
+	case keyMatches(k, "a", "ㅁ"):
+		m.toggleRoomAllPeriods()
+	case k == "enter":
+		if len(m.selectedRoomPeriods()) == 0 {
+			return childAction{setError: true, err: errors.New("교시를 하나 이상 선택하세요")}, true
+		}
+		m.Loaded(nil)
+		return childAction{navigate: true, target: screenRoomResult, setError: true, cmd: m.Load(ctx, service, false)}, true
+	}
+	return childAction{}, true
+}
+func (m roomScreenModel) View(width, height int, route screen, err error) string {
+	switch route {
+	case screenRoomDay:
+		return m.renderRoomDayView(width, err)
+	case screenRoomPeriod:
+		return m.renderRoomPeriodView(width, err)
+	default:
+		return m.renderRoomResultPanel(width, height)
+	}
 }
