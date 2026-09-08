@@ -12,10 +12,10 @@ import (
 )
 
 type Service struct {
-	store                *account.Store
+	store                AccountStore
 	sessions             sessionStore
-	settingsStore        *settings.Store
-	cacheStore           *cache.Store
+	settingsStore        SettingsStore
+	cacheStore           CacheStore
 	syncStateStore       syncStateStore
 	newKlasClient        func() (*klas.Client, error)
 	login                func(context.Context, *klas.Client, string, string) (klas.Session, error)
