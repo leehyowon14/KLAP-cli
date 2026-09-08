@@ -33,6 +33,7 @@ type SearchCourseResult struct {
 }
 
 func (s *Service) Search(ctx context.Context, opts SearchOptions) (SearchResult, error) {
+	s = s.withRequestSession()
 	query := strings.TrimSpace(opts.Query)
 	if query == "" {
 		return SearchResult{}, errors.New("검색어를 입력해야 합니다")
