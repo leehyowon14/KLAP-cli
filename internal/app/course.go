@@ -223,7 +223,7 @@ func selectedCourses(term Term, filter string) ([]selectedCourse, error) {
 		return containsMatches, nil
 	}
 	if len(containsMatches) > 1 {
-		return nil, fmt.Errorf("과목명이 여러 개와 일치합니다. course list 번호를 사용하세요: %s", filter)
+		return nil, fmt.Errorf("과목명이 여러 개와 일치합니다. 과목 목록 번호를 사용하세요: %s", filter)
 	}
 	return nil, fmt.Errorf("과목을 찾을 수 없습니다: %s", filter)
 }
