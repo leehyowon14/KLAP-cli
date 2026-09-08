@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
-	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"github.com/leehyowon14/KLAP-cli/internal/reminder"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
 	"strconv"
@@ -758,7 +757,7 @@ func academicEventID(event AcademicEvent) string {
 	return "academic:" + strings.Join(compactNonEmpty(parts), ":")
 }
 
-func buildTimetableCalendarNotes(termValue string, entry klas.TimetableEntry) string {
+func buildTimetableCalendarNotes(termValue string, entry TimetableEntry) string {
 	var builder strings.Builder
 	builder.WriteString("--- KLAP ---\n\n")
 	builder.WriteString("ID: ")
@@ -790,7 +789,7 @@ func buildTimetableCalendarNotes(termValue string, entry klas.TimetableEntry) st
 	return builder.String()
 }
 
-func timetableCalendarEventID(termValue string, entry klas.TimetableEntry) string {
+func timetableCalendarEventID(termValue string, entry TimetableEntry) string {
 	parts := []string{
 		"timetable",
 		strings.TrimSpace(termValue),

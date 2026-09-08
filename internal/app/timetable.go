@@ -17,7 +17,7 @@ type TimetableOptions struct {
 
 type TimetableResult struct {
 	Term    Term
-	Entries []klas.TimetableEntry
+	Entries []TimetableEntry
 }
 
 func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (TimetableResult, error) {
@@ -60,7 +60,7 @@ func (s *Service) Timetable(ctx context.Context, opts TimetableOptions) (Timetab
 
 	result := TimetableResult{
 		Term:    term,
-		Entries: entries,
+		Entries: timetableEntryModels(entries),
 	}
 	_ = s.cacheStore.Set(cacheKey, listCacheTTL(), result)
 	return result, nil
