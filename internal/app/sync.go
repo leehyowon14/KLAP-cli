@@ -248,7 +248,7 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicSyncOpt
 		return CalendarSyncResult{Result: klapcalendar.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(events)}, nil
 	}
 
-	syncResult, err := s.calendarSyncer.Sync(klapcalendar.SyncRequest{
+	syncResult, err := s.calendarSyncer.Sync(ctx, klapcalendar.SyncRequest{
 		CalendarName:    currentSettings.Calendar.Name,
 		UseExistingList: currentSettings.Calendar.UseExistingList,
 		Events:          prepared.Events,
@@ -325,7 +325,7 @@ func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableSyncO
 		return CalendarSyncResult{Result: klapcalendar.SyncResult{Skipped: prepared.Skipped}, EligibleCount: len(events)}, nil
 	}
 
-	syncResult, err := s.calendarSyncer.Sync(klapcalendar.SyncRequest{
+	syncResult, err := s.calendarSyncer.Sync(ctx, klapcalendar.SyncRequest{
 		CalendarName:    currentSettings.Calendar.TimetableName,
 		UseExistingList: currentSettings.Calendar.TimetableUseExistingList,
 		Events:          prepared.Events,
@@ -857,5 +857,5 @@ type ReminderSyncer interface {
 }
 
 type CalendarSyncer interface {
-	Sync(klapcalendar.SyncRequest) (klapcalendar.SyncResult, error)
+	Sync(context.Context, klapcalendar.SyncRequest) (klapcalendar.SyncResult, error)
 }
