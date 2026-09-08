@@ -13,6 +13,21 @@ type sessionStore interface {
 	SaveSession(context.Context, string, klas.Session) error
 }
 
+// executeSessionRequest retries only the failed request, at most once. Updating
+// client lets subsequent requests in the same use case reuse the saved session.
+func executeSessionRequest[T any](ctx context.Context, s *Service, studentID string, client **klas.Client, request func(*klas.Client) (T, error)) (T, error) {
+	result, err := request(*client)
+	if !errors.Is(err, klas.ErrSessionExpired) {
+		return result, err
+	}
+	refreshed, _, refreshErr := s.refreshedClientAfterSessionError(ctx, studentID, err)
+	if refreshErr != nil {
+		return result, refreshErr
+	}
+	*client = refreshed
+	return request(refreshed)
+}
+
 func (s *Service) authenticatedClient(ctx context.Context, studentID string) (*klas.Client, error) {
 	client, err := s.newKlasClient()
 	if err != nil {
