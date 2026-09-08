@@ -2,7 +2,6 @@ package klas
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -121,7 +120,7 @@ func (c *Client) Grades(ctx context.Context) (GradeReport, error) {
 		return GradeReport{}, err
 	}
 	var summaryItem gradeSummaryItem
-	if err := json.Unmarshal(summaryBody, &summaryItem); err != nil {
+	if err := decodeResponseJSON(summaryBody, &summaryItem); err != nil {
 		return GradeReport{}, fmt.Errorf("성적 요약 응답 파싱 실패: %w", err)
 	}
 
@@ -130,7 +129,7 @@ func (c *Client) Grades(ctx context.Context) (GradeReport, error) {
 		return GradeReport{}, err
 	}
 	var termItems []gradeTermItem
-	if err := json.Unmarshal(termsBody, &termItems); err != nil {
+	if err := decodeResponseJSON(termsBody, &termItems); err != nil {
 		return GradeReport{}, fmt.Errorf("성적 목록 응답 파싱 실패: %w", err)
 	}
 
@@ -156,7 +155,7 @@ func (c *Client) Ranks(ctx context.Context) ([]Rank, error) {
 	}
 
 	var response []rankItem
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return nil, fmt.Errorf("석차 조회 응답 파싱 실패: %w", err)
 	}
 
