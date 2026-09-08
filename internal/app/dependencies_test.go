@@ -17,6 +17,7 @@ func testDependencies(t *testing.T) Dependencies {
 	t.Helper()
 	store := &account.Store{}
 	return Dependencies{
+		WakeLock: &fakeWakeLock{acquire: func(context.Context) (func(), error) { t.Fatal("constructor acquired wake lock"); return nil, nil }},
 		Downloader: &fakeDownloader{download: func(context.Context, string, string, bool, func(int64, int64)) (int64, error) {
 			t.Fatal("constructor downloaded file")
 			return 0, nil

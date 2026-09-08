@@ -43,6 +43,7 @@ func newService(store *account.Store, factories serviceStoreFactories) (*app.Ser
 		return nil, fmt.Errorf("sync state store 초기화 실패: %w", err)
 	}
 	return app.NewService(app.Dependencies{
+		WakeLock:          macos.WakeLock{},
 		Downloader:        download.NewClient(nil),
 		Academic:          academic.NewClient(nil),
 		Media:             kwcommons.NewClient(nil),

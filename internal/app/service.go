@@ -7,6 +7,7 @@ import (
 )
 
 type Service struct {
+	wakeLock          WakeLock
 	downloader        Downloader
 	academic          AcademicSource
 	media             MediaResolver

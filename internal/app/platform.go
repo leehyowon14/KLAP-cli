@@ -3,30 +3,25 @@ package app
 import (
 	"context"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
-	"io"
-	"os/exec"
-	"runtime"
 )
 
-func (s *Service) startCaffeinate(ctx context.Context) func() {
-	if runtime.GOOS != "darwin" {
+// WakeLock is optional at execution time: unavailable sleep prevention must not
+// fail a download. Acquire returns a release function that joins its worker.
+type WakeLock interface {
+	Acquire(context.Context) (func(), error)
+}
+
+func (s *Service) acquireWakeLock(ctx context.Context) func() {
+	if s.wakeLock == nil {
 		return func() {}
 	}
 	current, err := s.loadSettings()
 	if err != nil || !settings.DownloadCaffeinateEnabled(current.Download) {
 		return func() {}
 	}
-
-	cmd := exec.CommandContext(ctx, "caffeinate", "-dims")
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	if err := cmd.Start(); err != nil {
+	release, err := s.wakeLock.Acquire(ctx)
+	if err != nil || release == nil {
 		return func() {}
 	}
-	return func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-	}
+	return release
 }

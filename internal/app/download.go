@@ -112,7 +112,7 @@ func (s *Service) DownloadStatus(dir string) (DownloadStatusResult, error) {
 }
 
 func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDownloadOptions) (LectureDownloadResult, error) {
-	defer s.startCaffeinate(ctx)()
+	defer s.acquireWakeLock(ctx)()
 	currentSettings, err := s.loadSettings()
 	if err != nil {
 		return LectureDownloadResult{}, err
@@ -224,7 +224,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 }
 
 func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadAllOptions) (LectureDownloadAllResult, error) {
-	defer s.startCaffeinate(ctx)()
+	defer s.acquireWakeLock(ctx)()
 	currentSettings, err := s.loadSettings()
 	if err != nil {
 		return LectureDownloadAllResult{}, err
@@ -492,7 +492,7 @@ func downloadLectureTask(ctx context.Context, media MediaResolver, downloader Do
 }
 
 func (s *Service) TranscribeDownloadedLectures(ctx context.Context, items []LectureDownloadItem, opts LectureTranscriptOptions) LectureTranscriptResult {
-	defer s.startCaffeinate(ctx)()
+	defer s.acquireWakeLock(ctx)()
 
 	jobs := make([]transcript.Job, 0, len(items))
 	rows := make([]LectureRow, 0, len(items))

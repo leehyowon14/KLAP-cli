@@ -37,6 +37,7 @@ func NewService(t *testing.T) *app.Service {
 		t.Fatal(err)
 	}
 	service, err := app.NewService(app.Dependencies{
+		WakeLock:          macos.WakeLock{},
 		Downloader:        download.NewClient(nil),
 		Academic:          academic.NewClient(nil),
 		Media:             kwcommons.NewClient(nil),
