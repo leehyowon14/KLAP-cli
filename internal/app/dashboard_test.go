@@ -14,8 +14,8 @@ func TestDashboardCoursesBuildsCourseScopedSummary(t *testing.T) {
 	due := time.Now().Add(24 * time.Hour)
 	courses := []klas.Course{{Name: "컴퓨터그래픽스"}, {Name: "오픈소스소프트웨어실습"}}
 	assignments := []AssignmentRow{
-		{CourseName: "컴퓨터그래픽스", Assignment: klas.Assignment{Title: "과제1", DueAt: &due}},
-		{CourseName: "오픈소스소프트웨어실습", Assignment: klas.Assignment{Title: "기말", DueAt: &due}},
+		{CourseName: "컴퓨터그래픽스", Assignment: Assignment{Title: "과제1", DueAt: &due}},
+		{CourseName: "오픈소스소프트웨어실습", Assignment: Assignment{Title: "기말", DueAt: &due}},
 	}
 	lectures := []LectureRow{
 		{CourseName: "오픈소스소프트웨어실습", Lecture: klas.Lecture{Title: "HuggingFace", ContentID: "a", Progress: "0", EndAt: &due}},
@@ -89,9 +89,9 @@ func TestDashboardAssignmentsKeepsUpcomingUnsubmitted(t *testing.T) {
 	past := now.Add(-time.Hour)
 	future := now.Add(time.Hour)
 	rows := []AssignmentRow{
-		{ID: "1:past", Assignment: klas.Assignment{Title: "지난 과제", DueAt: &past}},
-		{ID: "1:done", Assignment: klas.Assignment{Title: "제출 과제", DueAt: &future, Submitted: true}},
-		{ID: "1:todo", Assignment: klas.Assignment{Title: "할 과제", DueAt: &future}},
+		{ID: "1:past", Assignment: Assignment{Title: "지난 과제", DueAt: &past}},
+		{ID: "1:done", Assignment: Assignment{Title: "제출 과제", DueAt: &future, Submitted: true}},
+		{ID: "1:todo", Assignment: Assignment{Title: "할 과제", DueAt: &future}},
 	}
 
 	got := dashboardAssignments(rows, 5)

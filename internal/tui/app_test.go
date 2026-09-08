@@ -308,7 +308,7 @@ func TestListFormatsHideInternalIDs(t *testing.T) {
 	assignments := formatAssignments([]app.AssignmentRow{{
 		ID:         "7:7",
 		CourseName: "오픈소스소프트웨어실습",
-		Assignment: klas.Assignment{
+		Assignment: app.Assignment{
 			Title: "기말고사 대체 과제",
 			DueAt: &due,
 		},
@@ -373,9 +373,9 @@ func TestCoursePagedCursorAndCourseWrap(t *testing.T) {
 		active: screenAssignments,
 		width:  96,
 		assignmentRows: []app.AssignmentRow{
-			{CourseName: "컴퓨터그래픽스", Assignment: klas.Assignment{Title: "과제1", DueAt: &due}},
-			{CourseName: "컴퓨터그래픽스", Assignment: klas.Assignment{Title: "과제2", DueAt: &due}},
-			{CourseName: "오픈소스소프트웨어실습", Assignment: klas.Assignment{Title: "기말", DueAt: &due}},
+			{CourseName: "컴퓨터그래픽스", Assignment: app.Assignment{Title: "과제1", DueAt: &due}},
+			{CourseName: "컴퓨터그래픽스", Assignment: app.Assignment{Title: "과제2", DueAt: &due}},
+			{CourseName: "오픈소스소프트웨어실습", Assignment: app.Assignment{Title: "기말", DueAt: &due}},
 		},
 	}
 
@@ -405,8 +405,8 @@ func TestCoursePagedRenderShowsCurrentCourseOnly(t *testing.T) {
 		height:        24,
 		contentCourse: 1,
 		assignmentRows: []app.AssignmentRow{
-			{CourseName: "컴퓨터그래픽스", Assignment: klas.Assignment{Title: "과제1", DueAt: &due}},
-			{CourseName: "오픈소스소프트웨어실습", Assignment: klas.Assignment{Title: "기말고사 대체 과제", DueAt: &due}},
+			{CourseName: "컴퓨터그래픽스", Assignment: app.Assignment{Title: "과제1", DueAt: &due}},
+			{CourseName: "오픈소스소프트웨어실습", Assignment: app.Assignment{Title: "기말고사 대체 과제", DueAt: &due}},
 		},
 	}
 
@@ -427,9 +427,9 @@ func TestCoursePagedSelectionUsesCurrentCourseAndCursor(t *testing.T) {
 		contentCourse: 1,
 		contentCursor: 1,
 		assignmentRows: []app.AssignmentRow{
-			{ID: "1:1", CourseName: "컴퓨터그래픽스", Assignment: klas.Assignment{Title: "과제1", DueAt: &due}},
-			{ID: "2:1", CourseName: "오픈소스소프트웨어실습", Assignment: klas.Assignment{Title: "과제A", DueAt: &due}},
-			{ID: "2:2", CourseName: "오픈소스소프트웨어실습", Assignment: klas.Assignment{Title: "과제B", DueAt: &due}},
+			{ID: "1:1", CourseName: "컴퓨터그래픽스", Assignment: app.Assignment{Title: "과제1", DueAt: &due}},
+			{ID: "2:1", CourseName: "오픈소스소프트웨어실습", Assignment: app.Assignment{Title: "과제A", DueAt: &due}},
+			{ID: "2:2", CourseName: "오픈소스소프트웨어실습", Assignment: app.Assignment{Title: "과제B", DueAt: &due}},
 		},
 	}
 
@@ -446,8 +446,8 @@ func TestKlasShortcutDoesNotMoveListCursor(t *testing.T) {
 		width:         96,
 		contentCursor: 1,
 		assignmentRows: []app.AssignmentRow{
-			{ID: "1:1", CourseName: "컴퓨터그래픽스", DetailURL: "https://klas.example/1", Assignment: klas.Assignment{Title: "과제1", DueAt: &due}},
-			{ID: "1:2", CourseName: "컴퓨터그래픽스", DetailURL: "https://klas.example/2", Assignment: klas.Assignment{Title: "과제2", DueAt: &due}},
+			{ID: "1:1", CourseName: "컴퓨터그래픽스", DetailURL: "https://klas.example/1", Assignment: app.Assignment{Title: "과제1", DueAt: &due}},
+			{ID: "1:2", CourseName: "컴퓨터그래픽스", DetailURL: "https://klas.example/2", Assignment: app.Assignment{Title: "과제2", DueAt: &due}},
 		},
 	}
 
@@ -464,7 +464,7 @@ func TestDetailLinesIncludeKlasURLAndBody(t *testing.T) {
 		ID:         "7:1",
 		CourseName: "오픈소스소프트웨어실습",
 		DetailURL:  "https://klas.kw.ac.kr/assignment",
-		Detail: klas.AssignmentDetail{
+		Detail: app.AssignmentDetail{
 			Title:       "기말고사 대체 과제",
 			ContentText: "GitHub repository 주소",
 			DueAt:       &due,
@@ -733,7 +733,7 @@ func testChromeModel(active screen) model {
 		assignmentRows: []app.AssignmentRow{{
 			ID:         "1",
 			CourseName: "강의",
-			Assignment: klas.Assignment{
+			Assignment: app.Assignment{
 				Title: "과제",
 				DueAt: &dueAt,
 			},
@@ -770,7 +770,7 @@ func testChromeModel(active screen) model {
 			ID:         "1",
 			CourseName: "강의",
 			DetailURL:  "https://klas.kw.ac.kr",
-			Detail:     klas.AssignmentDetail{Title: "과제", DueAt: &dueAt, ContentText: "본문"},
+			Detail:     app.AssignmentDetail{Title: "과제", DueAt: &dueAt, ContentText: "본문"},
 		},
 		noticeDetail: app.NoticeDetailResult{
 			ID:         "1",
@@ -901,7 +901,7 @@ func TestDashboardFormatUsesScanSections(t *testing.T) {
 		Assignments: []app.AssignmentRow{{
 			ID:         "7:7",
 			CourseName: "오픈소스소프트웨어실습",
-			Assignment: klas.Assignment{
+			Assignment: app.Assignment{
 				Title: "기말고사 대체 과제",
 				DueAt: &due,
 			},
@@ -945,7 +945,7 @@ func TestDashboardPagedPanelShowsCoursePages(t *testing.T) {
 				Name:  "컴퓨터그래픽스",
 				Assignments: []app.AssignmentRow{{
 					CourseName: "컴퓨터그래픽스",
-					Assignment: klas.Assignment{Title: "과제1", DueAt: &due},
+					Assignment: app.Assignment{Title: "과제1", DueAt: &due},
 				}},
 				Notices: []app.NoticeRow{{
 					CourseName: "컴퓨터그래픽스",

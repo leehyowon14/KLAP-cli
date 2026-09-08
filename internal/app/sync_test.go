@@ -465,7 +465,7 @@ func TestBuildReminderNotesIncludesBodyAndMarker(t *testing.T) {
 		ID:         "3:1",
 		TermValue:  "2026,1",
 		CourseName: "컴퓨터그래픽스",
-		Detail: klas.AssignmentDetail{
+		Detail: AssignmentDetail{
 			Title:          "과제1",
 			ContentText:    "과제 skeleton code 구성 가이드",
 			DueAt:          &dueAt,

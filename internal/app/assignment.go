@@ -29,7 +29,7 @@ type AssignmentRow struct {
 	TermValue  string
 	CourseName string
 	DetailURL  string
-	Assignment klas.Assignment
+	Assignment Assignment
 }
 
 type AssignmentDetailResult struct {
@@ -37,7 +37,7 @@ type AssignmentDetailResult struct {
 	TermValue  string
 	CourseName string
 	DetailURL  string
-	Detail     klas.AssignmentDetail
+	Detail     AssignmentDetail
 }
 
 func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions) ([]AssignmentRow, error) {
@@ -92,7 +92,7 @@ func (s *Service) AssignmentList(ctx context.Context, opts AssignmentListOptions
 				TermValue:  term.Value,
 				CourseName: selectedCourse.Course.Name,
 				DetailURL:  assignmentDetailURL(term.Value, selectedCourse.Course, assignment.OrdSeq),
-				Assignment: assignment,
+				Assignment: assignmentModel(assignment),
 			})
 		}
 	}
@@ -180,7 +180,7 @@ func (s *Service) AssignmentDetail(ctx context.Context, id string, user UserOpti
 		TermValue:  term.Value,
 		CourseName: course.Name,
 		DetailURL:  assignmentDetailURL(term.Value, course, ordSeq),
-		Detail:     detail,
+		Detail:     assignmentDetailModel(detail),
 	}, nil
 }
 
