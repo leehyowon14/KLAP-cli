@@ -1,4 +1,4 @@
-package klas
+package kwcommons
 
 import (
 	"testing"

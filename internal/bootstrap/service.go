@@ -9,6 +9,7 @@ import (
 	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
 	category "github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/kwcommons"
 	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
@@ -43,6 +44,7 @@ func newService(store *account.Store, factories serviceStoreFactories) (*app.Ser
 		return nil, fmt.Errorf("sync state store 초기화 실패: %w", err)
 	}
 	return app.NewService(app.Dependencies{
+		Media:             kwcommons.NewClient(nil),
 		AssignmentGateway: func(c *klas.Client) app.AssignmentGateway { return c },
 		Accounts:          store,
 		Sessions:          store,

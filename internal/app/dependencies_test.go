@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/leehyowon14/KLAP-cli/internal/kwcommons"
 	"strings"
 	"testing"
 
@@ -19,6 +20,7 @@ func testDependencies(t *testing.T) Dependencies {
 	t.Helper()
 	store := &account.Store{}
 	return Dependencies{
+		Media:             kwcommons.NewClient(nil),
 		AssignmentGateway: func(c *klas.Client) AssignmentGateway { return c },
 		Accounts:          store, Sessions: store, Settings: &settings.Store{}, Cache: &cache.Store{},
 		SyncState:     &fakeSyncStateStore{},

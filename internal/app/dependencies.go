@@ -12,6 +12,11 @@ import (
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 )
 
+// MediaResolver resolves public lecture media independently of KLAS authentication.
+type MediaResolver interface {
+	ResolveLectureMediaURL(context.Context, string) (string, error)
+}
+
 type AccountStore interface {
 	Save(context.Context, string, string, klas.Session) error
 	List(context.Context) ([]account.User, error)
@@ -37,6 +42,7 @@ type CacheStore interface {
 // Dependencies supplies the resources used by the application facade.
 // Construction does not access the filesystem, Keychain, network, or bridges.
 type Dependencies struct {
+	Media             MediaResolver
 	AssignmentGateway func(*klas.Client) AssignmentGateway
 	Accounts          AccountStore
 	Sessions          sessionStore
@@ -60,6 +66,7 @@ func NewService(deps Dependencies) (*Service, error) {
 		{"settings", deps.Settings}, {"cache", deps.Cache},
 		{"sync state", deps.SyncState}, {"KLAS client factory", deps.NewKlasClient},
 		{"login", deps.Login},
+		{"media", deps.Media},
 		{"assignment gateway", deps.AssignmentGateway},
 		{"transcript", deps.Transcriber},
 		{"category", deps.Categories},
@@ -71,6 +78,7 @@ func NewService(deps Dependencies) (*Service, error) {
 		}
 	}
 	return &Service{
+		media:             deps.Media,
 		assignmentGateway: deps.AssignmentGateway,
 		store:             deps.Accounts, sessions: deps.Sessions, settingsStore: deps.Settings,
 		cacheStore: deps.Cache, syncStateStore: deps.SyncState,

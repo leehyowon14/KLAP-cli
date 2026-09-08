@@ -9,6 +9,7 @@ import (
 	klapcalendar "github.com/leehyowon14/KLAP-cli/internal/calendar"
 	category "github.com/leehyowon14/KLAP-cli/internal/category"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"github.com/leehyowon14/KLAP-cli/internal/kwcommons"
 	reminder "github.com/leehyowon14/KLAP-cli/internal/reminder"
 	"github.com/leehyowon14/KLAP-cli/internal/settings"
 	"github.com/leehyowon14/KLAP-cli/internal/syncstate"
@@ -37,6 +38,7 @@ func NewService(t *testing.T) *app.Service {
 		t.Fatal(err)
 	}
 	service, err := app.NewService(app.Dependencies{
+		Media:             kwcommons.NewClient(nil),
 		AssignmentGateway: func(c *klas.Client) app.AssignmentGateway { return c },
 		Accounts:          store, Sessions: store, Settings: settingsStore, Cache: cacheStore, SyncState: syncStore,
 		Reminder:      reminder.NewMacOSBridge("unused"),

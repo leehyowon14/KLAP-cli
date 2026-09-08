@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/leehyowon14/KLAP-cli/internal/kwcommons"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -100,7 +101,7 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 		if title == "" {
 			title = "제목 없음"
 		}
-		contentID := ExtractKWCommonsContentID(item.MVPLink, item.Starting)
+		contentID := kwcommons.ExtractKWCommonsContentID(item.MVPLink, item.Starting)
 		requiredTime := firstNonEmpty(item.PTime.String(), item.RcognTime.String(), item.TotRcognTime.String())
 		achievedTime := firstNonEmpty(item.TotalTime.String(), item.AchivTime.String(), item.LearnTime.String(), item.TotAchivTime.String())
 		if contentID == "" {
@@ -109,7 +110,7 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 		}
 		lectures = append(lectures, Lecture{
 			ContentID:    contentID,
-			PlayURL:      normalizeKWCommonsPlayURL(firstNonEmpty(item.MVPLink, item.Starting), contentID),
+			PlayURL:      kwcommons.NormalizePlayURL(firstNonEmpty(item.MVPLink, item.Starting), contentID),
 			LearningSeq:  item.LearningSeq.String(),
 			FileID:       item.FileID.String(),
 			WeekNo:       item.WeekNo.String(),

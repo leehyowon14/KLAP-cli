@@ -1,4 +1,4 @@
-package klas
+package kwcommons
 
 import (
 	"bytes"
@@ -10,7 +10,29 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
+	"time"
+)
+
+// HTTPDoer supplies the KWCommons transport without a KLAS session or cookie jar.
+type HTTPDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+type Client struct{ httpClient HTTPDoer }
+
+// NewClient performs no IO. A nil transport uses the existing 20-second timeout.
+func NewClient(transport HTTPDoer) *Client {
+	if transport == nil {
+		transport = &http.Client{Timeout: 20 * time.Second}
+	}
+	return &Client{httpClient: transport}
+}
+
+var (
+	mediaURIPattern     = regexp.MustCompile(`(?is)<media_uri(?:\s+[^>]*)?>([^<]+)</media_uri>`)
+	desktopMediaPattern = regexp.MustCompile(`(?is)<desktop\b[^>]*>.*?<media_uri(?:\s+[^>]*)?>([^<]+)</media_uri>.*?</desktop>`)
+	mainMediaPattern    = regexp.MustCompile(`(?is)<main_media(?:\s+[^>]*)?>([^<]+)</main_media>`)
 )
 
 type mediaCandidate struct {
@@ -206,7 +228,7 @@ func ExtractMediaURL(body []byte) (string, error) {
 	return "", errors.New("KWCommons 응답에서 동영상 URL을 찾을 수 없습니다")
 }
 
-func normalizeKWCommonsPlayURL(value string, contentID string) string {
+func NormalizePlayURL(value string, contentID string) string {
 	value = strings.TrimSpace(value)
 	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
 		return value

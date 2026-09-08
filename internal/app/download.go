@@ -200,7 +200,7 @@ func (s *Service) DownloadLecture(ctx context.Context, id string, opts LectureDo
 		TotalItems:   1,
 	})
 
-	mediaURL, err := resource.Client.ResolveLectureMediaURL(ctx, resource.Key)
+	mediaURL, err := s.media.ResolveLectureMediaURL(ctx, resource.Key)
 	if err != nil {
 		return LectureDownloadResult{}, err
 	}
@@ -385,7 +385,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	worker := func() {
 		defer wg.Done()
 		for task := range jobs {
-			results <- downloadTaskResult{Index: task.Index - 1, Item: downloadLectureTask(ctx, client, dir, currentSettings.Download.KeepPartial, task.Index, task.Total, task.Course, task.Row, task.WeekOrder, opts.OnProgress)}
+			results <- downloadTaskResult{Index: task.Index - 1, Item: downloadLectureTask(ctx, s.media, dir, currentSettings.Download.KeepPartial, task.Index, task.Total, task.Course, task.Row, task.WeekOrder, opts.OnProgress)}
 		}
 	}
 	wg.Add(concurrency)
@@ -417,7 +417,7 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	return result, nil
 }
 
-func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, keepPartial bool, index int, total int, course Course, row LectureRow, weekOrder int, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
+func downloadLectureTask(ctx context.Context, media MediaResolver, dir string, keepPartial bool, index int, total int, course Course, row LectureRow, weekOrder int, onProgress func(LectureDownloadProgress)) LectureDownloadItem {
 	item := LectureDownloadItem{Lecture: row}
 	if strings.TrimSpace(row.Lecture.ContentID) == "" {
 		item.Skipped = true
@@ -439,7 +439,7 @@ func downloadLectureTask(ctx context.Context, client *klas.Client, dir string, k
 		CurrentIndex: index,
 		TotalItems:   total,
 	})
-	mediaURL, err := client.ResolveLectureMediaURL(ctx, row.Lecture.ContentID)
+	mediaURL, err := media.ResolveLectureMediaURL(ctx, row.Lecture.ContentID)
 	if err != nil {
 		item.Err = err
 		emitLectureDownloadProgress(onProgress, LectureDownloadProgress{
