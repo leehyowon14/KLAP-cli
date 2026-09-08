@@ -46,7 +46,7 @@ func (c *Client) Login(ctx context.Context, studentID string, password string) (
 	}
 
 	if !c.hasCookie("SESSION") && !c.hasCookie("WMONID") {
-		return Session{}, errors.New("LoginSecurity 응답에 세션 쿠키가 없습니다")
+		return Session{}, schemaError(errors.New("LoginSecurity 응답에 세션 쿠키가 없습니다"))
 	}
 
 	loginToken, err := buildLoginToken(publicKey, studentID, password)
@@ -61,7 +61,7 @@ func (c *Client) Login(ctx context.Context, studentID string, password string) (
 
 	cookies := c.cookiesMap()
 	if cookies["SESSION"] == "" && cookies["WMONID"] == "" {
-		return Session{}, errors.New("LoginConfirm 이후 저장할 세션 쿠키가 없습니다")
+		return Session{}, schemaError(errors.New("LoginConfirm 이후 저장할 세션 쿠키가 없습니다"))
 	}
 
 	return Session{
@@ -89,11 +89,11 @@ func (c *Client) loginSecurity(ctx context.Context) (string, error) {
 	}
 
 	var response loginSecurityResponse
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return "", fmt.Errorf("LoginSecurity 응답 파싱 실패: %w", err)
 	}
 	if strings.TrimSpace(response.PublicKey) == "" {
-		return "", errors.New("LoginSecurity 응답에 publicKey가 없습니다")
+		return "", schemaError(errors.New("LoginSecurity 응답에 publicKey가 없습니다"))
 	}
 	return response.PublicKey, nil
 }
@@ -111,7 +111,7 @@ func (c *Client) loginConfirm(ctx context.Context, loginToken string) (string, e
 	}
 
 	var response loginConfirmResponse
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeResponseJSON(body, &response); err != nil {
 		return "", fmt.Errorf("LoginConfirm 응답 파싱 실패: %w", err)
 	}
 
@@ -119,10 +119,10 @@ func (c *Client) loginConfirm(ctx context.Context, loginToken string) (string, e
 		return "", errors.New("로그인이 필요하다는 응답을 받았습니다")
 	}
 	if response.ErrorCount > 0 {
-		return "", errors.New(firstFieldError(response.FieldErrors, "KLAS 로그인에 실패했습니다"))
+		return "", &Error{Kind: ErrorRemoteBusiness, Err: errors.New(firstFieldError(response.FieldErrors, "KLAS 로그인에 실패했습니다"))}
 	}
 	if response.Response == nil || strings.TrimSpace(response.Response.UserID) == "" {
-		return "", errors.New("LoginConfirm 성공 응답에 userId가 없습니다")
+		return "", schemaError(errors.New("LoginConfirm 성공 응답에 userId가 없습니다"))
 	}
 
 	return response.Response.UserID, nil
@@ -158,17 +158,17 @@ func parsePublicKey(publicKeyBody string) (*rsa.PublicKey, error) {
 
 	block, _ := pem.Decode([]byte(pemText))
 	if block == nil {
-		return nil, errors.New("publicKey PEM 디코딩 실패")
+		return nil, schemaError(errors.New("publicKey PEM 디코딩 실패"))
 	}
 
 	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("publicKey 파싱 실패: %w", err)
+		return nil, schemaError(fmt.Errorf("publicKey 파싱 실패: %w", err))
 	}
 
 	publicKey, ok := parsed.(*rsa.PublicKey)
 	if !ok {
-		return nil, errors.New("publicKey가 RSA 키가 아닙니다")
+		return nil, schemaError(errors.New("publicKey가 RSA 키가 아닙니다"))
 	}
 	return publicKey, nil
 }
