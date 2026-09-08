@@ -10,9 +10,8 @@ import (
 )
 
 type TimetableOptions struct {
-	User          UserOption
-	Refresh       bool
-	SyncDecisions map[string]SyncDecision
+	User    UserOption
+	Refresh bool
 }
 
 type TimetableResult struct {

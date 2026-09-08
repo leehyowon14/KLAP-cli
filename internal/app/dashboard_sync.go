@@ -22,7 +22,7 @@ type dashboardSyncer interface {
 	SyncAssignmentReminders(context.Context, AssignmentSyncOptions) (ReminderSyncResult, error)
 	SyncLectureReminders(context.Context, LectureSyncOptions) (ReminderSyncResult, error)
 	SyncAcademicCalendar(context.Context, AcademicSyncOptions) (CalendarSyncResult, error)
-	SyncTimetableCalendar(context.Context, TimetableOptions) (CalendarSyncResult, error)
+	SyncTimetableCalendar(context.Context, TimetableSyncOptions) (CalendarSyncResult, error)
 }
 
 func (s *Service) SyncDashboard(ctx context.Context, opts DashboardSyncOptions) DashboardSyncResult {
@@ -36,6 +36,6 @@ func syncDashboard(ctx context.Context, opts DashboardSyncOptions, syncer dashbo
 	result.Assignments, result.AssignmentError = syncer.SyncAssignmentReminders(ctx, AssignmentSyncOptions{Query: AssignmentListOptions{User: opts.User}, Decisions: opts.Decisions})
 	result.Lectures, result.LectureError = syncer.SyncLectureReminders(ctx, LectureSyncOptions{Query: LectureListOptions{User: opts.User}, Decisions: opts.Decisions})
 	result.Academic, result.AcademicError = syncer.SyncAcademicCalendar(ctx, AcademicSyncOptions{Decisions: opts.Decisions})
-	result.Timetable, result.TimetableError = syncer.SyncTimetableCalendar(ctx, TimetableOptions{User: opts.User, SyncDecisions: opts.Decisions})
+	result.Timetable, result.TimetableError = syncer.SyncTimetableCalendar(ctx, TimetableSyncOptions{Query: TimetableOptions{User: opts.User}, Decisions: opts.Decisions})
 	return result
 }

@@ -264,21 +264,21 @@ func (s *Service) SyncAcademicCalendar(ctx context.Context, opts AcademicSyncOpt
 	return CalendarSyncResult{Result: syncResult, EligibleCount: len(events)}, nil
 }
 
-func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableOptions) (CalendarSyncResult, error) {
+func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableSyncOptions) (CalendarSyncResult, error) {
 	currentSettings, err := s.loadSettings()
 	if err != nil {
 		return CalendarSyncResult{}, err
 	}
-	result, err := s.Timetable(ctx, opts)
+	result, err := s.Timetable(ctx, opts.Query)
 	if err != nil {
 		return CalendarSyncResult{}, err
 	}
-	studentID, err := s.selectedStudentID(ctx, opts.User)
+	studentID, err := s.selectedStudentID(ctx, opts.Query.User)
 	if err != nil {
 		return CalendarSyncResult{}, err
 	}
 	startAt, endAt := timetableTermRange(result.Term.Value)
-	if academic, academicErr := s.AcademicList(ctx, AcademicListOptions{Year: timetableTermYear(result.Term.Value), Refresh: opts.Refresh}); academicErr == nil {
+	if academic, academicErr := s.AcademicList(ctx, AcademicListOptions{Year: timetableTermYear(result.Term.Value), Refresh: opts.Query.Refresh}); academicErr == nil {
 		startAt, endAt = timetableTermRangeFromAcademic(result.Term.Value, academic.Events, startAt, endAt)
 	}
 
@@ -311,7 +311,7 @@ func (s *Service) SyncTimetableCalendar(ctx context.Context, opts TimetableOptio
 	if len(events) == 0 {
 		return CalendarSyncResult{}, nil
 	}
-	prepared, err := s.prepareCalendarSync("timetable", studentID, events, opts.SyncDecisions)
+	prepared, err := s.prepareCalendarSync("timetable", studentID, events, opts.Decisions)
 	if err != nil {
 		return CalendarSyncResult{}, err
 	}

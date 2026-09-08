@@ -39,9 +39,9 @@ func (s *dashboardSyncStub) SyncAcademicCalendar(ctx context.Context, o Academic
 	s.record(ctx, "academic", o.Decisions)
 	return CalendarSyncResult{EligibleCount: 3}, s.err
 }
-func (s *dashboardSyncStub) SyncTimetableCalendar(ctx context.Context, o TimetableOptions) (CalendarSyncResult, error) {
-	s.record(ctx, "timetable", o.SyncDecisions)
-	if o.User.StudentID != "student" {
+func (s *dashboardSyncStub) SyncTimetableCalendar(ctx context.Context, o TimetableSyncOptions) (CalendarSyncResult, error) {
+	s.record(ctx, "timetable", o.Decisions)
+	if o.Query.User.StudentID != "student" {
 		s.t.Fatal("user lost")
 	}
 	return CalendarSyncResult{EligibleCount: 4}, s.err
