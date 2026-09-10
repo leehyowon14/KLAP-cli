@@ -86,19 +86,55 @@ func TestReadmeCommandListMatchesRegistryHelp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var out bytes.Buffer
+	(Runner{Out: &out}).printHelp()
+	if err := validateReadmeHelp(string(data), out.String()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func validateReadmeHelp(readme, help string) error {
+	// Git can check out Markdown as CRLF on Windows. Ignore only that
+	// representation difference; command content and whitespace remain exact.
+	readme = strings.ReplaceAll(readme, "\r\n", "\n")
 	const start = "<!-- cli-help:start -->\n" + "```text\n"
 	const end = "```\n<!-- cli-help:end -->"
-	_, section, ok := strings.Cut(string(data), start)
+	_, section, ok := strings.Cut(readme, start)
 	if !ok {
-		t.Fatal("README command section missing")
+		return errors.New("README command section missing")
 	}
 	section, _, ok = strings.Cut(section, end)
 	if !ok {
-		t.Fatal("README command section end missing")
+		return errors.New("README command section end missing")
 	}
-	var out bytes.Buffer
-	(Runner{Out: &out}).printHelp()
-	if section != out.String() {
-		t.Fatal("README command list differs from registry help")
+	if section != help {
+		return errors.New("README command list differs from registry help")
+	}
+	return nil
+}
+
+func TestReadmeHelpValidation(t *testing.T) {
+	help := "KLAP CLI\n  klap help\n"
+	readme := "# Intro\n<!-- cli-help:start -->\n```text\n" + help + "```\n<!-- cli-help:end -->\n"
+	for _, test := range []struct {
+		name, readme string
+		wantError    bool
+	}{
+		{"LF", readme, false},
+		{"CRLF", strings.ReplaceAll(readme, "\n", "\r\n"), false},
+		{"mixed endings", strings.Replace(readme, "```text\n", "```text\r\n", 1), false},
+		{"missing start", strings.Replace(readme, "cli-help:start", "other", 1), true},
+		{"missing end", strings.Replace(readme, "cli-help:end", "other", 1), true},
+		{"changed command", strings.Replace(readme, "klap help", "klap unknown", 1), true},
+		{"changed indentation", strings.Replace(readme, "  klap", " klap", 1), true},
+		{"empty section", strings.Replace(readme, help, "", 1), true},
+		{"bare CR", strings.ReplaceAll(readme, "\n", "\r"), true},
+		{"bare CR in body", strings.Replace(readme, "KLAP CLI\n", "KLAP CLI\r", 1), true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateReadmeHelp(test.readme, help); (err != nil) != test.wantError {
+				t.Fatalf("error = %v, wantError = %v", err, test.wantError)
+			}
+		})
 	}
 }
