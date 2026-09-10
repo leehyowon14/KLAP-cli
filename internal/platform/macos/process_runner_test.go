@@ -9,7 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -30,7 +33,20 @@ func TestProcessHelper(t *testing.T) {
 	case "hang":
 		time.Sleep(time.Minute)
 	case "linger":
-		time.Sleep(5 * time.Second)
+		// Publish from the descendant itself so cleanup can still find it if
+		// its launcher is canceled immediately after spawning it.
+		path := os.Getenv("KLAP_TEST_DESCENDANT_PID")
+		if path == "" {
+			os.Exit(9)
+		}
+		if err := os.WriteFile(path+".tmp", []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+			os.Exit(9)
+		}
+		if err := os.Rename(path+".tmp", path); err != nil {
+			os.Exit(9)
+		}
+		// Fail-safe only; the owning test kills and waits for this process.
+		time.Sleep(30 * time.Second)
 	case "inherited-stdout":
 		child := exec.Command(os.Args[0], "-test.run=^TestProcessHelper$", "--", "--klap-process-helper", "linger")
 		child.Stdout = os.Stdout
@@ -45,6 +61,56 @@ func TestProcessHelper(t *testing.T) {
 		}
 	}
 	os.Exit(0)
+}
+
+// ownedDescendant registers cleanup before launch, including t.Fatal paths.
+// Waiting on Windows is required before Go can remove the test executable.
+func ownedDescendant(t *testing.T) func() *os.Process {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "descendant.pid")
+	t.Setenv("KLAP_TEST_DESCENDANT_PID", path)
+	var process *os.Process
+	find := func() *os.Process {
+		t.Helper()
+		if process != nil {
+			return process
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			data, err := os.ReadFile(path)
+			if err == nil {
+				pid, err := strconv.Atoi(string(data))
+				if err != nil || pid <= 0 {
+					t.Fatalf("invalid descendant PID: %q", data)
+				}
+				process, err = os.FindProcess(pid)
+				if err != nil {
+					t.Fatalf("find descendant: %v", err)
+				}
+				return process
+			}
+			if !errors.Is(err, os.ErrNotExist) || time.Now().After(deadline) {
+				t.Fatalf("read descendant PID: %v", err)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	t.Cleanup(func() {
+		child := find()
+		if err := child.Kill(); err != nil {
+			t.Errorf("kill descendant: %v", err)
+		}
+		_, err := child.Wait()
+		// Unix cannot wait for a grandchild; after Kill its new parent reaps
+		// it. Windows can wait on the process handle regardless of parentage.
+		if runtime.GOOS != "windows" && errors.Is(err, syscall.ECHILD) {
+			err = child.Release()
+		}
+		if err != nil {
+			t.Errorf("wait/release descendant: %v", err)
+		}
+	})
+	return find
 }
 
 func helperSpec(t *testing.T, mode string) ProcessSpec {

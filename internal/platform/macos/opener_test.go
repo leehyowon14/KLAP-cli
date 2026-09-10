@@ -74,20 +74,32 @@ func TestProcessStartPreservesExitError(t *testing.T) {
 }
 
 func TestProcessStartDoesNotWaitForDescendantStdout(t *testing.T) {
+	findDescendant := ownedDescendant(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	done, err := (ProcessRunner{}).Start(ctx, helperSpec(t, "inherited-stdout"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Confirm that a live descendant actually inherited stdout, rather than
+	// passing only because the launcher failed to create the fixture.
+	findDescendant()
 	select {
 	case err := <-done:
 		if err != nil {
 			t.Fatalf("launcher exit = %v", err)
 		}
 	// Race-instrumented child processes add a one-second exit delay. The
-	// descendant lives five seconds, so this still detects waiting for its EOF.
+	// descendant remains alive until cleanup, so this detects waiting for EOF.
 	case <-time.After(3 * time.Second):
 		t.Fatal("launcher exit waited for descendant stdout")
+	}
+	select {
+	case _, open := <-done:
+		if open {
+			t.Fatal("launcher completion channel delivered multiple results")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("launcher completion channel was not closed")
 	}
 }
