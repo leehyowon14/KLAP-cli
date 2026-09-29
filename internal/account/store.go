@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/leehyowon14/KLAP-cli/internal/domain"
@@ -22,6 +23,7 @@ const (
 )
 
 type Store struct {
+	service      string
 	registryPath string
 	keyring      keyringStore
 	registry     registryWriter
@@ -150,7 +152,12 @@ func NewStore() (*Store, error) {
 }
 
 func newStoreAt(registryPath string, secrets keyringStore) *Store {
+	service := strings.TrimSpace(os.Getenv("KLAP_KEYRING_SERVICE"))
+	if service == "" {
+		service = keyringService
+	}
 	return &Store{
+		service:      service,
 		registryPath: registryPath,
 		keyring:      secrets,
 		registry: filesystemRegistryWriter{
@@ -193,11 +200,11 @@ func (s *Store) Save(ctx context.Context, studentID string, password string, ses
 		return fmt.Errorf("기존 세션 확인 실패: %w", err)
 	}
 
-	if err := s.keyring.Set(keyringService, keyName(passwordKind, studentID), password); err != nil {
+	if err := s.keyring.Set(s.service, keyName(passwordKind, studentID), password); err != nil {
 		cause := fmt.Errorf("비밀번호 보안 저장 실패: %w", err)
 		return s.rollbackSecrets("계정 저장", studentID, cause, map[string]secretSnapshot{passwordKind: passwordSnapshot})
 	}
-	if err := s.keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
+	if err := s.keyring.Set(s.service, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
 		cause := fmt.Errorf("세션 보안 저장 실패: %w", err)
 		return s.rollbackSecrets("계정 저장", studentID, cause, map[string]secretSnapshot{
 			sessionKind:  sessionSnapshot,
@@ -239,7 +246,7 @@ func (s *Store) Save(ctx context.Context, studentID string, password string, ses
 }
 
 func (s *Store) snapshotSecret(kind string, studentID string) (secretSnapshot, error) {
-	value, err := s.keyring.Get(keyringService, keyName(kind, studentID))
+	value, err := s.keyring.Get(s.service, keyName(kind, studentID))
 	if errors.Is(err, keyring.ErrNotFound) {
 		return secretSnapshot{}, nil
 	}
@@ -258,9 +265,9 @@ func (s *Store) rollbackSecrets(operation string, studentID string, cause error,
 		}
 		var err error
 		if snapshot.exists {
-			err = s.keyring.Set(keyringService, keyName(kind, studentID), snapshot.value)
+			err = s.keyring.Set(s.service, keyName(kind, studentID), snapshot.value)
 		} else {
-			err = s.keyring.Delete(keyringService, keyName(kind, studentID))
+			err = s.keyring.Delete(s.service, keyName(kind, studentID))
 			if errors.Is(err, keyring.ErrNotFound) {
 				err = nil
 			}
@@ -319,7 +326,7 @@ func (s *Store) Select(ctx context.Context, studentID string) error {
 func (s *Store) LoadPassword(ctx context.Context, studentID string) (string, error) {
 	_ = ctx
 
-	password, err := s.keyring.Get(keyringService, keyName(passwordKind, studentID))
+	password, err := s.keyring.Get(s.service, keyName(passwordKind, studentID))
 	if err != nil {
 		return "", fmt.Errorf("저장된 비밀번호를 읽지 못했습니다: %w", err)
 	}
@@ -329,7 +336,7 @@ func (s *Store) LoadPassword(ctx context.Context, studentID string) (string, err
 func (s *Store) LoadSession(ctx context.Context, studentID string) (domain.Session, error) {
 	_ = ctx
 
-	sessionText, err := s.keyring.Get(keyringService, keyName(sessionKind, studentID))
+	sessionText, err := s.keyring.Get(s.service, keyName(sessionKind, studentID))
 	if err != nil {
 		return domain.Session{}, fmt.Errorf("저장된 세션을 읽지 못했습니다: %w", err)
 	}
@@ -348,7 +355,7 @@ func (s *Store) SaveSession(ctx context.Context, studentID string, session domai
 	if err != nil {
 		return fmt.Errorf("세션 직렬화 실패: %w", err)
 	}
-	if err := s.keyring.Set(keyringService, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
+	if err := s.keyring.Set(s.service, keyName(sessionKind, studentID), string(sessionBytes)); err != nil {
 		return fmt.Errorf("세션 보안 저장 실패: %w", err)
 	}
 	return nil
@@ -412,7 +419,7 @@ func (s *Store) Remove(ctx context.Context, studentID string) error {
 }
 
 func (s *Store) deleteSecret(kind string, studentID string) error {
-	err := s.keyring.Delete(keyringService, keyName(kind, studentID))
+	err := s.keyring.Delete(s.service, keyName(kind, studentID))
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
