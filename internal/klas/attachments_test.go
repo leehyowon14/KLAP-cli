@@ -88,3 +88,23 @@ func TestAttachmentList(t *testing.T) {
 		srv.Close()
 	}
 }
+
+func TestReadBoardAttachmentWithoutFiles(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		fmt.Fprint(w, "%PDF-test")
+	}))
+	defer srv.Close()
+	c, _ := NewClient()
+	c.baseURL, _ = url.Parse(srv.URL)
+	data, err := c.ReadBoardAttachment(context.Background(), BoardAttachment{Name: "test.pdf", Size: 9, download: "/common/file/DownloadFile/x/1"})
+	if err != nil || string(data) != "%PDF-test" {
+		t.Fatal(err, string(data))
+	}
+	if _, err = c.ReadBoardAttachment(context.Background(), BoardAttachment{Size: MaxAttachmentMemoryBytes + 1}); err == nil {
+		t.Fatal("oversized preview accepted")
+	}
+	if _, err = c.ReadBoardAttachment(context.Background(), BoardAttachment{Size: 10, download: "/common/file/DownloadFile/x/1"}); err == nil {
+		t.Fatal("truncated memory response accepted")
+	}
+}
