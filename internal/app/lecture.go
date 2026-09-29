@@ -69,7 +69,7 @@ func (s *Service) LectureList(ctx context.Context, opts LectureListOptions) ([]L
 		return nil, err
 	}
 
-	cacheKey := courseResourceListCacheKeyVersion("lecture", "v2", studentID, term.Value, courses)
+	cacheKey := courseResourceListCacheKeyVersion("lecture", "v3", studentID, term.Value, courses)
 	if !opts.Refresh {
 		var cached []LectureRow
 		if _, ok, cacheErr := s.cacheStore.Get(cacheKey, &cached); cacheErr == nil && ok {
@@ -531,7 +531,7 @@ func lectureNeedsAttendance(lecture Lecture, now time.Time) bool {
 	if lecture.EndAt != nil && now.After(*lecture.EndAt) {
 		return false
 	}
-	return strings.TrimSpace(lecture.ContentID) != ""
+	return strings.TrimSpace(lecture.ContentID) != "" || lecture.ViewerSupported
 }
 
 func lectureIsLearningActivity(lecture Lecture) bool {
@@ -555,6 +555,9 @@ func lectureAttendKey(lecture Lecture) string {
 	if learningSeq := strings.TrimSpace(lecture.LearningSeq); learningSeq != "" {
 		return "lrn-" + learningSeq
 	}
+	if lecture.ViewerSupported {
+		return lectureFallbackKey(lecture)
+	}
 	return ""
 }
 
@@ -562,6 +565,10 @@ func lectureResourceKey(lecture Lecture) string {
 	if key := lectureAttendKey(lecture); key != "" {
 		return key
 	}
+	return lectureFallbackKey(lecture)
+}
+
+func lectureFallbackKey(lecture Lecture) string {
 	if fileID := strings.TrimSpace(lecture.FileID); fileID != "" {
 		return "file-" + fileID
 	}

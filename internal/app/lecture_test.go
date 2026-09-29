@@ -36,7 +36,7 @@ func TestLectureCacheHitAttendRefetchesActionPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStoreAt() error = %v", err)
 	}
-	cacheKey := courseResourceListCacheKeyVersion("lecture", "v2", studentID, term.Value, selected)
+	cacheKey := courseResourceListCacheKeyVersion("lecture", "v3", studentID, term.Value, selected)
 	cachedRows := []LectureRow{{
 		ID:         lectureID,
 		LegacyID:   "1:lrn-42",
@@ -128,8 +128,8 @@ func TestLectureCacheHitAttendRefetchesActionPayload(t *testing.T) {
 func TestLectureCacheVersionMissesRawLegacySchema(t *testing.T) {
 	courses := []selectedCourse{{Index: 1, Course: Course{Name: "A", Value: "course-a"}}}
 	legacyKey := courseResourceListCacheKey("lecture", "20260001", "2026,1", courses)
-	currentKey := courseResourceListCacheKeyVersion("lecture", "v2", "20260001", "2026,1", courses)
-	if legacyKey == currentKey || !strings.Contains(currentKey, "lecture:v2:") {
+	currentKey := courseResourceListCacheKeyVersion("lecture", "v3", "20260001", "2026,1", courses)
+	if legacyKey == currentKey || !strings.Contains(currentKey, "lecture:v3:") {
 		t.Fatalf("lecture cache keys = legacy %q, current %q", legacyKey, currentKey)
 	}
 }

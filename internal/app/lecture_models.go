@@ -6,6 +6,7 @@ import (
 )
 
 type Lecture struct {
+	ViewerSupported  bool
 	FirstStartedAt   *time.Time
 	FirstCompletedAt *time.Time
 	ContentID        string
@@ -32,6 +33,7 @@ type LectureProgress struct {
 
 func lectureModel(value klas.Lecture) Lecture {
 	return Lecture{
+		ViewerSupported:  value.ViewerSupported,
 		FirstStartedAt:   value.FirstStartedAt,
 		FirstCompletedAt: value.FirstCompletedAt,
 		ContentID:        value.ContentID,

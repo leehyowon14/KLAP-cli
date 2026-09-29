@@ -13,6 +13,7 @@ import (
 )
 
 type Lecture struct {
+	ViewerSupported  bool
 	FirstStartedAt   *time.Time
 	FirstCompletedAt *time.Time
 	ContentID        string
@@ -107,7 +108,9 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 		}
 		contentID := kwcommons.ExtractKWCommonsContentID(item.MVPLink, item.Starting)
 		requiredTime, achievedTime := lectureListTimes(item)
+		_, viewerErr := lectureViewerForm(Lecture{Raw: item})
 		lectures = append(lectures, Lecture{
+			ViewerSupported:  viewerErr == nil,
 			FirstStartedAt:   parseKlasDateTime(item.FirstEdu),
 			FirstCompletedAt: parseKlasDateTime(item.FirstEnd),
 			ContentID:        contentID,
