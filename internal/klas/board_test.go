@@ -35,7 +35,7 @@ func TestBoardMaterialContextAndPagination(t *testing.T) {
 		t.Fatal(calls)
 	}
 	d, e := c.BoardPost(context.Background(), "material", "2026,2", Course{Value: "course"}, "1", "2")
-	if e != nil || d.ContentText != "본문" {
+	if e != nil || d.ContentHTML != "<p>본문</p>" || d.ContentText != "본문" {
 		t.Fatalf("detail=%v err=%v", d, e)
 	}
 	n := len(calls)

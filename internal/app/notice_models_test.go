@@ -41,7 +41,7 @@ func TestNoticeModelsMapAdapterFixturesWithoutWireFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	model := noticeDetailModel(detail)
-	if model.ContentText != "body" || model.Attachment != "99" {
+	if model.ContentHTML != "<p>body</p>" || model.ContentText != "body" || model.Attachment != "99" {
 		t.Fatalf("detail=%+v", model)
 	}
 	assertModelJSONParity(t, detail, model)

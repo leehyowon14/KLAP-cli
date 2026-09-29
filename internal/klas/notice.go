@@ -27,6 +27,7 @@ type NoticeDetail struct {
 	MasterNo    string
 	Title       string
 	ContentText string
+	ContentHTML string
 	Author      string
 	Registered  *time.Time
 	Top         bool
@@ -194,6 +195,7 @@ func (c *Client) BoardPost(ctx context.Context, kind, yearHakgi string, course C
 		MasterNo:    firstNonEmpty(board.MasterNo.String(), masterNo),
 		Title:       firstNonEmpty(strings.TrimSpace(board.Title), "제목 없음"),
 		ContentText: htmlToText(board.Content),
+		ContentHTML: board.Content,
 		Author:      strings.TrimSpace(board.UserName),
 		Registered:  parseKlasDateTime(board.RegistDt),
 		Top:         strings.EqualFold(board.TopAt, "Y"),

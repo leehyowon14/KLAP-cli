@@ -34,6 +34,7 @@ type NoticeDetail struct {
 	MasterNo    string
 	Title       string
 	ContentText string
+	ContentHTML string
 	Author      string
 	Registered  *time.Time
 	Top         bool
@@ -47,6 +48,7 @@ func noticeDetailModel(value klas.NoticeDetail) NoticeDetail {
 		MasterNo:    value.MasterNo,
 		Title:       value.Title,
 		ContentText: value.ContentText,
+		ContentHTML: value.ContentHTML,
 		Author:      value.Author,
 		Registered:  value.Registered,
 		Top:         value.Top,
