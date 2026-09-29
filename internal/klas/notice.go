@@ -65,6 +65,14 @@ type noticeItem struct {
 }
 
 func (c *Client) Notices(ctx context.Context, yearHakgi string, course Course) ([]Notice, error) {
+	return c.BoardPosts(ctx, "notice", yearHakgi, course)
+}
+
+func (c *Client) BoardPosts(ctx context.Context, kind, yearHakgi string, course Course) ([]Notice, error) {
+	route, err := boardRoute(kind)
+	if err != nil {
+		return nil, err
+	}
 	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
 		return nil, err
 	}
@@ -72,7 +80,7 @@ func (c *Client) Notices(ctx context.Context, yearHakgi string, course Course) (
 	allNotices := make([]Notice, 0)
 	seen := make(map[string]struct{})
 	for currentPage := 0; ; currentPage++ {
-		body, err := c.do(ctx, http.MethodPost, "/std/lis/sport/d052b8f845784c639f036b102fdc3023/BoardStdList.do", map[string]any{
+		body, err := c.do(ctx, http.MethodPost, route+"/BoardStdList.do", map[string]any{
 			"selectYearhakgi": yearHakgi,
 			"selectSubj":      course.Value,
 			"currentPage":     currentPage,
@@ -146,11 +154,19 @@ func noticeTotalPages(page *noticePageInfo) int {
 }
 
 func (c *Client) NoticeDetail(ctx context.Context, yearHakgi string, course Course, boardNo string, masterNo string) (NoticeDetail, error) {
+	return c.BoardPost(ctx, "notice", yearHakgi, course, boardNo, masterNo)
+}
+
+func (c *Client) BoardPost(ctx context.Context, kind, yearHakgi string, course Course, boardNo, masterNo string) (NoticeDetail, error) {
+	route, err := boardRoute(kind)
+	if err != nil {
+		return NoticeDetail{}, err
+	}
 	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
 		return NoticeDetail{}, err
 	}
 
-	body, err := c.do(ctx, http.MethodPost, "/std/lis/sport/d052b8f845784c639f036b102fdc3023/BoardStdView.do", map[string]any{
+	body, err := c.do(ctx, http.MethodPost, route+"/BoardStdView.do", map[string]any{
 		"selectYearhakgi": yearHakgi,
 		"selectSubj":      course.Value,
 		"boardNo":         strings.TrimSpace(boardNo),
@@ -185,4 +201,15 @@ func (c *Client) NoticeDetail(ctx context.Context, yearHakgi string, course Cour
 		Attachment:  board.AtchFileID.String(),
 		Raw:         response,
 	}, nil
+}
+
+func boardRoute(kind string) (string, error) {
+	switch kind {
+	case "notice":
+		return "/std/lis/sport/d052b8f845784c639f036b102fdc3023", nil
+	case "material":
+		return "/std/lis/sport/6972896bfe72408eb72926780e85d041", nil
+	default:
+		return "", errors.New("지원하지 않는 게시판입니다")
+	}
 }
