@@ -15,7 +15,7 @@ func TestLectureModelsFromAdapterFixture(t *testing.T) {
 	http.DefaultTransport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body := `{}`
 		if strings.HasSuffix(request.URL.Path, "SelectOnlineCntntsStdList.do") {
-			body = `[{"subj":"subject","lrnSn":42,"fileId":9,"weekNo":1,"weeklyseq":2,"moduletitle":" 1주차 ","sbjt":" 강의 ","prog":25,"achivTime":2,"rcognTime":8,"sdateY":"2026-09-01","sdateH":"09","sdateM":"00","edateY":"2026-09-10","edateH":"23","edateM":"59","grcode":"private-group"}]`
+			body = `[{"subj":"subject","lrnSn":42,"fileId":9,"weekNo":1,"weeklyseq":2,"moduletitle":" 1주차 ","sbjt":" 강의 ","prog":25,"achivTime":2,"rcognTime":8,"sdateY":"2026-09-01","sdateH":"09","sdateM":"00","edateY":"2026-09-10","edateH":"23","edateM":"59","firstEdu":"2026-09-01 15:01","firstEnd":"2026-09-01 16:33","grcode":"private-group"}]`
 		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
 	})
@@ -31,6 +31,9 @@ func TestLectureModelsFromAdapterFixture(t *testing.T) {
 	models := lectureModels(values)
 	if len(models) != 1 || models[0].LearningSeq != "42" || models[0].Title != "강의" || models[0].AchievedTime != "2" || models[0].RequiredTime != "8" {
 		t.Fatalf("models=%#v", models)
+	}
+	if models[0].FirstStartedAt == nil || models[0].FirstCompletedAt == nil {
+		t.Fatal("attendance timestamps lost")
 	}
 	assertModelJSONParity(t, values[0], models[0])
 	assertModelJSONParity(t, klas.Lecture{}, lectureModel(klas.Lecture{}))

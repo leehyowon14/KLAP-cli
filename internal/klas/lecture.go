@@ -13,20 +13,22 @@ import (
 )
 
 type Lecture struct {
-	ContentID    string
-	PlayURL      string
-	LearningSeq  string
-	FileID       string
-	WeekNo       string
-	WeeklySeq    string
-	ModuleTitle  string
-	Title        string
-	Progress     string
-	AchievedTime string
-	RequiredTime string
-	StartAt      *time.Time
-	EndAt        *time.Time
-	Raw          lectureListItem `json:"-"`
+	FirstStartedAt   *time.Time
+	FirstCompletedAt *time.Time
+	ContentID        string
+	PlayURL          string
+	LearningSeq      string
+	FileID           string
+	WeekNo           string
+	WeeklySeq        string
+	ModuleTitle      string
+	Title            string
+	Progress         string
+	AchievedTime     string
+	RequiredTime     string
+	StartAt          *time.Time
+	EndAt            *time.Time
+	Raw              lectureListItem `json:"-"`
 }
 
 type LectureProgress struct {
@@ -37,6 +39,8 @@ type LectureProgress struct {
 }
 
 type lectureListItem struct {
+	FirstEdu     string         `json:"firstEdu"`
+	FirstEnd     string         `json:"firstEnd"`
 	GroupCode    string         `json:"grcode"`
 	SubjectID    string         `json:"subj"`
 	Year         string         `json:"year"`
@@ -102,27 +106,24 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 			title = "제목 없음"
 		}
 		contentID := kwcommons.ExtractKWCommonsContentID(item.MVPLink, item.Starting)
-		requiredTime := firstNonEmpty(item.PTime.String(), item.RcognTime.String(), item.TotRcognTime.String())
-		achievedTime := firstNonEmpty(item.TotalTime.String(), item.AchivTime.String(), item.LearnTime.String(), item.TotAchivTime.String())
-		if contentID == "" {
-			requiredTime = firstNonEmpty(item.RcognTime.String(), item.TotRcognTime.String(), item.PTime.String())
-			achievedTime = firstNonEmpty(item.AchivTime.String(), item.LearnTime.String(), item.TotAchivTime.String(), item.TotalTime.String())
-		}
+		requiredTime, achievedTime := lectureListTimes(item)
 		lectures = append(lectures, Lecture{
-			ContentID:    contentID,
-			PlayURL:      kwcommons.NormalizePlayURL(firstNonEmpty(item.MVPLink, item.Starting), contentID),
-			LearningSeq:  item.LearningSeq.String(),
-			FileID:       item.FileID.String(),
-			WeekNo:       item.WeekNo.String(),
-			WeeklySeq:    item.WeeklySeq.String(),
-			ModuleTitle:  strings.TrimSpace(item.ModuleTitle),
-			Title:        title,
-			Progress:     item.Progress.String(),
-			AchievedTime: achievedTime,
-			RequiredTime: requiredTime,
-			StartAt:      parseLectureDateTime(item.StartDate, item.StartY, item.StartH, item.StartM),
-			EndAt:        parseLectureDateTime(item.EndDate, item.EndY, item.EndH, item.EndM),
-			Raw:          item,
+			FirstStartedAt:   parseKlasDateTime(item.FirstEdu),
+			FirstCompletedAt: parseKlasDateTime(item.FirstEnd),
+			ContentID:        contentID,
+			PlayURL:          kwcommons.NormalizePlayURL(firstNonEmpty(item.MVPLink, item.Starting), contentID),
+			LearningSeq:      item.LearningSeq.String(),
+			FileID:           item.FileID.String(),
+			WeekNo:           item.WeekNo.String(),
+			WeeklySeq:        item.WeeklySeq.String(),
+			ModuleTitle:      strings.TrimSpace(item.ModuleTitle),
+			Title:            title,
+			Progress:         item.Progress.String(),
+			AchievedTime:     achievedTime,
+			RequiredTime:     requiredTime,
+			StartAt:          parseLectureDateTime(item.StartDate, item.StartY, item.StartH, item.StartM),
+			EndAt:            parseLectureDateTime(item.EndDate, item.EndY, item.EndH, item.EndM),
+			Raw:              item,
 		})
 	}
 	return lectures, nil
@@ -328,4 +329,11 @@ func parseLectureDateTime(dateTime string, compactDate string, hour string, minu
 		return nil
 	}
 	return &parsed
+}
+
+// List response totalTime can be content duration even when prog and achivTime
+// are zero. It is not the same field semantics as UpdateProgress.totalTime.
+func lectureListTimes(item lectureListItem) (required, achieved string) {
+	return firstNonEmpty(item.RcognTime.String(), item.TotRcognTime.String(), item.PTime.String()),
+		firstNonEmpty(item.AchivTime.String(), item.LearnTime.String(), item.TotAchivTime.String())
 }

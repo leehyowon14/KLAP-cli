@@ -6,19 +6,21 @@ import (
 )
 
 type Lecture struct {
-	ContentID    string
-	PlayURL      string
-	LearningSeq  string
-	FileID       string
-	WeekNo       string
-	WeeklySeq    string
-	ModuleTitle  string
-	Title        string
-	Progress     string
-	AchievedTime string
-	RequiredTime string
-	StartAt      *time.Time
-	EndAt        *time.Time
+	FirstStartedAt   *time.Time
+	FirstCompletedAt *time.Time
+	ContentID        string
+	PlayURL          string
+	LearningSeq      string
+	FileID           string
+	WeekNo           string
+	WeeklySeq        string
+	ModuleTitle      string
+	Title            string
+	Progress         string
+	AchievedTime     string
+	RequiredTime     string
+	StartAt          *time.Time
+	EndAt            *time.Time
 }
 
 type LectureProgress struct {
@@ -30,19 +32,21 @@ type LectureProgress struct {
 
 func lectureModel(value klas.Lecture) Lecture {
 	return Lecture{
-		ContentID:    value.ContentID,
-		PlayURL:      value.PlayURL,
-		LearningSeq:  value.LearningSeq,
-		FileID:       value.FileID,
-		WeekNo:       value.WeekNo,
-		WeeklySeq:    value.WeeklySeq,
-		ModuleTitle:  value.ModuleTitle,
-		Title:        value.Title,
-		Progress:     value.Progress,
-		AchievedTime: value.AchievedTime,
-		RequiredTime: value.RequiredTime,
-		StartAt:      value.StartAt,
-		EndAt:        value.EndAt,
+		FirstStartedAt:   value.FirstStartedAt,
+		FirstCompletedAt: value.FirstCompletedAt,
+		ContentID:        value.ContentID,
+		PlayURL:          value.PlayURL,
+		LearningSeq:      value.LearningSeq,
+		FileID:           value.FileID,
+		WeekNo:           value.WeekNo,
+		WeeklySeq:        value.WeeklySeq,
+		ModuleTitle:      value.ModuleTitle,
+		Title:            value.Title,
+		Progress:         value.Progress,
+		AchievedTime:     value.AchievedTime,
+		RequiredTime:     value.RequiredTime,
+		StartAt:          value.StartAt,
+		EndAt:            value.EndAt,
 	}
 }
 func lectureModels(values []klas.Lecture) []Lecture {
