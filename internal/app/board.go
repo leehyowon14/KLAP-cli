@@ -99,3 +99,23 @@ func (s *Service) BoardDownload(ctx context.Context, o BoardOptions, fileSN, dir
 		return AttachmentDownloadResult{}, errors.New("첨부파일이 삭제되었거나 변경되었습니다. 게시물을 다시 불러와 주세요")
 	})
 }
+
+func (s *Service) BoardRead(ctx context.Context, o BoardOptions, fileSN string) ([]byte, error) {
+	return boardRequest(ctx, s, o, func(c *klas.Client, t Term, course Course) ([]byte, error) {
+		d, e := c.BoardPost(ctx, o.Kind, t.Value, course, o.BoardNo, o.MasterNo)
+		if e != nil {
+			return nil, e
+		}
+		files, e := c.BoardAttachments(ctx, d.Attachment)
+		if e != nil {
+			return nil, e
+		}
+		for _, f := range files {
+			if f.FileSN == fileSN {
+				data, e := c.ReadBoardAttachment(ctx, f)
+				return data, e
+			}
+		}
+		return nil, errors.New("첨부파일이 삭제되었거나 변경되었습니다. 게시물을 다시 불러와 주세요")
+	})
+}
