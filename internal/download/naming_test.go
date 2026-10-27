@@ -13,7 +13,7 @@ func TestLectureFilenameSanitizesPathComponents(t *testing.T) {
 		Week:        1,
 		Title:       "Git? GitHub* 시작",
 	}, "https://media.example.com/video.mp4?token=1", 1)
-	want := filepath.Join("root", "오픈소스_실습", "video", "1-1. Git_ GitHub_ 시작.mp4")
+	want := filepath.Join("root", "오픈소스_실습", "Videos", "1-1. Git_ GitHub_ 시작.mp4")
 	if got != want {
 		t.Fatalf("lectureVideoPath() = %q, want %q", got, want)
 	}
@@ -25,7 +25,7 @@ func TestLectureFilenameUsesKlasWeekSequence(t *testing.T) {
 		ModuleTitle: "보강",
 		Title:       "기말/정리",
 	}, "https://media.example.com/final.mov", 2)
-	want := filepath.Join("root", "컴퓨터그래픽스", "video", "14-2. 기말_정리.mov")
+	want := filepath.Join("root", "컴퓨터그래픽스", "Videos", "14-2. 기말_정리.mov")
 	if got != want {
 		t.Fatalf("lectureVideoPath() = %q, want %q", got, want)
 	}
@@ -33,7 +33,7 @@ func TestLectureFilenameUsesKlasWeekSequence(t *testing.T) {
 
 func TestFilenameFallbackAndSanitization(t *testing.T) {
 	got := NewClient(nil).VideoPath("root", "../", app.LectureFileName{}, "invalid", 0)
-	if got != filepath.Join("root", "_", "video", "lecture.mp4") {
+	if got != filepath.Join("root", "_", "Videos", "lecture.mp4") {
 		t.Fatalf("fallback=%q", got)
 	}
 	if got := sanitizePathComponent(" . "); got != "" {
