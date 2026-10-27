@@ -29,7 +29,19 @@ func NewService() (*app.Service, error) {
 	return newService(store, serviceStoreFactories{settings: settings.NewStore, cache: cache.NewStore, syncState: syncstate.NewStore})
 }
 
-func newService(store *account.Store, factories serviceStoreFactories) (*app.Service, error) {
+// Credentials can be backed by a desktop Keychain or a server-side encrypted store.
+type Credentials interface {
+	app.AccountStore
+	LoadPassword(context.Context, string) (string, error)
+	LoadSession(context.Context, string) (klas.Session, error)
+	SaveSession(context.Context, string, klas.Session) error
+}
+
+func NewServiceWithCredentials(store Credentials) (*app.Service, error) {
+	return newService(store, serviceStoreFactories{settings: settings.NewStore, cache: cache.NewStore, syncState: syncstate.NewStore})
+}
+
+func newService(store Credentials, factories serviceStoreFactories) (*app.Service, error) {
 	settingsStore, err := factories.settings()
 	if err != nil {
 		return nil, fmt.Errorf("settings store 초기화 실패: %w", err)
