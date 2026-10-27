@@ -8,7 +8,7 @@ import (
 )
 
 func TestTranscriptPath(t *testing.T) {
-	if got := transcriptPath(filepath.Join("downloads", "컴퓨터그래픽스", "video", "lecture.mp4")); got != filepath.Join("downloads", "컴퓨터그래픽스", "transcription", "lecture.txt") {
+	if got := transcriptPath(filepath.Join("downloads", "컴퓨터그래픽스", "video", "lecture.mp4")); got != filepath.Join("downloads", "컴퓨터그래픽스", "Scripts", "lecture.txt") {
 		t.Fatalf("transcriptPath() = %q", got)
 	}
 	if got := transcriptPath(filepath.Join("downloads", "lecture")); got != filepath.Join("downloads", "lecture.txt") {
@@ -31,7 +31,7 @@ func TestLectureDownloadItemNeedsTranscriptForSkippedVideo(t *testing.T) {
 		t.Fatal("LectureDownloadItemNeedsTranscript() expected true without transcript")
 	}
 
-	outputPath := filepath.Join(root, "컴퓨터그래픽스", "transcription", "lecture.txt")
+	outputPath := filepath.Join(root, "컴퓨터그래픽스", "Scripts", "lecture.txt")
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(transcript) error = %v", err)
 	}

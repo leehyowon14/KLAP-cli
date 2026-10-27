@@ -659,8 +659,8 @@ func transcriptJobIndex(jobs []transcript.Job, inputPath string, outputPath stri
 
 func transcriptPath(path string) string {
 	dir := filepath.Dir(path)
-	if filepath.Base(dir) == "video" {
-		dir = filepath.Join(filepath.Dir(dir), "transcription")
+	if strings.EqualFold(filepath.Base(dir), "video") || strings.EqualFold(filepath.Base(dir), "videos") {
+		dir = filepath.Join(filepath.Dir(dir), "Scripts")
 	}
 	ext := filepath.Ext(path)
 	if ext == "" {
