@@ -94,7 +94,7 @@ func makeSpeechTranscriber(locale: Locale) -> SpeechTranscriber {
     SpeechTranscriber(
         locale: locale,
         transcriptionOptions: [],
-        reportingOptions: [.volatileResults],
+        reportingOptions: [],
         attributeOptions: []
     )
 }
