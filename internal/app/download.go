@@ -308,13 +308,20 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 			rows = append(rows, row)
 		}
 		weekOrders := lectureRowWeekOrders(rows)
-		for _, row := range rows {
+		for rowIndex, row := range rows {
 			if len(selectedIDs) > 0 {
 				_, stableSelected := selectedIDs[row.ID]
 				_, legacySelected := selectedIDs[row.LegacyID]
 				if !stableSelected && !legacySelected {
 					continue
 				}
+			}
+			if strings.TrimSpace(row.Lecture.ContentID) == "" && row.Lecture.ViewerSupported {
+				contentID, resolveErr := client.ResolveNativeLectureContentID(ctx, lectures[rowIndex])
+				if resolveErr != nil {
+					return LectureDownloadAllResult{}, fmt.Errorf("%s: %w", row.Lecture.Title, resolveErr)
+				}
+				row.Lecture.ContentID = contentID
 			}
 			tasks = append(tasks, downloadTask{
 				Course:    selectedCourse.Course,
