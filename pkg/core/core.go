@@ -54,6 +54,8 @@ type (
 
 var ValidateLectureAttendance = app.ValidateLectureAttendance
 var NewCourseRef = app.NewCourseRef
+var ValidateLectureIDs = app.ValidateStableLectureIDs
+var StableLectureID = app.StableLectureID
 
 // NewDesktop uses the existing OS Keychain and the configured KLAP directories.
 func NewDesktop() (*Service, error) { return bootstrap.NewService() }
