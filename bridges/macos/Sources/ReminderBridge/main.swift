@@ -74,7 +74,7 @@ func existingReminders() -> [EKReminder] {
 }
 
 func notes(for assignment: Assignment) -> String {
-    return assignment.notes
+    return reminderNotes(assignment.notes)
 }
 
 func metadataRange(in lines: [String]) -> Range<Int>? {
@@ -225,21 +225,11 @@ func legacyMatch(for assignment: Assignment, in known: [KnownReminder]) -> Known
 }
 
 func applyDueDate(_ dueAt: Date, to reminder: EKReminder) {
-    let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueAt)
-    reminder.dueDateComponents = components
+    applyReminderDueDate(dueAt, to: reminder)
 }
 
 func applyAlarm(_ dueAt: Date, beforeMinutes: Int, to reminder: EKReminder) {
-    let offset = max(beforeMinutes, 1)
-    guard let alarmDate = Calendar.current.date(byAdding: .minute, value: -offset, to: dueAt) else {
-        reminder.alarms = nil
-        return
-    }
-    if alarmDate <= Date() {
-        reminder.alarms = nil
-        return
-    }
-    reminder.alarms = [EKAlarm(absoluteDate: alarmDate)]
+    applyReminderAlarm(dueAt, beforeMinutes: beforeMinutes, to: reminder)
 }
 
 let listName = request.listName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Kwangwoon Univ." : request.listName
