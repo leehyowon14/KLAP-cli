@@ -13,6 +13,13 @@ import (
 const APIVersion = "1"
 
 type (
+	AgentQuery  = app.AgentQuery
+	QueryPeriod = app.QueryPeriod
+	AgentResult = app.AgentResult
+	AgentItem   = app.AgentItem
+	ItemDetails = app.ItemDetails
+	Completion  = app.Completion
+
 	Service                = app.Service
 	Credentials            = bootstrap.Credentials
 	SavedUser              = account.User
@@ -65,3 +72,6 @@ func NewDesktop() (*Service, error) { return bootstrap.NewService() }
 func NewWithCredentials(credentials Credentials) (*Service, error) {
 	return bootstrap.NewServiceWithCredentials(credentials)
 }
+
+var LectureCompletion = app.LectureCompletion
+var ValidateDetailRequest = app.ValidateDetailRequest
