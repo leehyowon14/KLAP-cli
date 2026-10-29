@@ -16,6 +16,8 @@ func TestAssignmentIntentUnknownAndBoundaries(t *testing.T) {
 	}{
 		{klas.Assignment{SubmissionStatus: "pending", DueAt: &now}, "due_in_period", true, false},
 		{klas.Assignment{SubmissionStatus: "pending", DueAt: &w.Until}, "due_in_period", false, false},
+		{klas.Assignment{SubmissionStatus: "unknown", DueAt: &w.Until}, "due_in_period", false, false},
+		{klas.Assignment{SubmissionStatus: "unknown", DueAt: &w.Until}, "overdue", false, false},
 		{klas.Assignment{SubmissionStatus: "submitted", DueAt: &now}, "due_in_period", false, false},
 		{klas.Assignment{SubmissionStatus: "unknown"}, "pending", true, true},
 		{klas.Assignment{SubmissionStatus: "pending"}, "overdue", false, true},

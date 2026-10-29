@@ -38,9 +38,9 @@ func assignmentMatches(v klas.Assignment, q AgentQuery, now time.Time, w *QueryW
 	case "pending":
 		return v.SubmissionStatus != "submitted", unknown
 	case "overdue":
-		return v.SubmissionStatus != "submitted" && v.DueAt != nil && v.DueAt.Before(now), v.SubmissionStatus != "submitted" && (unknown || v.DueAt == nil)
+		return v.SubmissionStatus != "submitted" && v.DueAt != nil && v.DueAt.Before(now), v.SubmissionStatus != "submitted" && (v.DueAt == nil || v.DueAt.Before(now)) && (unknown || v.DueAt == nil)
 	case "due_in_period":
-		return v.SubmissionStatus != "submitted" && v.DueAt != nil && w.Contains(*v.DueAt), v.SubmissionStatus != "submitted" && (unknown || v.DueAt == nil)
+		return v.SubmissionStatus != "submitted" && v.DueAt != nil && w.Contains(*v.DueAt), v.SubmissionStatus != "submitted" && (v.DueAt == nil || w.Contains(*v.DueAt)) && (unknown || v.DueAt == nil)
 	}
 	return false, false
 }
