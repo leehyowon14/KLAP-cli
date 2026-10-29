@@ -55,7 +55,7 @@ func (s *Service) collectAgentSources(ctx context.Context, user UserOption, q Ag
 				}
 				for _, event := range value.Events {
 					date, valid := academicEventDueAt(event)
-					item := AgentItem{Kind: "academic", Title: event.Title, ID: fmt.Sprintf("academic:%x", sha256.Sum256([]byte(event.Year+event.Month+event.Date+event.Title)))}
+					item := AgentItem{Kind: "academic", Completion: &Completion{Status: "not_applicable"}, Title: event.Title, ID: fmt.Sprintf("academic:%x", sha256.Sum256([]byte(event.Year+event.Month+event.Date+event.Title)))}
 					if valid {
 						item.EndAt = &date
 					}
