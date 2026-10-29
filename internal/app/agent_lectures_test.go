@@ -1,6 +1,12 @@
 package app
 
 import (
+	"context"
+	"encoding/json"
+	"github.com/leehyowon14/KLAP-cli/internal/klas"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,5 +84,34 @@ func TestSummaryAttendanceRequiresKnownIncompleteAndOpen(t *testing.T) {
 		if items[0].Attendable != tt.want {
 			t.Fatalf("%s: %+v", tt.progress, items)
 		}
+	}
+}
+
+func TestLectureQueryPreservesSuccessOnCourseMismatch(t *testing.T) {
+	previous := http.DefaultTransport
+	defer func() { http.DefaultTransport = previous }()
+	selected := ""
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{}`
+		switch req.URL.Path {
+		case "/std/cmn/frame/YearhakgiAtnlcSbjectList.do":
+			body = `[{"value":"2026,2","subjList":[{"value":"good","name":"Good"},{"value":"bad","name":"Bad"}]}]`
+		case "/std/lis/evltn/LctrumHomeStdInfo.do":
+			var args map[string]string
+			_ = json.NewDecoder(req.Body).Decode(&args)
+			selected = args["selectSubj"]
+		case "/std/lis/evltn/SelectOnlineCntntsStdList.do":
+			if selected == "good" {
+				body = `[{"subj":"good","lrnSn":"1","sbjt":"kept","ptime":"10","achivTime":"0"}]`
+			} else {
+				body = `[{"subj":"wrong","lrnSn":"2"}]`
+			}
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	s := &Service{settingsStore: readSettingsStub{}, newKlasClient: klas.NewClient, sessions: &fakeSessionStore{loadSession: func(context.Context, string) (klas.Session, error) { return klas.Session{}, nil }}}
+	r, e := s.QueryLectures(context.Background(), UserOption{StudentID: "student"}, AgentQuery{Intent: "overview"})
+	if e != nil || len(r.Items) != 1 || r.Items[0].Title != "kept" || r.Coverage.Requested != 2 || r.Coverage.Succeeded != 1 || r.Coverage.Status != "partial" || r.Coverage.Failures[0].Reason != "course_mismatch" || r.Selection.MatchedTotal != nil {
+		t.Fatalf("%+v %v", r, e)
 	}
 }
