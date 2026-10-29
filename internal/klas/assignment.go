@@ -72,7 +72,12 @@ type assignmentSubmission struct {
 }
 
 func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Course) ([]Assignment, error) {
-	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
+	unlock, lockErr := c.lockCourse(ctx)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer unlock()
+	if err := c.setCourseContext(ctx, yearHakgi, course); err != nil {
 		return nil, err
 	}
 
@@ -115,7 +120,12 @@ func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Cours
 }
 
 func (c *Client) AssignmentDetail(ctx context.Context, yearHakgi string, course Course, ordSeq string) (AssignmentDetail, error) {
-	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
+	unlock, lockErr := c.lockCourse(ctx)
+	if lockErr != nil {
+		return AssignmentDetail{}, lockErr
+	}
+	defer unlock()
+	if err := c.setCourseContext(ctx, yearHakgi, course); err != nil {
 		return AssignmentDetail{}, err
 	}
 

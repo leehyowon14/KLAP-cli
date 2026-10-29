@@ -64,6 +64,15 @@ func (c *Client) Courses(ctx context.Context) ([]Term, error) {
 }
 
 func (c *Client) SetCourseContext(ctx context.Context, yearHakgi string, course Course) error {
+	unlock, err := c.lockCourse(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return c.setCourseContext(ctx, yearHakgi, course)
+}
+
+func (c *Client) setCourseContext(ctx context.Context, yearHakgi string, course Course) error {
 	_, err := c.do(ctx, http.MethodPost, "/std/lis/evltn/LctrumHomeStdInfo.do", map[string]any{
 		"selectYearhakgi": yearHakgi,
 		"selectSubj":      course.Value,

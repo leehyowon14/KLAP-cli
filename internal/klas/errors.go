@@ -9,6 +9,7 @@ import (
 type ErrorKind string
 
 const (
+	ErrorCourseMismatch ErrorKind = "course_mismatch"
 	ErrorNetwork        ErrorKind = "network"
 	ErrorHTTP           ErrorKind = "http"
 	ErrorSessionExpired ErrorKind = "session_expired"
