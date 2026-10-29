@@ -145,3 +145,35 @@ func TestNextOpeningSummaryPayloadBudget(t *testing.T) {
 		t.Fatal("summary byte reduction below fixture target")
 	}
 }
+
+func TestUncertainCompletionCannotOverrideKnownTimeScope(t *testing.T) {
+	now := time.Now()
+	pastStart := now.Add(-2 * time.Hour)
+	pastEnd := now.Add(-time.Hour)
+	future := now.Add(time.Hour)
+	end := now.Add(3 * time.Hour)
+	later := now.Add(2 * time.Hour)
+	ref := CourseRef{TermValue: "2026,2", CourseID: "c"}
+	makeRow := func(key, progress string, start, finish *time.Time) LectureRow {
+		id, _ := StableLectureID(ref, key)
+		return LectureRow{ID: id, Lecture: Lecture{ContentID: key, Progress: progress, StartAt: start, EndAt: finish}}
+	}
+	expired := makeRow("expired", "", &pastStart, &pastEnd)
+	no := false
+	got, u := selectLectureItems([]LectureRow{expired}, AgentQuery{Intent: "unfinished", IncludeExpired: &no}, now, nil)
+	if len(got) != 0 || u {
+		t.Fatal("known expired leaked through unknown completion")
+	}
+	confirmed := makeRow("confirmed", "0", &future, &end)
+	unknownLater := makeRow("later", "", &later, &end)
+	got, u = selectLectureItems([]LectureRow{expired, confirmed, unknownLater}, AgentQuery{Intent: "next_opening"}, now, nil)
+	if len(got) != 1 || u || got[0].ID != confirmed.ID {
+		t.Fatalf("irrelevant uncertainty: %+v %v", got, u)
+	}
+	earlier := now.Add(30 * time.Minute)
+	unknownEarlier := makeRow("earlier", "", &earlier, &end)
+	got, u = selectLectureItems([]LectureRow{unknownEarlier, confirmed}, AgentQuery{Intent: "next_opening"}, now, nil)
+	if len(got) != 2 || !u {
+		t.Fatalf("known fallback omitted: %+v %v", got, u)
+	}
+}

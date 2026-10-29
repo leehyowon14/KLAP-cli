@@ -107,17 +107,17 @@ func selectLectureItems(rows []LectureRow, q AgentQuery, now time.Time, w *Query
 			unknown = c.Status == "unknown"
 		case "unfinished":
 			match = c.Status != "completed" && (*q.IncludeExpired || availability != "expired")
-			unknown = c.Status == "unknown" || (c.Status != "completed" && availability == "unknown")
+			unknown = match && (c.Status == "unknown" || availability == "unknown")
 		case "available_now":
 			match = c.Status != "completed" && availability == "open" && lectureAttendKey(l) != ""
-			unknown = c.Status != "completed" && (c.Status == "unknown" || availability == "unknown")
+			unknown = c.Status != "completed" && lectureAttendKey(l) != "" && (availability == "open" || availability == "unknown") && (c.Status == "unknown" || availability == "unknown")
 		case "due_in_period":
 			match = c.Status != "completed" && l.EndAt != nil && w.Contains(*l.EndAt)
-			unknown = c.Status != "completed" && (c.Status == "unknown" || availability == "unknown")
+			unknown = c.Status != "completed" && (l.EndAt == nil || w.Contains(*l.EndAt)) && (c.Status == "unknown" || availability == "unknown")
 		case "next_opening":
 			match = c.Status != "completed" && l.StartAt != nil && l.StartAt.After(now)
-			unknown = c.Status != "completed" && (c.Status == "unknown" || availability == "unknown")
-			if match && (earliest == nil || l.StartAt.Before(*earliest)) {
+			unknown = c.Status != "completed" && (l.StartAt == nil || l.StartAt.After(now)) && (c.Status == "unknown" || availability == "unknown")
+			if match && c.Status == "incomplete" && availability != "unknown" && (earliest == nil || l.StartAt.Before(*earliest)) {
 				earliest = l.StartAt
 			}
 		}
@@ -131,11 +131,17 @@ func selectLectureItems(rows []LectureRow, q AgentQuery, now time.Time, w *Query
 	if q.Intent == "next_opening" && earliest != nil {
 		filtered := items[:0]
 		for _, item := range items {
-			if item.StartAt == nil || item.StartAt.Equal(*earliest) || item.Availability == "unknown" || item.Completion.Status == "unknown" {
+			if item.StartAt == nil || !item.StartAt.After(*earliest) {
 				filtered = append(filtered, item)
 			}
 		}
 		items = filtered
+	}
+	if q.Intent == "next_opening" {
+		uncertain = false
+		for _, item := range items {
+			uncertain = uncertain || item.Completion.Status == "unknown" || item.Availability == "unknown"
+		}
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i].StartAt, items[j].StartAt
