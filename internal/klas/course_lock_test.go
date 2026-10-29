@@ -75,7 +75,7 @@ func TestCourseLockCancellationAndRelease(t *testing.T) {
 	unlock()
 }
 func TestLectureCourseMismatchIsNotEmptySuccess(t *testing.T) {
-	for _, body := range []string{`[{"subj":"other"}]`, `[{"subj":"expected"},{"subj":"other"}]`} {
+	for _, body := range []string{`[{"subj":"other"}]`, `[{"subj":"expected"},{"subj":"other"}]`, `[{"subj":"expected","year":"2025","hakgi":"2"}]`, `[{"subj":"expected","year":"2026","hakgi":"1"}]`} {
 		rows, err := schemaResponseClient(body).Lectures(context.Background(), "2026,2", Course{Value: "expected"})
 		if !IsErrorKind(err, ErrorCourseMismatch) || rows != nil {
 			t.Fatalf("rows=%v err=%v", rows, err)

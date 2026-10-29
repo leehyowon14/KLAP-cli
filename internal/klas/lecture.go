@@ -98,8 +98,12 @@ func (c *Client) Lectures(ctx context.Context, yearHakgi string, course Course) 
 		return nil, fmt.Errorf("강의 목록 응답 파싱 실패: %w", err)
 	}
 
+	year, semester := splitYearHakgi(yearHakgi)
 	lectures := make([]Lecture, 0, len(response))
 	for _, item := range response {
+		if (item.Year != "" && item.Year != year) || (item.Hakgi != "" && item.Hakgi != semester) {
+			return nil, &Error{Kind: ErrorCourseMismatch, Err: errors.New("강의 응답 학기가 요청 학기와 다릅니다")}
+		}
 		if strings.TrimSpace(item.SubjectID) != "" && strings.TrimSpace(course.Value) != "" && strings.TrimSpace(item.SubjectID) != strings.TrimSpace(course.Value) {
 			return nil, &Error{Kind: ErrorCourseMismatch, Err: errors.New("강의 응답 과목이 요청 과목과 다릅니다")}
 		}
