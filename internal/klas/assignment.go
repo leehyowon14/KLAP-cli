@@ -10,14 +10,15 @@ import (
 )
 
 type Assignment struct {
-	OrdSeq       string
-	WeeklySeq    string
-	WeeklySubSeq string
-	Title        string
-	StartAt      *time.Time
-	DueAt        *time.Time
-	Submitted    bool
-	Raw          assignmentListItem `json:"-"`
+	OrdSeq           string
+	WeeklySeq        string
+	WeeklySubSeq     string
+	Title            string
+	StartAt          *time.Time
+	DueAt            *time.Time
+	SubmissionStatus string `json:"-"`
+	Submitted        bool
+	Raw              assignmentListItem `json:"-"`
 }
 
 type AssignmentDetail struct {
@@ -72,7 +73,12 @@ type assignmentSubmission struct {
 }
 
 func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Course) ([]Assignment, error) {
-	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
+	unlock, lockErr := c.lockCourse(ctx)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer unlock()
+	if err := c.setCourseContext(ctx, yearHakgi, course); err != nil {
 		return nil, err
 	}
 
@@ -101,21 +107,27 @@ func (c *Client) Assignments(ctx context.Context, yearHakgi string, course Cours
 			title = "제목 없음"
 		}
 		assignments = append(assignments, Assignment{
-			OrdSeq:       ordSeq,
-			WeeklySeq:    item.WeeklySeq.String(),
-			WeeklySubSeq: item.WeeklySubSeq.String(),
-			Title:        title,
-			StartAt:      parseKoreanDateTime(item.StartDate),
-			DueAt:        parseKoreanDateTime(item.ExpireDate),
-			Submitted:    strings.EqualFold(item.SubmitYN, "Y"),
-			Raw:          item,
+			OrdSeq:           ordSeq,
+			WeeklySeq:        item.WeeklySeq.String(),
+			WeeklySubSeq:     item.WeeklySubSeq.String(),
+			Title:            title,
+			StartAt:          parseKoreanDateTime(item.StartDate),
+			DueAt:            parseKoreanDateTime(item.ExpireDate),
+			Submitted:        strings.EqualFold(item.SubmitYN, "Y"),
+			SubmissionStatus: submissionStatus(item.SubmitYN),
+			Raw:              item,
 		})
 	}
 	return assignments, nil
 }
 
 func (c *Client) AssignmentDetail(ctx context.Context, yearHakgi string, course Course, ordSeq string) (AssignmentDetail, error) {
-	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
+	unlock, lockErr := c.lockCourse(ctx)
+	if lockErr != nil {
+		return AssignmentDetail{}, lockErr
+	}
+	defer unlock()
+	if err := c.setCourseContext(ctx, yearHakgi, course); err != nil {
 		return AssignmentDetail{}, err
 	}
 
@@ -162,5 +174,16 @@ func reportTypeLabel(value string) string {
 		return "팀"
 	default:
 		return value
+	}
+}
+
+func submissionStatus(v string) string {
+	switch strings.ToUpper(strings.TrimSpace(v)) {
+	case "Y":
+		return "submitted"
+	case "N":
+		return "pending"
+	default:
+		return "unknown"
 	}
 }

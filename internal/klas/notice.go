@@ -74,7 +74,12 @@ func (c *Client) BoardPosts(ctx context.Context, kind, yearHakgi string, course 
 	if err != nil {
 		return nil, err
 	}
-	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
+	unlock, lockErr := c.lockCourse(ctx)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer unlock()
+	if err := c.setCourseContext(ctx, yearHakgi, course); err != nil {
 		return nil, err
 	}
 
@@ -163,7 +168,12 @@ func (c *Client) BoardPost(ctx context.Context, kind, yearHakgi string, course C
 	if err != nil {
 		return NoticeDetail{}, err
 	}
-	if err := c.SetCourseContext(ctx, yearHakgi, course); err != nil {
+	unlock, lockErr := c.lockCourse(ctx)
+	if lockErr != nil {
+		return NoticeDetail{}, lockErr
+	}
+	defer unlock()
+	if err := c.setCourseContext(ctx, yearHakgi, course); err != nil {
 		return NoticeDetail{}, err
 	}
 

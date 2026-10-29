@@ -9,7 +9,7 @@ import (
 )
 
 func (*Client) VideoPath(root string, courseName string, lecture app.LectureFileName, mediaURL string, weekOrder int) string {
-	return filepath.Join(root, lectureCourseDirName(courseName), "video", lectureFilename(lecture, mediaURL, weekOrder))
+	return filepath.Join(root, lectureCourseDirName(courseName), "Videos", lectureFilename(lecture, mediaURL, weekOrder))
 }
 
 func lectureCourseDirName(courseName string) string {

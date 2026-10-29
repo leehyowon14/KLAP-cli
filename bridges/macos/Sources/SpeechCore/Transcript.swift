@@ -94,15 +94,26 @@ func makeSpeechTranscriber(locale: Locale) -> SpeechTranscriber {
     SpeechTranscriber(
         locale: locale,
         transcriptionOptions: [],
-        reportingOptions: [.volatileResults],
+        reportingOptions: [],
         attributeOptions: []
     )
 }
 
 @available(macOS 26.0, *)
-func releaseReservedSpeechAssets() async {
-    for reservedLocale in await AssetInventory.reservedLocales {
-        await AssetInventory.release(reservedLocale: reservedLocale)
+func withSpeechAssetReservation<T>(
+    locale: Locale,
+    reserve: (Locale) async throws -> Bool = { try await AssetInventory.reserve(locale: $0) },
+    release: (Locale) async -> Void = { await AssetInventory.release(reservedLocale: $0) },
+    operation: () async throws -> T
+) async throws -> T {
+    let acquired = try await reserve(locale)
+    do {
+        let result = try await operation()
+        if acquired { await release(locale) }
+        return result
+    } catch {
+        if acquired { await release(locale) }
+        throw error
     }
 }
 
@@ -180,20 +191,15 @@ public func runTranscriptBridge(input: Data) async throws -> Data {
         return try encodeTranscriptResponse([], progress: shouldEmitProgress)
     }
     var results: [TranscribeResult] = []
-    var preparedLocales: Set<String> = []
-    if #available(macOS 26.0, *) {
-        await releaseReservedSpeechAssets()
-    }
     for job in request.jobs {
         do {
             if #available(macOS 26.0, *) {
                 let locale = locale(for: job)
-                let localeKey = locale.identifier(.bcp47)
-                if !preparedLocales.contains(localeKey) {
+                let result = try await withSpeechAssetReservation(locale: locale) {
                     try await prepareSpeechAssets(for: locale)
-                    preparedLocales.insert(localeKey)
+                    return try await transcribe(job: job, emitProgress: shouldEmitProgress)
                 }
-                results.append(try await transcribe(job: job, emitProgress: shouldEmitProgress))
+                results.append(result)
             } else {
                 throw BridgeError.unsupportedOS
             }

@@ -184,7 +184,7 @@ func normalizeTermValue(value string) (string, error) {
 			return "", errors.New("학기 값은 YYYY-S 형식이어야 합니다")
 		}
 	}
-	if semester < "1" || semester > "4" {
+	if len(semester) != 1 || semester < "1" || semester > "4" {
 		return "", errors.New("학기는 1, 2, 3, 4 중 하나여야 합니다")
 	}
 	return year + "," + semester, nil

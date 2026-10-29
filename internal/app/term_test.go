@@ -44,8 +44,10 @@ func TestNormalizeTermValue(t *testing.T) {
 	if got != "2026,1" {
 		t.Fatalf("normalizeTermValue() = %q", got)
 	}
-	if _, err := normalizeTermValue("2026-5"); err == nil {
-		t.Fatal("normalizeTermValue() expected error for invalid semester")
+	for _, value := range []string{"2026-5", "2026-11", "2026-01", "2026-22", "2026-0"} {
+		if _, err := normalizeTermValue(value); err == nil {
+			t.Fatalf("normalizeTermValue(%q) expected error for invalid semester", value)
+		}
 	}
 }
 

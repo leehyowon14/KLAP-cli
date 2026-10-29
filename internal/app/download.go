@@ -23,6 +23,7 @@ type LectureDownloadOptions struct {
 }
 
 type LectureDownloadAllOptions struct {
+	Adaptive     bool
 	User         UserOption
 	CourseFilter string
 	Dir          string
@@ -307,13 +308,20 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 			rows = append(rows, row)
 		}
 		weekOrders := lectureRowWeekOrders(rows)
-		for _, row := range rows {
+		for rowIndex, row := range rows {
 			if len(selectedIDs) > 0 {
 				_, stableSelected := selectedIDs[row.ID]
 				_, legacySelected := selectedIDs[row.LegacyID]
 				if !stableSelected && !legacySelected {
 					continue
 				}
+			}
+			if strings.TrimSpace(row.Lecture.ContentID) == "" && row.Lecture.ViewerSupported {
+				contentID, resolveErr := client.ResolveNativeLectureContentID(ctx, lectures[rowIndex])
+				if resolveErr != nil {
+					return LectureDownloadAllResult{}, fmt.Errorf("%s: %w", row.Lecture.Title, resolveErr)
+				}
+				row.Lecture.ContentID = contentID
 			}
 			tasks = append(tasks, downloadTask{
 				Course:    selectedCourse.Course,
@@ -340,10 +348,32 @@ func (s *Service) DownloadAllLectures(ctx context.Context, opts LectureDownloadA
 	jobs := make(chan downloadTask)
 	results := make(chan downloadTaskResult, len(tasks))
 	var wg sync.WaitGroup
+	gate := newDownloadGate(concurrency, opts.Adaptive)
 	worker := func() {
 		defer wg.Done()
 		for task := range jobs {
-			results <- downloadTaskResult{Index: task.Index - 1, Item: downloadLectureTask(ctx, s.media, s.downloader, dir, currentSettings.Download.KeepPartial, task.Index, task.Total, task.Course, task.Row, task.WeekOrder, opts.OnProgress)}
+			if !gate.acquire(ctx, task.Row.ID) {
+				return
+			}
+			item := downloadLectureTask(ctx, s.media, s.downloader, dir, currentSettings.Download.KeepPartial, task.Index, task.Total, task.Course, task.Row, task.WeekOrder, func(p LectureDownloadProgress) {
+				gate.observe(p, time.Now())
+				if opts.OnProgress != nil {
+					opts.OnProgress(p)
+				}
+				if p.Stage == LectureStageDownload {
+					gate.wait(ctx, p.Lecture.ID, func(paused bool) {
+						if opts.OnProgress != nil {
+							value := p
+							if paused {
+								value.Stage = "paused"
+							}
+							opts.OnProgress(value)
+						}
+					})
+				}
+			})
+			gate.release(task.Row.ID)
+			results <- downloadTaskResult{Index: task.Index - 1, Item: item}
 		}
 	}
 	wg.Add(concurrency)
@@ -629,8 +659,8 @@ func transcriptJobIndex(jobs []transcript.Job, inputPath string, outputPath stri
 
 func transcriptPath(path string) string {
 	dir := filepath.Dir(path)
-	if filepath.Base(dir) == "video" {
-		dir = filepath.Join(filepath.Dir(dir), "transcription")
+	if strings.EqualFold(filepath.Base(dir), "video") || strings.EqualFold(filepath.Base(dir), "videos") {
+		dir = filepath.Join(filepath.Dir(dir), "Scripts")
 	}
 	ext := filepath.Ext(path)
 	if ext == "" {
