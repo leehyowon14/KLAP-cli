@@ -34,7 +34,7 @@ func noticeWindow(q AgentQuery, now time.Time) (*QueryWindow, error) {
 	}
 }
 func (s *Service) QueryNotices(ctx context.Context, user UserOption, q AgentQuery) (AgentResult, error) {
-	now := time.Now().UTC()
+	now := q.referenceTime()
 	w, err := noticeWindow(q, now)
 	if err != nil {
 		return AgentResult{}, err

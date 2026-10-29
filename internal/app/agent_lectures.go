@@ -156,7 +156,7 @@ func selectLectureItems(rows []LectureRow, q AgentQuery, now time.Time, w *Query
 // QueryLectures always fetches every requested course, preserves partial success,
 // then selects the semantic result set. Legacy CLI and event lists are unchanged.
 func (s *Service) QueryLectures(ctx context.Context, user UserOption, q AgentQuery) (AgentResult, error) {
-	now := time.Now().UTC()
+	now := q.referenceTime()
 	w, err := validateLectureQuery(q, now)
 	if err != nil {
 		return AgentResult{}, err

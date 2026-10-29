@@ -45,7 +45,7 @@ func assignmentMatches(v klas.Assignment, q AgentQuery, now time.Time, w *QueryW
 	return false, false
 }
 func (s *Service) QueryAssignments(ctx context.Context, user UserOption, q AgentQuery) (AgentResult, error) {
-	now := time.Now().UTC()
+	now := q.referenceTime()
 	w, err := validateAssignmentQuery(q, now)
 	if err != nil {
 		return AgentResult{}, err

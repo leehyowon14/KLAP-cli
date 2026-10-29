@@ -10,6 +10,7 @@ import (
 
 // AgentQuery describes meaning, never a number of results.
 type AgentQuery struct {
+	asOf           time.Time
 	Intent         string       `json:"intent"`
 	CourseIDs      []string     `json:"course_ids,omitempty"`
 	IncludeExpired *bool        `json:"include_expired,omitempty"`
@@ -153,11 +154,13 @@ type AppliedQuery struct {
 	Period         *QueryWindow `json:"period,omitempty"`
 }
 type AgentResult struct {
-	Query     AppliedQuery      `json:"query"`
-	Coverage  QueryCoverage     `json:"coverage"`
-	Selection QuerySelection    `json:"selection"`
-	Courses   map[string]string `json:"courses"`
-	Items     []AgentItem       `json:"items"`
+	Sources        map[string]QueryCoverage `json:"sources,omitempty"`
+	SearchedFields []string                 `json:"searched_fields,omitempty"`
+	Query          AppliedQuery             `json:"query"`
+	Coverage       QueryCoverage            `json:"coverage"`
+	Selection      QuerySelection           `json:"selection"`
+	Courses        map[string]string        `json:"courses"`
+	Items          []AgentItem              `json:"items"`
 }
 
 func (r *AgentResult) finish(uncertain bool) {
@@ -175,4 +178,11 @@ func (r *AgentResult) finish(uncertain bool) {
 		r.Selection.MatchedTotal = nil
 		r.Selection.Observed = n
 	}
+}
+
+func (q AgentQuery) referenceTime() time.Time {
+	if !q.asOf.IsZero() {
+		return q.asOf
+	}
+	return time.Now().UTC()
 }
