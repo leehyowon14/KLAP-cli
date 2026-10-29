@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/leehyowon14/KLAP-cli/internal/klas"
 	"io"
 	"net/http"
@@ -113,5 +114,34 @@ func TestLectureQueryPreservesSuccessOnCourseMismatch(t *testing.T) {
 	r, e := s.QueryLectures(context.Background(), UserOption{StudentID: "student"}, AgentQuery{Intent: "overview"})
 	if e != nil || len(r.Items) != 1 || r.Items[0].Title != "kept" || r.Coverage.Requested != 2 || r.Coverage.Succeeded != 1 || r.Coverage.Status != "partial" || r.Coverage.Failures[0].Reason != "course_mismatch" || r.Selection.MatchedTotal != nil {
 		t.Fatalf("%+v %v", r, e)
+	}
+}
+
+func TestNextOpeningSummaryPayloadBudget(t *testing.T) {
+	now := time.Now()
+	start := now.Add(time.Hour)
+	end := start.Add(time.Hour)
+	rows := []LectureRow{}
+	for i := 0; i < 40; i++ {
+		key := fmt.Sprintf("lecture-%d", i)
+		id, _ := StableLectureID(CourseRef{TermValue: "2026,2", CourseID: "course"}, key)
+		progress := "100"
+		if i >= 36 {
+			progress = "0"
+		}
+		rows = append(rows, LectureRow{ID: id, TermValue: "2026,2", CourseName: "자료구조", Lecture: Lecture{Title: "자료구조 강의", ContentID: key, PlayURL: "https://example.invalid/player/" + key, LearningSeq: key, FileID: "source", Progress: progress, StartAt: &start, EndAt: &end, ModuleTitle: "모듈 제목", WeekNo: "9"}})
+	}
+	selected, unknown := selectLectureItems(rows, AgentQuery{Intent: "next_opening"}, now, nil)
+	if unknown || len(selected) != 4 {
+		t.Fatalf("lost tied group %d %v", len(selected), unknown)
+	}
+	old, _ := json.Marshal(map[string]any{"kind": "klap_lectures", "data": rows})
+	compact, _ := json.Marshal(map[string]any{"kind": "klap_lectures", "schema_version": 2, "data": map[string]any{"items": selected, "courses": map[string]string{"course": "자료구조"}}})
+	before := 2 * len(old)
+	after := len(compact) + 256
+	reduction := 1 - float64(after)/float64(before)
+	t.Logf("fixture response bytes: before=%d after=%d reduction=%.1f%%; selected=%d", before, after, reduction*100, len(selected))
+	if reduction < 0.70 {
+		t.Fatal("summary byte reduction below fixture target")
 	}
 }
