@@ -137,6 +137,7 @@ type AgentItem struct {
 	EndAt          *time.Time  `json:"end_at,omitempty"`
 	RegisteredAt   *time.Time  `json:"registered_at,omitempty"`
 	Completion     *Completion `json:"completion,omitempty"`
+	Attendable     bool        `json:"attendable,omitempty"`
 	Availability   string      `json:"availability,omitempty"`
 	Week           string      `json:"week,omitempty"`
 	Submitted      string      `json:"submitted,omitempty"`

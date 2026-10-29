@@ -63,3 +63,20 @@ func TestExactQueryCourses(t *testing.T) {
 		t.Fatalf("%v %v", v, e)
 	}
 }
+
+func TestSummaryAttendanceRequiresKnownIncompleteAndOpen(t *testing.T) {
+	now := time.Now()
+	start := now.Add(-time.Hour)
+	end := now.Add(time.Hour)
+	id, _ := StableLectureID(CourseRef{TermValue: "2026,2", CourseID: "c"}, "x")
+	for _, tt := range []struct {
+		progress string
+		want     bool
+	}{{"0", true}, {"100", false}, {"", false}} {
+		rows := []LectureRow{{ID: id, Lecture: Lecture{ContentID: "x", Progress: tt.progress, StartAt: &start, EndAt: &end}}}
+		items, _ := selectLectureItems(rows, AgentQuery{Intent: "overview"}, now, nil)
+		if items[0].Attendable != tt.want {
+			t.Fatalf("%s: %+v", tt.progress, items)
+		}
+	}
+}

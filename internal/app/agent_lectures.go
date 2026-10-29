@@ -96,7 +96,7 @@ func selectLectureItems(rows []LectureRow, q AgentQuery, now time.Time, w *Query
 			uncertain = true
 			continue
 		}
-		item := AgentItem{ID: r.ID, Kind: "lecture", Title: l.Title, CourseID: ref.CourseID, StartAt: l.StartAt, EndAt: l.EndAt, Completion: &c, Availability: availability, Week: l.WeekNo}
+		item := AgentItem{ID: r.ID, Kind: "lecture", Title: l.Title, CourseID: ref.CourseID, StartAt: l.StartAt, EndAt: l.EndAt, Completion: &c, Availability: availability, Attendable: c.Status == "incomplete" && ValidateLectureAttendance(r, now) == nil, Week: l.WeekNo}
 		match := false
 		unknown := false
 		switch q.Intent {
