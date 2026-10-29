@@ -47,6 +47,7 @@ func (s *Service) QueryDue(ctx context.Context, user UserOption, q AgentQuery, k
 		return result, err
 	}
 	result.Query.Period = w
+	result.Query.Kinds = kinds
 	selected := []AgentItem{}
 	uncertain := false
 	for _, item := range result.Items {

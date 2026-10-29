@@ -146,6 +146,8 @@ type AgentItem struct {
 	HasAttachments bool        `json:"has_attachments,omitempty"`
 }
 type AppliedQuery struct {
+	Kinds          []string     `json:"kinds,omitempty"`
+	Search         string       `json:"search,omitempty"`
 	Intent         string       `json:"intent"`
 	Term           string       `json:"term"`
 	AsOf           time.Time    `json:"as_of"`

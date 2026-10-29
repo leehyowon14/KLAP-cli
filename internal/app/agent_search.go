@@ -48,6 +48,8 @@ func (s *Service) QuerySearch(ctx context.Context, user UserOption, q AgentQuery
 		return result, err
 	}
 	result.Query.Period = w
+	result.Query.Kinds = kinds
+	result.Query.Search = phrase
 	result.SearchedFields = []string{"title", "course_name"}
 	selected := []AgentItem{}
 	uncertain := false
