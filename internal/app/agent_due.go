@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"time"
 )
 
 func (s *Service) QueryDue(ctx context.Context, user UserOption, q AgentQuery, kinds []string) (AgentResult, error) {
@@ -48,9 +49,16 @@ func (s *Service) QueryDue(ctx context.Context, user UserOption, q AgentQuery, k
 	}
 	result.Query.Period = w
 	result.Query.Kinds = kinds
+	selected, uncertain := selectDueCandidates(result.Items, q, now, w)
+	result.Items = selected
+	result.finish(uncertain)
+	return result, nil
+}
+
+func selectDueCandidates(items []AgentItem, q AgentQuery, now time.Time, w *QueryWindow) ([]AgentItem, bool) {
 	selected := []AgentItem{}
 	uncertain := false
-	for _, item := range result.Items {
+	for _, item := range items {
 		if item.Completion != nil && item.Completion.Status == "completed" || item.Submitted == "submitted" {
 			continue
 		}
@@ -82,17 +90,28 @@ func (s *Service) QueryDue(ctx context.Context, user UserOption, q AgentQuery, k
 		}
 		return selected[i].ID < selected[j].ID
 	})
-	if q.Intent == "next_deadline" && len(selected) > 0 && selected[0].EndAt != nil {
-		first := *selected[0].EndAt
-		all := selected
-		selected = []AgentItem{}
-		for _, item := range all {
-			if item.EndAt == nil || item.EndAt.Equal(first) {
-				selected = append(selected, item)
+	if q.Intent == "next_deadline" {
+		var first *time.Time
+		for _, item := range selected {
+			if item.EndAt != nil && (item.Completion == nil || item.Completion.Status != "unknown") && item.Submitted != "unknown" {
+				first = item.EndAt
+				break
 			}
 		}
+		if first != nil {
+			all := selected
+			selected = []AgentItem{}
+			for _, item := range all {
+				if item.EndAt == nil || !item.EndAt.After(*first) {
+					selected = append(selected, item)
+				}
+			}
+		}
+		uncertain = false
+		for _, item := range selected {
+			uncertain = uncertain || item.EndAt == nil || item.Completion != nil && item.Completion.Status == "unknown" || item.Submitted == "unknown"
+		}
 	}
-	result.Items = selected
-	result.finish(uncertain)
-	return result, nil
+
+	return selected, uncertain
 }
