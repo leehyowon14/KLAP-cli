@@ -67,6 +67,9 @@ func (s *Service) QueryDue(ctx context.Context, user UserOption, q AgentQuery, k
 	}
 	sort.SliceStable(selected, func(i, j int) bool {
 		a, b := selected[i].EndAt, selected[j].EndAt
+		if a == nil && b == nil {
+			return selected[i].ID < selected[j].ID
+		}
 		if a == nil {
 			return false
 		}

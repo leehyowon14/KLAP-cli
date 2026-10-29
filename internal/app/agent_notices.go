@@ -84,6 +84,12 @@ func (s *Service) QueryNotices(ctx context.Context, user UserOption, q AgentQuer
 	}
 	sort.SliceStable(result.Items, func(i, j int) bool {
 		a, b := result.Items[i], result.Items[j]
+		if a.RegisteredAt == nil && b.RegisteredAt != nil {
+			return false
+		}
+		if a.RegisteredAt != nil && b.RegisteredAt == nil {
+			return true
+		}
 		if a.RegisteredAt != nil && b.RegisteredAt != nil && !a.RegisteredAt.Equal(*b.RegisteredAt) {
 			return a.RegisteredAt.After(*b.RegisteredAt)
 		}

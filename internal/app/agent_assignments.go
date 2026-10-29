@@ -98,6 +98,12 @@ func (s *Service) QueryAssignments(ctx context.Context, user UserOption, q Agent
 	}
 	sort.SliceStable(result.Items, func(i, j int) bool {
 		a, b := result.Items[i], result.Items[j]
+		if a.EndAt == nil && b.EndAt != nil {
+			return false
+		}
+		if a.EndAt != nil && b.EndAt == nil {
+			return true
+		}
 		if a.EndAt != nil && b.EndAt != nil && !a.EndAt.Equal(*b.EndAt) {
 			return a.EndAt.Before(*b.EndAt)
 		}
